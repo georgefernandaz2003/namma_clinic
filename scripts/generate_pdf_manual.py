@@ -739,7 +739,7 @@ def build_pdf():
     p22_text = (
         "The platform enforces stringent security controls aligned with national digital health data privacy guidelines: "
         "<br/><br/>"
-        "• <b>Role-Based Access Control (RBAC):</b> 8 distinct operational roles (Medical Officer, Nurse, Pharmacist, Lab Tech, District Officer, Hospital Admin, System Admin) with restricted navigation and API endpoints.<br/>"
+        "• <b>Role-Based Access Control (RBAC):</b> 6 distinct operational roles (District Officer, Hospital Admin, Doctor, Nurse, Lab Technician, Pharmacist) with restricted navigation and API endpoints.<br/>"
         "• <b>Sub-Facility Data Isolation:</b> Clinic staff can only access patient records registered within their own facility, preventing unauthorized data access.<br/>"
         "• <b>Immutable Audit Trail:</b> Every system action (login, patient registration, prescription, lab entry, data export) is logged with timestamp, user ID, and IP snapshot."
     )

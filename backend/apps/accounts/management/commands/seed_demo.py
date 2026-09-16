@@ -196,15 +196,13 @@ class Command(BaseCommand):
             source_facility=rc_a4, destination_facility=hosp_a, relationship_type='TELECONSULTATION', service='Specialist Teleconsultation Hub', priority='PRIMARY', distance_km=5.0
         )
 
-        # 4. Users & Roles
-        u_admin = User.objects.create_superuser('admin', 'admin@nammaclinic.gov.in', 'admin123', full_name='System Administrator', role='SUPER_ADMIN')
-        u_dist = User.objects.create_user('district', 'district@nammaclinic.gov.in', 'district123', full_name='Dr. Sunita Rao (District Health Officer)', role='DISTRICT_ADMIN', assigned_district=dist_central)
+        # 4. Users & Roles (Strictly 6 Active Roles)
+        u_dist = User.objects.create_user('district', 'district@nammaclinic.gov.in', 'district123', full_name='Dr. Sunita Rao (District Health Officer)', role='DISTRICT_OFFICER', assigned_district=dist_central)
         u_hosp = User.objects.create_user('hospital', 'hospital@nammaclinic.gov.in', 'hospital123', full_name='Dr. K. V. Sharma (Chief Medical Supt)', role='HOSPITAL_ADMIN', assigned_facility=hosp_b)
-        u_doc = User.objects.create_user('doctor', 'doctor@nammaclinic.gov.in', 'doctor123', full_name='Dr. Rajesh Kumar (Medical Officer)', role='MEDICAL_OFFICER', assigned_facility=rc_a4)
-        u_nurse = User.objects.create_user('nurse', 'nurse@nammaclinic.gov.in', 'nurse123', full_name='Sister Priya Nair', role='STAFF_NURSE', assigned_facility=rc_a4)
+        u_doc = User.objects.create_user('doctor', 'doctor@nammaclinic.gov.in', 'doctor123', full_name='Dr. Rajesh Kumar (Medical Officer)', role='DOCTOR', assigned_facility=rc_a4)
+        u_nurse = User.objects.create_user('nurse', 'nurse@nammaclinic.gov.in', 'nurse123', full_name='Sister Priya Nair', role='NURSE', assigned_facility=rc_a4)
         u_lab = User.objects.create_user('lab', 'lab@nammaclinic.gov.in', 'lab123', full_name='Mr. Suresh Gowda', role='LAB_TECHNICIAN', assigned_facility=rc_a4)
         u_pharm = User.objects.create_user('pharmacy', 'pharmacy@nammaclinic.gov.in', 'pharmacy123', full_name='Mrs. Lakshmi Devi', role='PHARMACIST', assigned_facility=rc_a4)
-        u_off = User.objects.create_user('officer', 'officer@nammaclinic.gov.in', 'officer123', full_name='Dr. Anil Mehta (Public Health Officer)', role='PUBLIC_HEALTH_OFFICER', assigned_district=dist_central)
 
         # 5. Approved 14 Essential Diagnostic Tests for Namma Clinics / UHWC
         lt_hba1c = LabTestMaster.objects.create(code='L-HBA1C', name='HbA1c Glycated Hemoglobin', category='Diabetes', reference_range='4.0 - 5.6 %', unit='%')
@@ -457,7 +455,7 @@ class Command(BaseCommand):
             attending_doctor='', status='AVAILABLE'
         )
 
-        AuditLog.objects.create(user=u_admin, username_snapshot='admin', action='SYSTEM_SEED_DEMO', facility=rc_a4, details='Demo database seeded successfully with infrastructure, oxygen, consumables & beds.')
+        AuditLog.objects.create(user=u_dist, username_snapshot='district', action='SYSTEM_SEED_DEMO', facility=rc_a4, details='Demo database seeded successfully with infrastructure, oxygen, consumables & beds.')
 
         self.stdout.write(self.style.SUCCESS("Demo dataset successfully seeded! All credentials and sample data are ready."))
 

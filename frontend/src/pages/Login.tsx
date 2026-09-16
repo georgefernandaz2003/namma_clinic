@@ -4,14 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, KeyRound, UserCheck } from 'lucide-react';
 
 const demoUsers = [
-  { role: 'Super Admin', username: 'admin', password: 'admin123', desc: 'System Configuration & Network Admin' },
   { role: 'District Officer', username: 'district', password: 'district123', desc: 'District Health Office Dashboard' },
   { role: 'Hospital Admin', username: 'hospital', password: 'hospital123', desc: 'Main Hospital Specialist Hub' },
-  { role: 'Doctor (Medical Officer)', username: 'doctor', password: 'doctor123', desc: 'Rural Clinic A4 OPD Queue & EMR' },
-  { role: 'Staff Nurse', username: 'nurse', password: 'nurse123', desc: 'Registration & Triage Vitals' },
+  { role: 'Doctor (Medical Officer)', username: 'doctor', password: 'doctor123', desc: 'OPD Queue, EMR & Consultation' },
+  { role: 'Staff Nurse', username: 'nurse', password: 'nurse123', desc: 'Patient Registration & Triage Vitals' },
   { role: 'Lab Technician', username: 'lab', password: 'lab123', desc: 'Diagnostic Orders & Result Entry' },
-  { role: 'Pharmacist', username: 'pharmacy', password: 'pharmacy123', desc: 'FEFO Dispensing & Stock Inventory' },
-  { role: 'Public Health Officer', username: 'officer', password: 'officer123', desc: 'Surveillance & Disease Anomalies' }
+  { role: 'Pharmacist', username: 'pharmacy', password: 'pharmacy123', desc: 'FEFO Dispensing & Stock Inventory' }
 ];
 
 export const Login: React.FC = () => {

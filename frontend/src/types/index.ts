@@ -1,14 +1,10 @@
 export type Role =
-  | 'SUPER_ADMIN'
-  | 'DISTRICT_ADMIN'
-  | 'ULB_ADMIN'
+  | 'DISTRICT_OFFICER'
   | 'HOSPITAL_ADMIN'
-  | 'MEDICAL_OFFICER'
-  | 'STAFF_NURSE'
+  | 'DOCTOR'
+  | 'NURSE'
   | 'LAB_TECHNICIAN'
-  | 'PHARMACIST'
-  | 'LDC'
-  | 'PUBLIC_HEALTH_OFFICER';
+  | 'PHARMACIST';
 
 export interface User {
   id: number;

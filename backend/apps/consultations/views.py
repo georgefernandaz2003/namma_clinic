@@ -26,11 +26,18 @@ class ConsultationSerializer(serializers.ModelSerializer):
         model = Consultation
         fields = '__all__'
 
-from apps.accounts.permissions import get_accessible_facility_ids_for_user
+from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission
 
 class ConsultationViewSet(viewsets.ModelViewSet):
     serializer_class = ConsultationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    required_permissions = {
+        'GET': 'consultation.view',
+        'POST': 'consultation.create',
+        'PUT': 'consultation.update',
+        'PATCH': 'consultation.update',
+        'DELETE': 'consultation.update'
+    }
 
     def get_queryset(self):
         queryset = Consultation.objects.all().select_related('visit', 'patient', 'doctor', 'facility')

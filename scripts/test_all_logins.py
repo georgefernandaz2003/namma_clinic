@@ -5,14 +5,12 @@ import urllib.parse
 BASE_URL = "http://127.0.0.1:8000/api"
 
 roles_to_test = [
-    {"role": "Super Admin", "username": "admin", "password": "admin123", "expected_role": "SUPER_ADMIN"},
-    {"role": "District Officer", "username": "district", "password": "district123", "expected_role": "DISTRICT_ADMIN"},
+    {"role": "District Officer", "username": "district", "password": "district123", "expected_role": "DISTRICT_OFFICER"},
     {"role": "Hospital Admin", "username": "hospital", "password": "hospital123", "expected_role": "HOSPITAL_ADMIN"},
-    {"role": "Doctor (Medical Officer)", "username": "doctor", "password": "doctor123", "expected_role": "MEDICAL_OFFICER"},
-    {"role": "Staff Nurse", "username": "nurse", "password": "nurse123", "expected_role": "STAFF_NURSE"},
+    {"role": "Doctor", "username": "doctor", "password": "doctor123", "expected_role": "DOCTOR"},
+    {"role": "Staff Nurse", "username": "nurse", "password": "nurse123", "expected_role": "NURSE"},
     {"role": "Lab Technician", "username": "lab", "password": "lab123", "expected_role": "LAB_TECHNICIAN"},
     {"role": "Pharmacist", "username": "pharmacy", "password": "pharmacy123", "expected_role": "PHARMACIST"},
-    {"role": "Public Health Officer", "username": "officer", "password": "officer123", "expected_role": "PUBLIC_HEALTH_OFFICER"},
 ]
 
 def make_req(endpoint, method="GET", data=None, token=None):
@@ -36,7 +34,7 @@ def make_req(endpoint, method="GET", data=None, token=None):
             return e.code, {"error": res_body}
 
 print("============================================================")
-print("NAMMA CLINIC INTEGRATED NETWORK - 8 ROLE LOGIN AUDIT TEST")
+print("NAMMA CLINIC INTEGRATED NETWORK - 6 ROLE LOGIN AUDIT TEST")
 print("============================================================\n")
 
 results = []
@@ -45,6 +43,7 @@ for item in roles_to_test:
     role_name = item["role"]
     uname = item["username"]
     pwd = item["password"]
+    exp_role = item["expected_role"]
     
     # 1. Test JWT Auth Token Generation
     status, token_resp = make_req("auth/token/", method="POST", data={"username": uname, "password": pwd})
@@ -63,6 +62,10 @@ for item in roles_to_test:
     actual_role = me_resp.get("role")
     assigned_facility = me_resp.get("facility_name") or "District / All Facilities"
     
+    if actual_role != exp_role:
+        results.append((role_name, uname, "FAIL (Role Mismatch)", f"Expected {exp_role}, Got {actual_role}"))
+        continue
+
     # 3. Test Core API Endpoint Access based on Role Capabilities
     accessible_apis = []
     
@@ -98,5 +101,3 @@ for r in results:
     print(f"{r[0]:<25} | {r[1]:<10} | {r[2]:<18} | {r[3]}")
 
 print("\n============================================================")
-print("AUDIT TEST COMPLETE - ALL 8 DEMO ACCOUNTS VERIFIED SUCCESSFUL!")
-print("============================================================")
