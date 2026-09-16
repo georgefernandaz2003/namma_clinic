@@ -35,7 +35,29 @@ export const Consultation: React.FC = () => {
   const [refReason, setRefReason] = useState('Specialist evaluation for uncontrolled hypertension');
   const [refUrgency, setRefUrgency] = useState<'ROUTINE' | 'URGENT' | 'EMERGENCY'>('HIGH' as any);
 
+  // Diagnostic Tests (14 Essential Tests) State
+  const [availableTests, setAvailableTests] = useState<any[]>([]);
+  const [selectedTestIds, setSelectedTestIds] = useState<number[]>([]);
+
+  // Follow-up State
+  const [followUpDate, setFollowUpDate] = useState<string>('');
+  const [followUpCategory, setFollowUpCategory] = useState<string>('ROUTINE_MONITORING');
+  const [followUpNotes, setFollowUpNotes] = useState<string>('Review BP & blood sugar in 14 days');
+
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchLabTests = async () => {
+      try {
+        const res = await api.get('lab/tests/');
+        const tests = res.data.results || res.data || [];
+        setAvailableTests(tests);
+      } catch (e) {
+        console.error('Failed to load lab test master', e);
+      }
+    };
+    fetchLabTests();
+  }, []);
 
   const loadQueue = async () => {
     if (!activeFacility) return;
@@ -72,9 +94,24 @@ export const Consultation: React.FC = () => {
     loadQueue();
   }, [activeFacility]);
 
+  const [networkFacilities, setNetworkFacilities] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchNetworkFacilities = async () => {
+      try {
+        const res = await api.get('facilities/?all=true');
+        const facs = res.data.results || res.data || [];
+        setNetworkFacilities(facs);
+      } catch (e) {
+        console.error('Failed to load network facilities', e);
+      }
+    };
+    fetchNetworkFacilities();
+  }, []);
+
   // Filter local referral destination options
-  const referralDestinations = allFacilities.filter(
-    (f) => f.id !== activeFacility?.id && ['MAIN_HOSPITAL', 'REFERRAL_HOSPITAL', 'SECONDARY_HOSPITAL', 'DIAGNOSTIC_CENTER'].includes(f.facility_type)
+  const referralDestinations = (networkFacilities.length > 0 ? networkFacilities : allFacilities).filter(
+    (f) => f.id !== activeFacility?.id
   );
 
   useEffect(() => {
@@ -89,6 +126,14 @@ export const Consultation: React.FC = () => {
 
   const handleRemoveMed = (idx: number) => {
     setPrescriptions(prescriptions.filter((_, i) => i !== idx));
+  };
+
+  const toggleTestSelection = (testId: number) => {
+    if (selectedTestIds.includes(testId)) {
+      setSelectedTestIds(selectedTestIds.filter((id) => id !== testId));
+    } else {
+      setSelectedTestIds([...selectedTestIds, testId]);
+    }
   };
 
   const handleSaveConsultation = async (e: React.FormEvent) => {
@@ -124,7 +169,35 @@ export const Consultation: React.FC = () => {
         });
       }
 
-      alert(`Consultation & EMR entry completed for ${selectedVisit.patient_details?.name}!`);
+      // 3. Save Diagnostic Lab Orders
+      for (const testId of selectedTestIds) {
+        try {
+          await api.post('lab/orders/', {
+            patient: selectedVisit.patient,
+            facility: activeFacility.id,
+            test_master: testId
+          });
+        } catch (err) {
+          console.error('Failed to order lab test', err);
+        }
+      }
+
+      // 4. Save Scheduled Follow-up
+      if (followUpDate) {
+        try {
+          await api.post('followups/', {
+            patient: selectedVisit.patient,
+            facility: activeFacility.id,
+            due_date: followUpDate,
+            category: followUpCategory,
+            notes: followUpNotes
+          });
+        } catch (err) {
+          console.error('Failed to schedule follow-up', err);
+        }
+      }
+
+      alert(`Consultation, Prescriptions, Lab Orders & Referrals saved for ${selectedVisit.patient_details?.name}!`);
       loadQueue();
       navigate('/queue');
     } catch (e) {
@@ -143,6 +216,16 @@ export const Consultation: React.FC = () => {
         </h1>
         <p className="text-xs text-slate-500 mt-0.5">
           Primary care EMR documentation, diagnosis, prescriptions, and cross-facility referral creation
+        </p>
+      </div>
+
+      {/* EMR-Lite Value Proposition Banner */}
+      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-4 rounded-2xl text-white space-y-1 shadow-md">
+        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-blue-400">
+          <span>📋 Streamlined Primary Care EMR-Lite</span>
+        </div>
+        <p className="text-xs text-blue-100 font-medium leading-relaxed">
+          &ldquo;We are designing this EMR-lite for a busy primary-care doctor, not a heavy hospital ERP.&rdquo;
         </p>
       </div>
 
@@ -185,8 +268,8 @@ export const Consultation: React.FC = () => {
         <div className="lg:col-span-2 glass-panel p-6 rounded-2xl border border-slate-200 bg-white space-y-5 shadow-xs">
           {selectedVisit ? (
             <form onSubmit={handleSaveConsultation} className="space-y-5 text-xs">
-              {/* Patient & Vitals Summary */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+              {/* Patient, Vitals & History Summary */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                 <div className="flex justify-between items-start">
                   <div>
                     <h2 className="text-base font-bold text-slate-900">{selectedVisit.patient_details?.name}</h2>
@@ -194,9 +277,18 @@ export const Consultation: React.FC = () => {
                       ID: {selectedVisit.patient_details?.patient_id} • Age: {selectedVisit.patient_details?.age} • Gender: {selectedVisit.patient_details?.gender}
                     </p>
                   </div>
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                    Token #{selectedVisit.token_details?.token_number || 1}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/patients/${selectedVisit.patient_details?.id || selectedVisit.patient}`)}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white text-blue-700 border border-blue-200 hover:bg-blue-50 transition flex items-center gap-1 shadow-2xs"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> View EMR Timeline History
+                    </button>
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                      Token #{selectedVisit.token_details?.token_number || 1}
+                    </span>
+                  </div>
                 </div>
 
                 {vitals && (
@@ -238,7 +330,7 @@ export const Consultation: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Diagnosis Code & Name *</label>
+                  <label className="block text-slate-700 font-bold mb-1">ICD-10 Diagnosis Code & Name *</label>
                   <input
                     type="text"
                     value={diagName}
@@ -264,7 +356,7 @@ export const Consultation: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <h3 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
                     <Pill className="w-4 h-4 text-amber-600" />
-                    Prescribe Medication (FEFO Dispensing Ready)
+                    Prescribe Medication (EDL List - FEFO Dispensing Ready)
                   </h3>
                   <button
                     type="button"
@@ -317,6 +409,38 @@ export const Consultation: React.FC = () => {
                       </button>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Order Diagnostic Investigations (14 Essential Tests) */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <h3 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                  <FileText className="w-4 h-4 text-teal-600" />
+                  Order 14 Essential Diagnostic Tests (Point-of-Care & Hub Lab)
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] max-h-48 overflow-y-auto pr-1">
+                  {availableTests.map((t) => {
+                    const isSelected = selectedTestIds.includes(t.id);
+                    return (
+                      <label
+                        key={t.id}
+                        onClick={() => toggleTestSelection(t.id)}
+                        className={`p-2 rounded-lg border flex items-center justify-between cursor-pointer transition select-none ${
+                          isSelected
+                            ? 'bg-teal-50 border-teal-500 text-teal-900 font-bold'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span>{t.name}</span>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="w-3.5 h-3.5 text-teal-600 rounded border-slate-300"
+                        />
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -377,6 +501,34 @@ export const Consultation: React.FC = () => {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Schedule Follow-up Visit */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <h3 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                  <FileText className="w-4 h-4 text-purple-600" />
+                  Schedule Follow-Up Visit
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">Follow-Up Date</label>
+                    <input
+                      type="date"
+                      value={followUpDate}
+                      onChange={(e) => setFollowUpDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">Follow-Up Notes</label>
+                    <input
+                      type="text"
+                      value={followUpNotes}
+                      onChange={(e) => setFollowUpNotes(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900"
+                    />
+                  </div>
+                </div>
               </div>
 
               <button

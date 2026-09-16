@@ -31,10 +31,24 @@ class PatientViewSet(viewsets.ModelViewSet):
             existing = Patient.objects.filter(mobile=mobile, name__iexact=name).first()
             if existing:
                 return Response(
-                    {'error': 'Duplicate patient record detected!', 'patient': PatientSerializer(existing).data},
+                    {'error': f"Duplicate patient record detected! Patient '{existing.name}' is already registered with Patient ID {existing.patient_id}."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-        return super().create(request, *args, **kwargs)
+        
+        data = request.data.copy()
+        if not data.get('patient_id'):
+            import random
+            while True:
+                candidate_id = f"NC-KA-2026-{random.randint(1000, 9999)}"
+                if not Patient.objects.filter(patient_id=candidate_id).exists():
+                    data['patient_id'] = candidate_id
+                    break
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 class PatientTimelineView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -43,7 +57,7 @@ class PatientTimelineView(APIView):
         try:
             patient = Patient.objects.get(pk=pk)
         except Patient.DoesNotExist:
-            return Response({'error': 'Patient not found'}, status=44)
+            return Response({'error': 'Patient not found'}, status=status.HTTP_404_NOT_FOUND)
 
         timeline = []
 
@@ -92,7 +106,7 @@ class PatientTimelineView(APIView):
                     p = c.prescription
                     meds = ", ".join([f"{item.medicine_name} ({item.dosage})" for item in p.items.all()])
                     timeline.append({
-                        'date': p.date.strftime('%Y-%m-%d'),
+                        'date': c.created_at.strftime('%Y-%m-%d %H:%M'),
                         'type': 'PRESCRIPTION',
                         'title': 'Prescription Issued & Dispensed',
                         'facility': v.facility.facility_name,

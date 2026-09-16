@@ -52,20 +52,21 @@ class LabOrderViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(facility_id__in=accessible_ids)
         return queryset
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='collect-sample')
     def collect_sample(self, request, pk=None):
         order = self.get_object()
-        sample_code = f"SMP-{order.id:04d}"
+        sample_code = request.data.get('sample_code') or f"SMP-{order.id:04d}"
+        sample_type = request.data.get('sample_type', 'Blood / Serum')
         sample, _ = LabSample.objects.get_or_create(
             lab_order=order,
-            defaults={'sample_type': request.data.get('sample_type', 'Blood'), 'sample_code': sample_code, 'collected_by': request.user}
+            defaults={'sample_type': sample_type, 'sample_code': sample_code, 'collected_by': request.user}
         )
         order.status = 'SAMPLE_COLLECTED'
         order.save()
         return Response({'status': 'Sample collected', 'sample': LabSampleSerializer(sample).data})
 
-    @action(detail=True, methods=['post'])
-    def enter_result(self, request, pk=None):
+    @action(detail=True, methods=['post'], url_path='save-result')
+    def save_result(self, request, pk=None):
         order = self.get_object()
         res_val = request.data.get('result_value', 'Normal')
         flag = request.data.get('interpretation_flag', 'NORMAL')
@@ -75,8 +76,8 @@ class LabOrderViewSet(viewsets.ModelViewSet):
             lab_order=order,
             defaults={
                 'result_value': res_val,
-                'unit': order.test_master.unit,
-                'reference_range': order.test_master.reference_range,
+                'unit': request.data.get('unit') or order.test_master.unit,
+                'reference_range': request.data.get('reference_range') or order.test_master.reference_range,
                 'interpretation_flag': flag,
                 'verified_by': request.user,
                 'notes': notes
@@ -85,3 +86,7 @@ class LabOrderViewSet(viewsets.ModelViewSet):
         order.status = 'VERIFIED'
         order.save()
         return Response({'status': 'Result verified & released', 'result': LabResultSerializer(result).data})
+
+    @action(detail=True, methods=['post'], url_path='enter_result')
+    def enter_result(self, request, pk=None):
+        return self.save_result(request, pk=pk)

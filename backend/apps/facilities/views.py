@@ -23,6 +23,8 @@ class FacilityViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Facility.objects.all().select_related('district', 'zone', 'ward', 'parent_facility')
+        if self.request.query_params.get('all') == 'true':
+            return queryset
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(id__in=accessible_ids)

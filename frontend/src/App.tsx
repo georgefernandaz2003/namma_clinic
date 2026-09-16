@@ -7,6 +7,7 @@ import { Dashboard } from './pages/Dashboard';
 import { HealthcareNetwork } from './pages/HealthcareNetwork';
 import { Facilities } from './pages/Facilities';
 import { Patients } from './pages/Patients';
+import { PatientDetail } from './pages/PatientDetail';
 import { Queue } from './pages/Queue';
 import { Triage } from './pages/Triage';
 import { Consultation } from './pages/Consultation';
@@ -46,6 +47,7 @@ export const App: React.FC = () => {
           <Route path="/network" element={<ProtectedRoute><HealthcareNetwork /></ProtectedRoute>} />
           <Route path="/facilities" element={<ProtectedRoute><Facilities /></ProtectedRoute>} />
           <Route path="/patients" element={<ProtectedRoute><Patients /></ProtectedRoute>} />
+          <Route path="/patients/:id" element={<ProtectedRoute><PatientDetail /></ProtectedRoute>} />
           <Route path="/queue" element={<ProtectedRoute><Queue /></ProtectedRoute>} />
           <Route path="/triage" element={<ProtectedRoute><Triage /></ProtectedRoute>} />
           <Route path="/consultation" element={<ProtectedRoute><Consultation /></ProtectedRoute>} />

@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import type { Patient } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { Users, Search, UserPlus } from 'lucide-react';
+import { Users, Search, UserPlus, Clock, History, X, Activity, FileText, Pill, Share2, Stethoscope } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export const Patients: React.FC = () => {
   const { activeFacility } = useAuth();
+  const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState('');
 
@@ -18,6 +20,20 @@ export const Patients: React.FC = () => {
   const [address, setAddress] = useState('');
   const [abhaId, setAbhaId] = useState('');
   const [vulnerability] = useState('Slum Resident BPL');
+
+  // Token Modal State
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [targetPatient, setTargetPatient] = useState<Patient | null>(null);
+  const [visitType, setVisitType] = useState('GENERAL_OPD');
+  const [priority, setPriority] = useState('NORMAL');
+  const [chiefComplaint, setChiefComplaint] = useState('');
+  const [submittingToken, setSubmittingToken] = useState(false);
+
+  // Timeline / History Modal State
+  const [showTimelineModal, setShowTimelineModal] = useState(false);
+  const [timelinePatient, setTimelinePatient] = useState<Patient | null>(null);
+  const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
 
   const loadPatients = async () => {
     try {
@@ -35,7 +51,7 @@ export const Patients: React.FC = () => {
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('patients/', {
+      const res = await api.post('patients/', {
         name,
         age: parseInt(age) || 30,
         gender,
@@ -45,14 +61,66 @@ export const Patients: React.FC = () => {
         vulnerability_information: vulnerability,
         registered_at_facility: activeFacility?.id
       });
-      alert(`Patient ${name} registered successfully! Duplicate check passed.`);
+      const newPat = res.data;
+      alert(`Patient '${newPat.name}' registered successfully!\nAssigned Patient ID: ${newPat.patient_id}`);
       setShowRegisterModal(false);
       setName('');
+      setAge('');
       setMobile('');
+      setAddress('');
+      setAbhaId('');
       loadPatients();
     } catch (e: any) {
-      const msg = e.response?.data?.detail || e.response?.data?.error || 'Failed to register patient (Possible duplicate patient match!).';
+      let msg = 'Failed to register patient.';
+      if (e.response?.data?.error) {
+        msg = e.response.data.error;
+      } else if (e.response?.data?.detail) {
+        msg = e.response.data.detail;
+      } else if (e.response?.data && typeof e.response.data === 'object') {
+        msg = Object.entries(e.response.data)
+          .map(([k, v]) => `${k.toUpperCase()}: ${Array.isArray(v) ? v.join(', ') : v}`)
+          .join('\n');
+      }
       alert(msg);
+    }
+  };
+
+  const handleIssueTokenSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetPatient || !activeFacility) return;
+    setSubmittingToken(true);
+    try {
+      const res = await api.post('visits/', {
+        patient: targetPatient.id,
+        facility: activeFacility.id,
+        visit_type: visitType,
+        priority,
+        chief_complaint: chiefComplaint
+      });
+      const newVisit = res.data;
+      alert(`OPD Token #${newVisit.token_details?.token_number || newVisit.id} Issued for ${targetPatient.name}!`);
+      setShowTokenModal(false);
+      setChiefComplaint('');
+      navigate('/queue');
+    } catch (e: any) {
+      alert(e.response?.data?.error || 'Failed to issue OPD token');
+    } finally {
+      setSubmittingToken(false);
+    }
+  };
+
+  const openTimelineModal = async (p: Patient) => {
+    setTimelinePatient(p);
+    setShowTimelineModal(true);
+    setLoadingTimeline(true);
+    try {
+      const res = await api.get(`patients/${p.id}/timeline/`);
+      setTimelineEvents(res.data.timeline || []);
+    } catch (e) {
+      console.error('Failed to load patient timeline', e);
+      setTimelineEvents([]);
+    } finally {
+      setLoadingTimeline(false);
     }
   };
 
@@ -111,13 +179,21 @@ export const Patients: React.FC = () => {
                 <th className="p-4">ABHA ID (Demo)</th>
                 <th className="p-4">Registered Facility</th>
                 <th className="p-4">Vulnerability Flag</th>
+                <th className="p-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50/80 transition">
+                <tr
+                  key={p.id}
+                  onClick={() => navigate(`/patients/${p.id}`)}
+                  className="hover:bg-blue-50/60 cursor-pointer transition group"
+                  title="Click to view full patient EMR profile & history"
+                >
                   <td className="p-4 font-mono font-bold text-emerald-700">{p.patient_id}</td>
-                  <td className="p-4 font-bold text-slate-900">{p.name}</td>
+                  <td className="p-4 font-bold text-slate-900 group-hover:text-blue-600 transition flex items-center gap-1.5">
+                    <span>{p.name}</span>
+                  </td>
                   <td className="p-4 text-slate-600">{p.age} yrs • {p.gender}</td>
                   <td className="p-4 font-mono text-slate-700">{p.mobile}</td>
                   <td className="p-4 font-mono text-slate-600">{p.ABHA_ID_DEMO || 'N/A'}</td>
@@ -126,6 +202,19 @@ export const Patients: React.FC = () => {
                     <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
                       {p.vulnerability_information || 'General'}
                     </span>
+                  </td>
+                  <td className="p-4 text-right">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTargetPatient(p);
+                        setShowTokenModal(true);
+                      }}
+                      className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1 shadow-xs transition"
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Issue Token</span>
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -138,23 +227,18 @@ export const Patients: React.FC = () => {
       {showRegisterModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-emerald-600" />
-                Register New Patient (With Duplicate Check)
-              </h2>
-              <button onClick={() => setShowRegisterModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-            </div>
+            <h2 className="text-base font-bold text-slate-900">Register New Patient</h2>
 
             <form onSubmit={handleRegisterPatient} className="space-y-4 text-xs">
               <div>
                 <label className="block text-slate-700 font-bold mb-1">Patient Full Name *</label>
                 <input
                   type="text"
+                  required
+                  placeholder="e.g. Rajesh Gowda"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-600"
-                  required
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
                 />
               </div>
 
@@ -163,18 +247,19 @@ export const Patients: React.FC = () => {
                   <label className="block text-slate-700 font-bold mb-1">Age *</label>
                   <input
                     type="number"
+                    required
+                    placeholder="e.g. 35"
                     value={age}
                     onChange={(e) => setAge(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-600"
-                    required
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
                   />
                 </div>
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Gender *</label>
                   <select
                     value={gender}
-                    onChange={(e) => setGender(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-600"
+                    onChange={(e: any) => setGender(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
                   >
                     <option value="MALE">Male</option>
                     <option value="FEMALE">Female</option>
@@ -188,20 +273,21 @@ export const Patients: React.FC = () => {
                   <label className="block text-slate-700 font-bold mb-1">Mobile Number *</label>
                   <input
                     type="text"
+                    required
+                    placeholder="10-digit mobile"
                     value={mobile}
                     onChange={(e) => setMobile(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-600"
-                    required
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
                   />
                 </div>
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">ABHA ID (Optional)</label>
                   <input
                     type="text"
+                    placeholder="ABHA-2026-XXXX"
                     value={abhaId}
                     onChange={(e) => setAbhaId(e.target.value)}
-                    placeholder="ABHA-2026-XXXX"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-600"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
                   />
                 </div>
               </div>
@@ -209,20 +295,186 @@ export const Patients: React.FC = () => {
               <div>
                 <label className="block text-slate-700 font-bold mb-1">Residential Address</label>
                 <textarea
+                  rows={2}
+                  placeholder="Street / Slum Ward / Village address"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-600"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
                 />
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition"
-              >
-                Register & Verify Duplicate Status
-              </button>
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRegisterModal(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-sm"
+                >
+                  Register & Verify Duplicate Status
+                </button>
+              </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Issue Token Modal */}
+      {showTokenModal && targetPatient && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-emerald-600" />
+                  Issue OPD Token for {targetPatient.name}
+                </h2>
+                <p className="text-xs text-slate-500 font-mono mt-0.5">
+                  ID: {targetPatient.patient_id} • Mobile: {targetPatient.mobile}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowTokenModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleIssueTokenSubmit} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Visit Type</label>
+                  <select
+                    value={visitType}
+                    onChange={(e) => setVisitType(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium focus:outline-none"
+                  >
+                    <option value="GENERAL_OPD">General OPD</option>
+                    <option value="NCD_SCREENING">NCD Screening</option>
+                    <option value="MATERNAL_ANC">Maternal ANC</option>
+                    <option value="CHILD_IMMUNIZATION">Child Immunization</option>
+                    <option value="TELECONSULTATION">Teleconsultation</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Priority Tag</label>
+                  <select
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium focus:outline-none"
+                  >
+                    <option value="NORMAL">Normal / Routine</option>
+                    <option value="HIGH">High Priority</option>
+                    <option value="EMERGENCY">Emergency 🚨</option>
+                    <option value="MATERNAL">Maternal ANC Care</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Chief Symptoms / Complaint</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Chest pain, Fever, Routine BP check"
+                  value={chiefComplaint}
+                  onChange={(e) => setChiefComplaint(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTokenModal(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingToken}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-sm"
+                >
+                  {submittingToken ? 'Issuing...' : 'Issue Token & Add to Queue'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Longitudinal EMR Timeline Modal */}
+      {showTimelineModal && timelinePatient && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-2xl space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <History className="w-5 h-5 text-blue-600" />
+                  Longitudinal EMR Timeline & History
+                </h2>
+                <div className="text-xs text-slate-600 mt-1 space-x-2">
+                  <span className="font-bold text-slate-900">{timelinePatient.name}</span>
+                  <span>•</span>
+                  <span className="font-mono text-emerald-700 font-bold">{timelinePatient.patient_id}</span>
+                  <span>•</span>
+                  <span>{timelinePatient.age} yrs, {timelinePatient.gender}</span>
+                  <span>•</span>
+                  <span className="font-mono">{timelinePatient.mobile}</span>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                    Vulnerability Tag: {timelinePatient.vulnerability_information || 'General'}
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-200 font-mono">
+                    ABHA: {timelinePatient.ABHA_ID_DEMO || 'N/A'}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowTimelineModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {loadingTimeline ? (
+              <div className="p-8 text-center text-xs text-slate-400">Loading patient timeline history...</div>
+            ) : timelineEvents.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-400">No previous visit records found for this patient.</div>
+            ) : (
+              <div className="relative pl-6 space-y-4 border-l-2 border-slate-200 ml-2 py-2 text-xs">
+                {timelineEvents.map((ev, idx) => (
+                  <div key={idx} className="relative group">
+                    <div className="absolute -left-[31px] top-1 p-1 bg-white border-2 border-blue-600 rounded-full text-blue-600 shadow-xs">
+                      {ev.type === 'REGISTRATION' && <UserPlus className="w-3.5 h-3.5" />}
+                      {ev.type === 'VISIT' && <Clock className="w-3.5 h-3.5" />}
+                      {ev.type === 'TRIAGE' && <Activity className="w-3.5 h-3.5 text-rose-600" />}
+                      {ev.type === 'CONSULTATION' && <Stethoscope className="w-3.5 h-3.5 text-indigo-600" />}
+                      {ev.type === 'PRESCRIPTION' && <Pill className="w-3.5 h-3.5 text-amber-600" />}
+                      {ev.type === 'LAB' && <FileText className="w-3.5 h-3.5 text-teal-600" />}
+                      {ev.type === 'REFERRAL' && <Share2 className="w-3.5 h-3.5 text-rose-600" />}
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 hover:bg-white transition">
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-slate-900 text-xs">{ev.title}</span>
+                        <span className="font-mono text-[10px] text-slate-500">{ev.date}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed">{ev.details}</p>
+                      <span className="text-[10px] text-slate-400 font-semibold block">{ev.facility}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

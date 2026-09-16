@@ -45,20 +45,30 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         patient_id = data.get('patient')
         facility_id = data.get('facility')
         
-        consultation = Consultation.objects.create(
-            visit_id=visit_id,
-            patient_id=patient_id,
-            facility_id=facility_id,
-            doctor=request.user,
-            chief_complaint=data.get('chief_complaint', ''),
-            clinical_history=data.get('clinical_history', ''),
-            clinical_assessment=data.get('clinical_assessment', ''),
-            diagnosis_code=data.get('diagnosis_code', 'E11'),
-            diagnosis_name=data.get('diagnosis_name', 'Type 2 Diabetes Mellitus'),
-            treatment_plan=data.get('treatment_plan', ''),
-            follow_up_date=data.get('follow_up_date') or None,
-            clinical_notes=data.get('clinical_notes', '')
-        )
+        consultation = Consultation.objects.filter(visit_id=visit_id).first()
+        if consultation:
+            consultation.chief_complaint = data.get('chief_complaint', consultation.chief_complaint)
+            consultation.clinical_history = data.get('clinical_history', consultation.clinical_history)
+            consultation.clinical_assessment = data.get('clinical_assessment', consultation.clinical_assessment)
+            consultation.diagnosis_code = data.get('diagnosis_code', consultation.diagnosis_code)
+            consultation.diagnosis_name = data.get('diagnosis_name', consultation.diagnosis_name)
+            consultation.clinical_notes = data.get('clinical_notes', consultation.clinical_notes)
+            consultation.save()
+        else:
+            consultation = Consultation.objects.create(
+                visit_id=visit_id,
+                patient_id=patient_id,
+                facility_id=facility_id,
+                doctor=request.user,
+                chief_complaint=data.get('chief_complaint', ''),
+                clinical_history=data.get('clinical_history', ''),
+                clinical_assessment=data.get('clinical_assessment', ''),
+                diagnosis_code=data.get('diagnosis_code', 'E11'),
+                diagnosis_name=data.get('diagnosis_name', 'Type 2 Diabetes Mellitus'),
+                treatment_plan=data.get('treatment_plan', ''),
+                follow_up_date=data.get('follow_up_date') or None,
+                clinical_notes=data.get('clinical_notes', '')
+            )
 
         # Update visit status
         visit = consultation.visit
@@ -71,13 +81,18 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         # Handle Prescriptions if provided
         prescription_items = data.get('prescription_items', [])
         if prescription_items:
-            prescription = Prescription.objects.create(
-                consultation=consultation,
-                patient_id=patient_id,
-                doctor=request.user,
-                facility_id=facility_id,
-                status='ACTIVE'
-            )
+            prescription = getattr(consultation, 'prescription', None) or Prescription.objects.filter(consultation=consultation).first()
+            if not prescription:
+                prescription = Prescription.objects.create(
+                    consultation=consultation,
+                    patient_id=patient_id,
+                    doctor=request.user,
+                    facility_id=facility_id,
+                    status='ACTIVE'
+                )
+            else:
+                prescription.items.all().delete()
+
             for item in prescription_items:
                 PrescriptionItem.objects.create(
                     prescription=prescription,

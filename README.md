@@ -191,4 +191,4 @@ namma_clinic/
 
 ## 📜 License & Compliance
 
-Developed in alignment with **National Health Mission (NHM)** guidelines, **Ayushman Bharat Digital Mission (ABDM)** standards, and urban primary healthcare infrastructure specifications.
+Developed in alignment with **National Health Mission (NHM)** guidelines, **Ayushman Bharat Digital Mission (ABDM)** standards, and urban primary healthcare infrastructure specifications

@@ -41,8 +41,22 @@ class VisitViewSet(viewsets.ModelViewSet):
         priority = request.data.get('priority', 'NORMAL')
         chief_complaint = request.data.get('chief_complaint', '')
 
+        if not patient_id:
+            return Response({'error': 'Please select a valid registered patient.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not facility_id:
+            return Response({'error': 'No active facility selected. Please select a facility in top bar.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            patient_id = int(patient_id)
+            facility_id = int(facility_id)
+        except (ValueError, TypeError):
+            pass
+
         count = Visit.objects.filter(facility_id=facility_id, visit_date__date=datetime.date.today()).count() + 1
         visit_id = f"VIS-{datetime.date.today().strftime('%Y%m%d')}-{count:03d}"
+        while Visit.objects.filter(visit_id=visit_id).exists():
+            count += 1
+            visit_id = f"VIS-{datetime.date.today().strftime('%Y%m%d')}-{count:03d}"
 
         visit = Visit.objects.create(
             visit_id=visit_id,

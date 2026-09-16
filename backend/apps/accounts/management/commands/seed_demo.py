@@ -206,12 +206,21 @@ class Command(BaseCommand):
         u_pharm = User.objects.create_user('pharmacy', 'pharmacy@nammaclinic.gov.in', 'pharmacy123', full_name='Mrs. Lakshmi Devi', role='PHARMACIST', assigned_facility=rc_a4)
         u_off = User.objects.create_user('officer', 'officer@nammaclinic.gov.in', 'officer123', full_name='Dr. Anil Mehta (Public Health Officer)', role='PUBLIC_HEALTH_OFFICER', assigned_district=dist_central)
 
-        # 5. Lab Tests & Medicines
+        # 5. Approved 14 Essential Diagnostic Tests for Namma Clinics / UHWC
         lt_hba1c = LabTestMaster.objects.create(code='L-HBA1C', name='HbA1c Glycated Hemoglobin', category='Diabetes', reference_range='4.0 - 5.6 %', unit='%')
-        lt_fbg = LabTestMaster.objects.create(code='L-FBG', name='Fasting Blood Glucose', category='Diabetes', reference_range='70 - 100 mg/dL', unit='mg/dL')
-        lt_hb = LabTestMaster.objects.create(code='L-HB', name='Hemoglobin (Hb)', category='Hematology', reference_range='12.0 - 15.5 g/dL', unit='g/dL')
-        lt_lipid = LabTestMaster.objects.create(code='L-LIPID', name='Lipid Profile', category='Biochemistry', reference_range='Desirable < 200 mg/dL', unit='mg/dL')
-        lt_dengue = LabTestMaster.objects.create(code='L-DENGUE', name='Dengue NS1 Antigen Rapid Test', category='Serology', reference_range='Negative', unit='Result')
+        lt_fbg = LabTestMaster.objects.create(code='L-FBG', name='Fasting Blood Glucose (FBG)', category='Diabetes', reference_range='70 - 100 mg/dL', unit='mg/dL')
+        lt_rbg = LabTestMaster.objects.create(code='L-RBG', name='Random Blood Glucose (Rapid Strip)', category='Diabetes', reference_range='70 - 140 mg/dL', unit='mg/dL')
+        lt_hb = LabTestMaster.objects.create(code='L-HB', name='Hemoglobin (Hb Estimation)', category='Hematology', reference_range='12.0 - 15.5 g/dL', unit='g/dL')
+        lt_lipid = LabTestMaster.objects.create(code='L-LIPID', name='Lipid Profile (Cholesterol & Triglycerides)', category='Biochemistry', reference_range='Desirable < 200 mg/dL', unit='mg/dL')
+        lt_dengue = LabTestMaster.objects.create(code='L-DENGUE', name='Dengue NS1 Antigen Rapid Test Card', category='Serology', reference_range='Negative', unit='Result')
+        lt_malaria = LabTestMaster.objects.create(code='L-MALARIA', name='Malaria Antigen (Pf/Pv) Rapid Test', category='Serology', reference_range='Negative', unit='Result')
+        lt_u_prot = LabTestMaster.objects.create(code='L-URINE-PROT', name='Urine Albumin / Protein Test', category='Urinalysis', reference_range='Nil / Negative', unit='Grade')
+        lt_u_sug = LabTestMaster.objects.create(code='L-URINE-SUG', name='Urine Sugar Test', category='Urinalysis', reference_range='Nil / Negative', unit='Grade')
+        lt_tb = LabTestMaster.objects.create(code='L-TB-SPUTUM', name='Sputum Smear for AFB (Tuberculosis)', category='Microbiology', reference_range='Negative for AFB', unit='Result')
+        lt_hiv = LabTestMaster.objects.create(code='L-HIV-RAPID', name='HIV 1 & 2 Rapid Screening Card', category='Serology', reference_range='Non-Reactive', unit='Result')
+        lt_hbsag = LabTestMaster.objects.create(code='L-HBSAG', name='Hepatitis B Surface Antigen (HBsAg)', category='Serology', reference_range='Non-Reactive', unit='Result')
+        lt_upt = LabTestMaster.objects.create(code='L-PREG-RAPID', name='Urine Pregnancy Test (UPT Card)', category='Maternal RCH', reference_range='Negative', unit='Result')
+        lt_lft = LabTestMaster.objects.create(code='L-LFT', name='Liver Function Test (Bilirubin & Transaminases)', category='Biochemistry', reference_range='Bilirubin < 1.2 mg/dL', unit='mg/dL')
 
         med_met = MedicineMaster.objects.create(generic_name='Metformin HCl', brand_name='Glycomet', strength='500 mg', dosage_form='Tablet', category='Anti-Diabetic', reorder_level=100)
         med_aml = MedicineMaster.objects.create(generic_name='Amlodipine Besylate', brand_name='Amlopres', strength='5 mg', dosage_form='Tablet', category='Anti-Hypertensive', reorder_level=100)
