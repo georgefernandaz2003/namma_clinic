@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 import datetime
 
 from apps.geography.models import State, District, Zone, Ward
@@ -281,10 +282,51 @@ class Command(BaseCommand):
 
         # 7. Visit, Token, Triage, Consultation, Lab, Pharmacy for Ramesh Kumar
         v_ramesh = Visit.objects.create(
-            visit_id='VIS-20260903-001', patient=p_ramesh, facility=rc_a4, visit_type='GENERAL_OPD',
-            status='COMPLETED', chief_complaint='Dizziness, severe fatigue, and blurred vision for 5 days', assigned_doctor=u_doc
+            visit_id=f"VIS-{today.strftime('%Y%m%d')}-001", patient=p_ramesh, facility=rc_a4,
+            opd_date=today, visit_type='GENERAL_OPD', priority='HIGH', current_queue='COMPLETED',
+            status='COMPLETED', chief_complaint='Dizziness, severe fatigue, and blurred vision for 5 days',
+            assigned_doctor=u_doc, arrival_time=timezone.now() - datetime.timedelta(hours=2),
+            completed_time=timezone.now() - datetime.timedelta(minutes=20)
         )
-        Token.objects.create(token_number=1, visit=v_ramesh, facility=rc_a4, priority='NORMAL', status='COMPLETED')
+        t_ramesh = Token.objects.create(token_number=1, visit=v_ramesh, facility=rc_a4, date=today, priority='HIGH', status='COMPLETED')
+
+        # Additional today & historical OPD visits for date-based queue testing
+        yest = today - datetime.timedelta(days=1)
+        prev = today - datetime.timedelta(days=2)
+
+        # Historical Visits Yesterday (yest) for rc_a4 (Tokens #1, #2, #3)
+        v_y1 = Visit.objects.create(
+            visit_id=f"VIS-{yest.strftime('%Y%m%d')}-001", patient=p_suresh, facility=rc_a4,
+            opd_date=yest, visit_type='GENERAL_OPD', priority='EMERGENCY', current_queue='COMPLETED',
+            status='COMPLETED', chief_complaint='Chest discomfort & palpitations', assigned_doctor=u_doc,
+            arrival_time=timezone.make_aware(datetime.datetime.combine(yest, datetime.time(9, 15)))
+        )
+        Token.objects.create(token_number=1, visit=v_y1, facility=rc_a4, date=yest, priority='EMERGENCY', status='COMPLETED')
+
+        v_y2 = Visit.objects.create(
+            visit_id=f"VIS-{yest.strftime('%Y%m%d')}-002", patient=p_anita, facility=rc_a4,
+            opd_date=yest, visit_type='MATERNAL_ANC', priority='NORMAL', current_queue='COMPLETED',
+            status='COMPLETED', chief_complaint='Routine 2nd Trimester ANC Checkup', assigned_doctor=u_doc,
+            arrival_time=timezone.make_aware(datetime.datetime.combine(yest, datetime.time(9, 30)))
+        )
+        Token.objects.create(token_number=2, visit=v_y2, facility=rc_a4, date=yest, priority='NORMAL', status='COMPLETED')
+
+        # Today's active queue visits for rc_a4 (Tokens #2, #3)
+        v_t2 = Visit.objects.create(
+            visit_id=f"VIS-{today.strftime('%Y%m%d')}-002", patient=p_suresh, facility=rc_a4,
+            opd_date=today, visit_type='GENERAL_OPD', priority='EMERGENCY', current_queue='TRIAGE',
+            status='WAITING_FOR_TRIAGE', chief_complaint='High fever & acute headache',
+            arrival_time=timezone.now() - datetime.timedelta(minutes=35)
+        )
+        Token.objects.create(token_number=2, visit=v_t2, facility=rc_a4, date=today, priority='EMERGENCY', status='WAITING')
+
+        v_t3 = Visit.objects.create(
+            visit_id=f"VIS-{today.strftime('%Y%m%d')}-003", patient=p_anita, facility=rc_a4,
+            opd_date=today, visit_type='MATERNAL_ANC', priority='NORMAL', current_queue='DOCTOR',
+            status='WAITING_FOR_DOCTOR', chief_complaint='Follow-up BP check',
+            arrival_time=timezone.now() - datetime.timedelta(minutes=15)
+        )
+        Token.objects.create(token_number=3, visit=v_t3, facility=rc_a4, date=today, priority='NORMAL', status='WAITING')
 
         TriageVitals.objects.create(
             visit=v_ramesh, patient=p_ramesh, nurse=u_nurse,

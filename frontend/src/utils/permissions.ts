@@ -1,4 +1,4 @@
-import { Role } from '../types';
+import type { Role } from '../types';
 
 export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
   DISTRICT_OFFICER: new Set([
