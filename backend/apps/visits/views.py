@@ -79,7 +79,14 @@ class VisitViewSet(viewsets.ModelViewSet):
         # Status filter
         req_status = self.request.query_params.get('status', None)
         if req_status:
-            queryset = queryset.filter(status=req_status.upper())
+            req_status_upper = req_status.upper()
+            if req_status_upper == 'WAITING':
+                queryset = queryset.filter(status__in=['WAITING', 'WAITING_FOR_TRIAGE', 'IN_TRIAGE'])
+            elif req_status_upper == 'TRIAGED':
+                queryset = queryset.filter(status__in=['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION'])
+            else:
+                queryset = queryset.filter(status=req_status_upper)
+
 
         # Priority ordering: EMERGENCY (1) > HIGH (2) > NORMAL (3), then arrival_time ascending
         priority_case = models.Case(

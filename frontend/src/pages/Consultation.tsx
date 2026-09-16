@@ -62,20 +62,24 @@ export const Consultation: React.FC = () => {
   const loadQueue = async () => {
     if (!activeFacility) return;
     try {
-      const res = await api.get(`visits/?facility=${activeFacility.id}&status=TRIAGED`);
+      const res = await api.get(`visits/?facility=${activeFacility.id}&queue=DOCTOR`);
       const list: Visit[] = res.data.results || res.data || [];
       setTriagedVisits(list);
 
       if (stateVisitId) {
         const found = list.find((v) => v.id === stateVisitId);
         if (found) selectVisit(found);
+        else if (list.length > 0) selectVisit(list[0]);
       } else if (list.length > 0) {
         selectVisit(list[0]);
+      } else {
+        setSelectedVisit(null);
       }
     } catch (e) {
       console.error('Failed to load doctor queue', e);
     }
   };
+
 
   const selectVisit = async (v: Visit) => {
     setSelectedVisit(v);

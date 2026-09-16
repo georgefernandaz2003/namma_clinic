@@ -30,20 +30,24 @@ export const Triage: React.FC = () => {
   const loadQueue = async () => {
     if (!activeFacility) return;
     try {
-      const res = await api.get(`visits/?facility=${activeFacility.id}&status=WAITING`);
+      const res = await api.get(`visits/?facility=${activeFacility.id}&queue=TRIAGE`);
       const list: Visit[] = res.data.results || res.data || [];
       setWaitingVisits(list);
 
       if (stateVisitId) {
         const found = list.find((v) => v.id === stateVisitId);
         if (found) setSelectedVisit(found);
+        else if (list.length > 0) setSelectedVisit(list[0]);
       } else if (list.length > 0) {
         setSelectedVisit(list[0]);
+      } else {
+        setSelectedVisit(null);
       }
     } catch (e) {
       console.error('Failed to load triage queue', e);
     }
   };
+
 
   useEffect(() => {
     loadQueue();
