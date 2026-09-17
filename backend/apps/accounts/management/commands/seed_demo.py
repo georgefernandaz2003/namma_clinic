@@ -95,115 +95,58 @@ class Command(BaseCommand):
         ward52 = Ward.objects.create(zone=zone_south, ward_number=52, name='JP Nagar Ward', population=21000, slum_population=4100)
         ward_rural = Ward.objects.create(zone=zone_hoskote, ward_number=1, name='Varthur Rural Ward', population=18000, slum_population=7200)
 
-        # 2. Facilities
-        # Main Hospital A
+        # 2. Facilities (Strictly 4 Facilities: 1 Main District, 1 Sub-District, 2 Village Clinics)
+        # 1. Main District Hospital
         hosp_a = Facility.objects.create(
-            facility_code='HOSP-A-01', facility_name='Victoria Hospital & Medical Center', facility_type='MAIN_HOSPITAL',
+            facility_code='HOSP-DIST-01', facility_name='Victoria District General Hospital & Specialist Center', facility_type='MAIN_HOSPITAL',
             state=karnataka, district=dist_central, zone=zone_east, ward=ward12, city_or_ulb='BBMP Central', urban_rural='URBAN',
             latitude=12.9634, longitude=77.5750, population_served=500000, emergency_available=True, bed_capacity=750,
             services='Cardiology, Nephrology, General Surgery, Emergency, ICU, Teleconsultation Hub'
         )
 
-        # Main Hospital B
-        hosp_b = Facility.objects.create(
-            facility_code='HOSP-B-01', facility_name='KC General Secondary Hospital', facility_type='MAIN_HOSPITAL',
-            state=karnataka, district=dist_central, zone=zone_south, ward=ward45, city_or_ulb='BBMP South', urban_rural='URBAN',
-            latitude=12.9915, longitude=77.5712, population_served=350000, emergency_available=True, bed_capacity=350,
-            services='General Medicine, Cardiology Specialist, Pediatrics, Obstetrics, Diagnostics'
-        )
-
-        # Diagnostic Center D
-        diag_d = Facility.objects.create(
-            facility_code='DIAG-D-01', facility_name='BBMP Central Diagnostic Center', facility_type='DIAGNOSTIC_CENTER',
-            state=karnataka, district=dist_central, zone=zone_east, ward=ward12, city_or_ulb='BBMP Central', urban_rural='URBAN',
-            latitude=12.9780, longitude=77.5840, population_served=200000, lab_available=True,
-            services='Advanced Biochemistry, Pathology, X-Ray, Ultrasound, CT Scan'
-        )
-
-        # Namma Clinics under Hosp A
+        # 2. Sub District Hospital
         nc_a1 = Facility.objects.create(
-            facility_code='NC-A1-01', facility_name='Indiranagar Namma Clinic (UHWC)', facility_type='NAMMA_CLINIC',
+            facility_code='HOSP-SUB-01', facility_name='Indiranagar Sub-District Hospital & UPHC', facility_type='NAMMA_CLINIC',
             parent_facility=hosp_a, state=karnataka, district=dist_central, zone=zone_east, ward=ward12, city_or_ulb='BBMP East',
-            latitude=12.9719, longitude=77.6412, population_served=18500, vulnerable_population=6500
-        )
-        nc_a2 = Facility.objects.create(
-            facility_code='NC-A2-02', facility_name='Ulsoor Namma Clinic (UHWC)', facility_type='NAMMA_CLINIC',
-            parent_facility=hosp_a, state=karnataka, district=dist_central, zone=zone_east, ward=ward14, city_or_ulb='BBMP East',
-            latitude=12.9816, longitude=77.6200, population_served=17000, vulnerable_population=5200
+            latitude=12.9719, longitude=77.6412, population_served=35000, vulnerable_population=8500
         )
 
-        # Urban & Rural Clinics under Hosp A
-        uc_a3 = Facility.objects.create(
-            facility_code='UC-A3-03', facility_name='Domlur Urban Primary Clinic', facility_type='URBAN_CLINIC',
-            parent_facility=hosp_a, state=karnataka, district=dist_central, zone=zone_east, ward=ward12, city_or_ulb='BBMP East',
-            latitude=12.9600, longitude=77.6380, population_served=21000
-        )
+        # 3. Village Hospital 1 (Rural Primary Clinic)
         rc_a4 = Facility.objects.create(
             facility_code='RC-A4-04', facility_name='Varthur Rural Primary Clinic A4', facility_type='RURAL_CLINIC',
-            parent_facility=hosp_a, state=karnataka, district=dist_central, zone=zone_east, ward=ward_rural, city_or_ulb='BBMP East Peripheral', urban_rural='RURAL',
+            parent_facility=nc_a1, state=karnataka, district=dist_central, zone=zone_east, ward=ward_rural, city_or_ulb='BBMP East Peripheral', urban_rural='RURAL',
             latitude=12.9406, longitude=77.7470, population_served=19000, vulnerable_population=7200
         )
 
-        # Satellites under RC A4
+        # 4. Village Hospital 2 (Village Satellite Clinic)
         vc_a4_1 = Facility.objects.create(
-            facility_code='VC-A4-1', facility_name='Gunjur Village Satellite Clinic', facility_type='VILLAGE_CLINIC',
+            facility_code='VC-A4-01', facility_name='Gunjur Village Satellite Clinic', facility_type='VILLAGE_CLINIC',
             parent_facility=rc_a4, state=karnataka, district=dist_central, zone=zone_east, ward=ward_rural, urban_rural='RURAL',
             latitude=12.9300, longitude=77.7550, population_served=8000
         )
-        vc_a4_2 = Facility.objects.create(
-            facility_code='VC-A4-2', facility_name='Balagere Village Health Post', facility_type='VILLAGE_CLINIC',
-            parent_facility=rc_a4, state=karnataka, district=dist_central, zone=zone_east, ward=ward_rural, urban_rural='RURAL',
-            latitude=12.9380, longitude=77.7610, population_served=6500
-        )
 
-        # Clinics under Hosp B
-        nc_b1 = Facility.objects.create(
-            facility_code='NC-B1-01', facility_name='Jayanagar Namma Clinic (UHWC)', facility_type='NAMMA_CLINIC',
-            parent_facility=hosp_b, state=karnataka, district=dist_central, zone=zone_south, ward=ward45, city_or_ulb='BBMP South',
-            latitude=12.9250, longitude=77.5938, population_served=20000, vulnerable_population=4800
-        )
-        rc_b2 = Facility.objects.create(
-            facility_code='RC-B2-02', facility_name='Bannerghatta Rural Clinic', facility_type='RURAL_CLINIC',
-            parent_facility=hosp_b, state=karnataka, district=dist_central, zone=zone_south, ward=ward52, urban_rural='RURAL',
-            latitude=12.8000, longitude=77.5800, population_served=16000
-        )
-
-        # District 2 Facility
-        hosp_c = Facility.objects.create(
-            facility_code='HOSP-C-01', facility_name='Hoskote District General Hospital', facility_type='MAIN_HOSPITAL',
-            state=karnataka, district=dist_rural, zone=zone_hoskote, city_or_ulb='Hoskote Town', urban_rural='RURAL',
-            latitude=13.0700, longitude=77.7900, population_served=250000, emergency_available=True, bed_capacity=200
-        )
-        nc_c1 = Facility.objects.create(
-            facility_code='NC-C1-01', facility_name='Hoskote Town Namma Clinic', facility_type='NAMMA_CLINIC',
-            parent_facility=hosp_c, state=karnataka, district=dist_rural, zone=zone_hoskote, city_or_ulb='Hoskote Town',
-            latitude=13.0720, longitude=77.7950, population_served=18000
-        )
-
-        # 3. Facility Relationships (Multi-Destination Referral Graph)
+        # 3. Facility Relationships (4-Facility Tier Referral Graph)
         FacilityRelationship.objects.create(
-            source_facility=rc_a4, destination_facility=nc_a1, relationship_type='REFERRAL', service='Routine Primary Care', priority='PRIMARY', distance_km=4.2
+            source_facility=rc_a4, destination_facility=nc_a1, relationship_type='REFERRAL', service='Sub-District Secondary Care', priority='PRIMARY', distance_km=4.2
         )
         FacilityRelationship.objects.create(
-            source_facility=rc_a4, destination_facility=hosp_b, relationship_type='SPECIALIST', service='Cardiology & Internal Medicine', priority='SECONDARY', distance_km=8.5
+            source_facility=rc_a4, destination_facility=hosp_a, relationship_type='SPECIALIST', service='District Cardiology & Intensive Care', priority='EMERGENCY', distance_km=12.0
         )
         FacilityRelationship.objects.create(
-            source_facility=rc_a4, destination_facility=hosp_a, relationship_type='EMERGENCY', service='Trauma & Intensive Care', priority='EMERGENCY', distance_km=12.0
+            source_facility=vc_a4_1, destination_facility=rc_a4, relationship_type='REFERRAL', service='Village Satellite Referral', priority='PRIMARY', distance_km=2.5
         )
         FacilityRelationship.objects.create(
-            source_facility=rc_a4, destination_facility=diag_d, relationship_type='DIAGNOSTIC', service='Advanced Biochemistry & Ultrasound', priority='PRIMARY', distance_km=6.0
-        )
-        FacilityRelationship.objects.create(
-            source_facility=rc_a4, destination_facility=hosp_a, relationship_type='TELECONSULTATION', service='Specialist Teleconsultation Hub', priority='PRIMARY', distance_km=5.0
+            source_facility=nc_a1, destination_facility=hosp_a, relationship_type='TELECONSULTATION', service='Specialist Teleconsultation Hub', priority='PRIMARY', distance_km=5.0
         )
 
         # 4. Users & Roles (Strictly 6 Active Roles)
         u_dist = User.objects.create_user('district', 'district@nammaclinic.gov.in', 'district123', full_name='Dr. Sunita Rao (District Health Officer)', role='DISTRICT_OFFICER', assigned_district=dist_central)
-        u_hosp = User.objects.create_user('hospital', 'hospital@nammaclinic.gov.in', 'hospital123', full_name='Dr. K. V. Sharma (Chief Medical Supt)', role='HOSPITAL_ADMIN', assigned_facility=hosp_b)
+        u_hosp = User.objects.create_user('hospital', 'hospital@nammaclinic.gov.in', 'hospital123', full_name='Dr. K. V. Sharma (Chief Medical Supt)', role='HOSPITAL_ADMIN', assigned_facility=hosp_a)
         u_doc = User.objects.create_user('doctor', 'doctor@nammaclinic.gov.in', 'doctor123', full_name='Dr. Rajesh Kumar (Medical Officer)', role='DOCTOR', assigned_facility=rc_a4)
         u_nurse = User.objects.create_user('nurse', 'nurse@nammaclinic.gov.in', 'nurse123', full_name='Sister Priya Nair', role='NURSE', assigned_facility=rc_a4)
         u_lab = User.objects.create_user('lab', 'lab@nammaclinic.gov.in', 'lab123', full_name='Mr. Suresh Gowda', role='LAB_TECHNICIAN', assigned_facility=rc_a4)
         u_pharm = User.objects.create_user('pharmacy', 'pharmacy@nammaclinic.gov.in', 'pharmacy123', full_name='Mrs. Lakshmi Devi', role='PHARMACIST', assigned_facility=rc_a4)
+
 
         # 5. Approved 14 Essential Diagnostic Tests for Namma Clinics / UHWC
         lt_hba1c = LabTestMaster.objects.create(code='L-HBA1C', name='HbA1c Glycated Hemoglobin', category='Diabetes', reference_range='4.0 - 5.6 %', unit='%')
@@ -268,8 +211,9 @@ class Command(BaseCommand):
         p_suresh = Patient.objects.create(
             patient_id='NC-20260901-003', name='Suresh Patil', date_of_birth=datetime.date(1961, 3, 15), age=65, gender='MALE',
             mobile='9900112233', address='Ward 14 Slum Line, Ulsoor', ward=ward14, district=dist_central,
-            ABHA_ID_DEMO='91-9988-7766-5544', vulnerability_information='Senior Citizen / Diabetic', registered_at_facility=nc_a2
+            ABHA_ID_DEMO='91-9988-7766-5544', vulnerability_information='Senior Citizen / Diabetic', registered_at_facility=vc_a4_1
         )
+
 
         # Create 30 mock patients for analytics depth
         for i in range(4, 35):
@@ -364,7 +308,7 @@ class Command(BaseCommand):
 
         # 8. Cross-Facility Referral for Ramesh Kumar
         ref_ramesh = Referral.objects.create(
-            referral_id='REF-20260903-0001', patient=p_ramesh, source_facility=rc_a4, destination_facility=hosp_b,
+            referral_id='REF-20260903-0001', patient=p_ramesh, source_facility=rc_a4, destination_facility=hosp_a,
             referring_doctor=u_doc, reason='Specialist evaluation for uncontrolled hypertension and diabetic review',
             clinical_summary='52/M with BP 148/96, HbA1c 8.4%. Referred for secondary hospital cardiology consult.',
             required_service='Cardiology & Endocrine Review', urgency='HIGH', status='COMPLETED'
@@ -384,7 +328,8 @@ class Command(BaseCommand):
 
         # 9. NCD & Public Health Surveillance
         NCDRecord.objects.create(patient=p_ramesh, facility=rc_a4, hypertension_diagnosed=True, diabetes_diagnosed=True, risk_level='HIGH', control_status='UNCONTROLLED', last_bp='148/96', last_glucose=185, next_followup_due=today + datetime.timedelta(days=14))
-        NCDRecord.objects.create(patient=p_suresh, facility=nc_a2, hypertension_diagnosed=True, diabetes_diagnosed=True, risk_level='MODERATE', control_status='CONTROLLED', last_bp='130/84', last_glucose=125, next_followup_due=today + datetime.timedelta(days=30))
+        NCDRecord.objects.create(patient=p_suresh, facility=vc_a4_1, hypertension_diagnosed=True, diabetes_diagnosed=True, risk_level='MODERATE', control_status='CONTROLLED', last_bp='130/84', last_glucose=125, next_followup_due=today + datetime.timedelta(days=30))
+
 
         # Disease Surveillance cases for Ward 12 Fever Spike Alert
         for i in range(15):
@@ -443,9 +388,10 @@ class Command(BaseCommand):
             current_pressure_psi=1850, fill_percentage=88, status='OPTIMAL', notes='12-Cylinder B-Type Manifold system tested and functional.'
         )
         FacilityOxygenSupply.objects.create(
-            facility=nc_a2, oxygen_source='CONCENTRATOR', total_cylinders=6, active_cylinders=4, empty_cylinders=2,
+            facility=nc_a1, oxygen_source='CONCENTRATOR', total_cylinders=6, active_cylinders=4, empty_cylinders=2,
             current_pressure_psi=1400, fill_percentage=65, status='ADEQUATE', notes='2x 10LPM Oxygen Concentrators online + backup cylinders.'
         )
+
 
         # Consumables Inventory (Sanitation, Floor Cleaning & PPE)
         FacilityConsumableInventory.objects.create(facility=rc_a4, item_name='Floor Cleaning Solution (Lysol / Phenyl)', category='CLEANING_SANITATION', unit_of_measure='Litres', current_stock=45, min_threshold=15, reorder_status='ADEQUATE')
