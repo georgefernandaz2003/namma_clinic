@@ -139,13 +139,28 @@ class Command(BaseCommand):
             source_facility=nc_a1, destination_facility=hosp_a, relationship_type='TELECONSULTATION', service='Specialist Teleconsultation Hub', priority='PRIMARY', distance_km=5.0
         )
 
-        # 4. Users & Roles (Strictly 6 Active Roles)
+        # 4. Users & Roles (Strictly 6 Active Roles across the 4 Hospitals)
         u_dist = User.objects.create_user('district', 'district@nammaclinic.gov.in', 'district123', full_name='Dr. Sunita Rao (District Health Officer)', role='DISTRICT_OFFICER', assigned_district=dist_central)
-        u_hosp = User.objects.create_user('hospital', 'hospital@nammaclinic.gov.in', 'hospital123', full_name='Dr. K. V. Sharma (Chief Medical Supt)', role='HOSPITAL_ADMIN', assigned_facility=hosp_a)
-        u_doc = User.objects.create_user('doctor', 'doctor@nammaclinic.gov.in', 'doctor123', full_name='Dr. Rajesh Kumar (Medical Officer)', role='DOCTOR', assigned_facility=rc_a4)
+        
+        # Facility Admins
+        u_dh_admin = User.objects.create_user('dh_admin', 'dh_admin@nammaclinic.gov.in', 'dh123', full_name='Dr. K. V. Sharma (District Hospital Supt)', role='HOSPITAL_ADMIN', assigned_facility=hosp_a)
+        u_hosp = User.objects.create_user('hospital', 'hospital@nammaclinic.gov.in', 'hospital123', full_name='Dr. K. V. Sharma (District Hospital Supt)', role='HOSPITAL_ADMIN', assigned_facility=hosp_a)
+        u_sdh_admin = User.objects.create_user('sdh_admin', 'sdh_admin@nammaclinic.gov.in', 'sdh123', full_name='Dr. Meena Swamy (Sub-District Admin)', role='HOSPITAL_ADMIN', assigned_facility=nc_a1)
+        u_vh1_admin = User.objects.create_user('vh1_admin', 'vh1_admin@nammaclinic.gov.in', 'vh1123', full_name='Dr. Ramesh Rao (Village Hospital 1 Admin)', role='HOSPITAL_ADMIN', assigned_facility=rc_a4)
+        u_vh2_admin = User.objects.create_user('vh2_admin', 'vh2_admin@nammaclinic.gov.in', 'vh2123', full_name='Dr. Anand Kumar (Village Hospital 2 Admin)', role='HOSPITAL_ADMIN', assigned_facility=vc_a4_1)
+
+        # Doctors
+        u_dh_doc = User.objects.create_user('dh_doctor', 'dh_doctor@nammaclinic.gov.in', 'dhdoc123', full_name='Dr. Vikram Seth (District Senior Physician)', role='DOCTOR', assigned_facility=hosp_a)
+        u_sdh_doc = User.objects.create_user('sdh_doctor', 'sdh_doctor@nammaclinic.gov.in', 'sdhdoc123', full_name='Dr. Asha Patil (Sub-District Medical Officer)', role='DOCTOR', assigned_facility=nc_a1)
+        u_vh1_doc = User.objects.create_user('vh1_doctor', 'vh1_doctor@nammaclinic.gov.in', 'vh1doc123', full_name='Dr. Rajesh Kumar (Village Hospital 1 MO)', role='DOCTOR', assigned_facility=rc_a4)
+        u_doc = User.objects.create_user('doctor', 'doctor@nammaclinic.gov.in', 'doctor123', full_name='Dr. Rajesh Kumar (Village Hospital 1 MO)', role='DOCTOR', assigned_facility=rc_a4)
+        u_vh2_doc = User.objects.create_user('vh2_doctor', 'vh2_doctor@nammaclinic.gov.in', 'vh2doc123', full_name='Dr. Suresh V. (Village Hospital 2 MO)', role='DOCTOR', assigned_facility=vc_a4_1)
+
+        # Clinical Staff
         u_nurse = User.objects.create_user('nurse', 'nurse@nammaclinic.gov.in', 'nurse123', full_name='Sister Priya Nair', role='NURSE', assigned_facility=rc_a4)
         u_lab = User.objects.create_user('lab', 'lab@nammaclinic.gov.in', 'lab123', full_name='Mr. Suresh Gowda', role='LAB_TECHNICIAN', assigned_facility=rc_a4)
         u_pharm = User.objects.create_user('pharmacy', 'pharmacy@nammaclinic.gov.in', 'pharmacy123', full_name='Mrs. Lakshmi Devi', role='PHARMACIST', assigned_facility=rc_a4)
+
 
 
         # 5. Approved 14 Essential Diagnostic Tests for Namma Clinics / UHWC

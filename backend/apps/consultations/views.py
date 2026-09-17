@@ -26,11 +26,12 @@ class ConsultationSerializer(serializers.ModelSerializer):
         model = Consultation
         fields = '__all__'
 
-from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission
+from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
 
 class ConsultationViewSet(viewsets.ModelViewSet):
     serializer_class = ConsultationSerializer
-    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+
     required_permissions = {
         'GET': 'consultation.view',
         'POST': 'consultation.create',
@@ -115,8 +116,16 @@ class ConsultationViewSet(viewsets.ModelViewSet):
 
 class PrescriptionViewSet(viewsets.ModelViewSet):
     serializer_class = PrescriptionSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permissions = {
+        'GET': 'prescription.view',
+        'POST': 'prescription.create',
+        'PUT': 'prescription.update',
+        'PATCH': 'prescription.update',
+        'DELETE': 'prescription.update'
+    }
     filterset_fields = ['facility', 'status', 'patient']
+
 
     def get_queryset(self):
         queryset = Prescription.objects.all().select_related('consultation', 'patient', 'doctor', 'facility').prefetch_related('items')

@@ -38,12 +38,20 @@ class LabTestMasterViewSet(viewsets.ModelViewSet):
     serializer_class = LabTestMasterSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
-from apps.accounts.permissions import get_accessible_facility_ids_for_user
+from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
 
 class LabOrderViewSet(viewsets.ModelViewSet):
     serializer_class = LabOrderSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permissions = {
+        'GET': 'lab_orders.view',
+        'POST': 'lab_orders.create',
+        'PUT': 'lab_orders.update',
+        'PATCH': 'lab_orders.update',
+        'DELETE': 'lab_orders.update'
+    }
     filterset_fields = ['facility', 'status', 'patient']
+
 
     def get_queryset(self):
         queryset = LabOrder.objects.all().select_related('test_master', 'patient', 'facility', 'doctor')

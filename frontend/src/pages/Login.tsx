@@ -4,19 +4,21 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, KeyRound, UserCheck } from 'lucide-react';
 
 const demoUsers = [
-  { role: 'District Officer', username: 'district', password: 'district123', desc: 'District Health Office Dashboard' },
-  { role: 'Hospital Admin', username: 'hospital', password: 'hospital123', desc: 'Main Hospital Specialist Hub' },
-  { role: 'Doctor (Medical Officer)', username: 'doctor', password: 'doctor123', desc: 'OPD Queue, EMR & Consultation' },
-  { role: 'Staff Nurse', username: 'nurse', password: 'nurse123', desc: 'Patient Registration & Triage Vitals' },
-  { role: 'Lab Technician', username: 'lab', password: 'lab123', desc: 'Diagnostic Orders & Result Entry' },
-  { role: 'Pharmacist', username: 'pharmacy', password: 'pharmacy123', desc: 'FEFO Dispensing & Stock Inventory' }
+  { role: 'District Officer', username: 'district', password: 'district123', desc: 'District-Wide Operations & Monitoring Scope' },
+  { role: 'Hospital Admin (DH)', username: 'dh_admin', password: 'dh123', desc: 'District Hospital Facilities & Operations' },
+  { role: 'Doctor (VH1 MO)', username: 'vh1_doctor', password: 'vh1doc123', desc: 'Village Hospital 1 Clinical & OPD Queue' },
+  { role: 'Doctor (SDH Specialist)', username: 'sdh_doctor', password: 'sdhdoc123', desc: 'Sub-District Hospital Clinical Operations' },
+  { role: 'Doctor (DH Specialist)', username: 'dh_doctor', password: 'dhdoc123', desc: 'District Hospital Tertiary Consultations' },
+  { role: 'Staff Nurse (VH1)', username: 'nurse', password: 'nurse123', desc: 'Patient Registration & Vitals Triage' },
+  { role: 'Lab Technician (SDH)', username: 'lab', password: 'lab123', desc: 'Diagnostic Lab Test Processing' },
+  { role: 'Pharmacist (VH1)', username: 'pharmacy', password: 'pharmacy123', desc: 'FEFO Drug Dispensing & Stock Management' }
 ];
 
 export const Login: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState('doctor');
-  const [password, setPassword] = useState('doctor123');
+  const [username, setUsername] = useState('vh1_doctor');
+  const [password, setPassword] = useState('vh1doc123');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -101,7 +103,7 @@ export const Login: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm rounded-lg shadow-md transition"
+              className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm rounded-lg shadow-md transition cursor-pointer"
             >
               {loading ? 'Authenticating...' : 'Sign In to Demo Console'}
             </button>
@@ -111,7 +113,7 @@ export const Login: React.FC = () => {
           <div className="mt-8 pt-6 border-t border-slate-200">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
               <UserCheck className="w-4 h-4 text-emerald-600" />
-              Quick Select Demo Credentials
+              Quick Select Demo Credentials (6 Roles Matrix)
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {demoUsers.map((u) => (
@@ -119,9 +121,9 @@ export const Login: React.FC = () => {
                   key={u.username}
                   type="button"
                   onClick={() => handleQuickSelect(u.username, u.password)}
-                  className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between ${
+                  className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between cursor-pointer ${
                     username === u.username
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-900'
+                      ? 'bg-emerald-50 border-emerald-500 text-emerald-900 shadow-xs'
                       : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
                   }`}
                 >
@@ -129,7 +131,7 @@ export const Login: React.FC = () => {
                     <span className="text-xs font-bold">{u.role}</span>
                     <span className="text-[10px] font-mono font-semibold text-emerald-700">{u.username}</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 truncate">{u.desc}</span>
+                  <span className="text-[10px] text-slate-500 truncate mt-1">{u.desc}</span>
                 </button>
               ))}
             </div>

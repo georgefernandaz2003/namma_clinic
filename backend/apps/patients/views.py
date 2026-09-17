@@ -9,18 +9,31 @@ from apps.consultations.models import Consultation, Prescription
 from apps.laboratory.models import LabOrder
 from apps.referrals.models import Referral, FollowUp
 
-from apps.accounts.permissions import get_accessible_facility_ids_for_user
+from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
 
 class PatientViewSet(viewsets.ModelViewSet):
     serializer_class = PatientSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permissions = {
+        'GET': 'patients.view',
+        'POST': 'patients.create',
+        'PUT': 'patients.update',
+        'PATCH': 'patients.update',
+        'DELETE': 'patients.update'
+    }
 
     def get_queryset(self):
         queryset = Patient.objects.all().select_related('ward', 'district', 'registered_at_facility')
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
-            # Patients registered at accessible facility or having visits at accessible facility
-            queryset = queryset.filter(registered_at_facility_id__in=accessible_ids)
+            # Patients registered at user facility OR with active visits/referrals to user facility
+            from django.db.models import Q
+            user_fac_id = self.request.user.assigned_facility_id
+            queryset = queryset.filter(
+                Q(registered_at_facility_id__in=accessible_ids) |
+                Q(visits__facility_id=user_fac_id) |
+                Q(referrals__destination_facility_id=user_fac_id)
+            ).distinct()
         return queryset
 
     def create(self, request, *args, **kwargs):
@@ -36,6 +49,9 @@ class PatientViewSet(viewsets.ModelViewSet):
                 )
         
         data = request.data.copy()
+        if not data.get('registered_at_facility') and request.user.assigned_facility_id:
+            data['registered_at_facility'] = request.user.assigned_facility_id
+
         if not data.get('patient_id'):
             import random
             while True:
@@ -51,13 +67,28 @@ class PatientViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 class PatientTimelineView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permission = 'patients.view'
 
     def get(self, request, pk=None):
         try:
             patient = Patient.objects.get(pk=pk)
         except Patient.DoesNotExist:
             return Response({'error': 'Patient not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Facility Scope Check for Patient Timeline
+        if request.user.role != 'DISTRICT_OFFICER':
+            user_fac_id = request.user.assigned_facility_id
+            accessible_ids = get_accessible_facility_ids_for_user(request.user)
+            if accessible_ids and patient.registered_at_facility_id not in accessible_ids:
+                # Check for explicit referral path authorization
+                has_referral = Referral.objects.filter(
+                    patient=patient,
+                    destination_facility_id=user_fac_id
+                ).exists() or Visit.objects.filter(patient=patient, facility_id=user_fac_id).exists()
+                if not has_referral:
+                    return Response({'error': 'You do not have permission to access patient records outside your facility scope.'}, status=status.HTTP_403_FORBIDDEN)
+
 
         timeline = []
 

@@ -31,18 +31,29 @@ class FollowUpSerializer(serializers.ModelSerializer):
         model = FollowUp
         fields = '__all__'
 
-from apps.accounts.permissions import get_accessible_facility_ids_for_user
+from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
 
 class ReferralViewSet(viewsets.ModelViewSet):
     serializer_class = ReferralSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permissions = {
+        'GET': 'referrals.view',
+        'POST': 'referrals.create',
+        'PUT': 'referrals.create',
+        'PATCH': 'referrals.create',
+        'DELETE': 'referrals.create'
+    }
     filterset_fields = ['source_facility', 'destination_facility', 'status', 'urgency']
+
 
     def get_queryset(self):
         queryset = Referral.objects.all().select_related('patient', 'source_facility', 'destination_facility', 'referring_doctor')
+        from django.db.models import Q
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
-            queryset = queryset.filter(source_facility_id__in=accessible_ids) | queryset.filter(destination_facility_id__in=accessible_ids)
+            queryset = queryset.filter(
+                Q(source_facility_id__in=accessible_ids) | Q(destination_facility_id__in=accessible_ids)
+            ).distinct()
         return queryset
 
     def create(self, request, *args, **kwargs):
@@ -102,7 +113,14 @@ class ReferralViewSet(viewsets.ModelViewSet):
 
 class FollowUpViewSet(viewsets.ModelViewSet):
     serializer_class = FollowUpSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permissions = {
+        'GET': 'patients.view',
+        'POST': 'patients.update',
+        'PUT': 'patients.update',
+        'PATCH': 'patients.update',
+        'DELETE': 'patients.update'
+    }
     filterset_fields = ['facility', 'status', 'category']
 
     def get_queryset(self):
@@ -111,3 +129,4 @@ class FollowUpViewSet(viewsets.ModelViewSet):
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
         return queryset
+

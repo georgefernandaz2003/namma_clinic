@@ -36,22 +36,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const facs: Facility[] = facRes.data.results || facRes.data || [];
       setAllFacilities(facs);
 
-      // Restore or set default facility context
-      const savedFacId = localStorage.getItem('active_facility_id');
-      if (savedFacId) {
-        const found = facs.find(f => f.id === parseInt(savedFacId));
-        if (found) {
-          setActiveFacilityState(found);
-        } else if (userRes.data.assigned_facility) {
-          const userFac = facs.find(f => f.id === userRes.data.assigned_facility);
-          if (userFac) setActiveFacilityState(userFac);
-        }
-      } else if (userRes.data.assigned_facility) {
-        const userFac = facs.find(f => f.id === userRes.data.assigned_facility);
+      const userFacId = userRes.data.assigned_facility;
+      if (userRes.data.role !== 'DISTRICT_OFFICER' && userFacId) {
+        const userFac = facs.find(f => f.id === userFacId);
         if (userFac) setActiveFacilityState(userFac);
-      } else if (facs.length > 0) {
-        setActiveFacilityState(facs[0]);
+        else if (facs.length > 0) setActiveFacilityState(facs[0]);
+      } else {
+        const savedFacId = localStorage.getItem('active_facility_id');
+        if (savedFacId) {
+          const found = facs.find(f => f.id === parseInt(savedFacId));
+          if (found) setActiveFacilityState(found);
+          else if (facs.length > 0) setActiveFacilityState(facs[0]);
+        } else if (facs.length > 0) {
+          setActiveFacilityState(facs[0]);
+        }
       }
+
     } catch (e) {
       console.error('Auth verification failed', e);
       logout();
@@ -84,9 +84,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const setActiveFacility = (facility: Facility) => {
+    if (user && user.role !== 'DISTRICT_OFFICER' && user.assigned_facility && user.assigned_facility !== facility.id) {
+      console.warn('Facility switching is restricted to your assigned facility scope.');
+      return;
+    }
     setActiveFacilityState(facility);
     localStorage.setItem('active_facility_id', facility.id.toString());
   };
+
 
   return (
     <AuthContext.Provider

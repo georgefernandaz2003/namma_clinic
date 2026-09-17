@@ -104,28 +104,44 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           </div>
         </div>
 
-        {/* Facility Context Switcher */}
+        {/* Facility Context Switcher / Scope Badge */}
         <div className="p-3 border-b border-slate-200 bg-slate-50">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 block">
-            Active Clinic / Facility
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center justify-between">
+            <span>{user?.role === 'DISTRICT_OFFICER' ? 'District View Filter' : 'Assigned Facility Scope'}</span>
+            {user?.role !== 'DISTRICT_OFFICER' && <Lock className="w-3 h-3 text-emerald-600" />}
           </label>
-          <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-lg p-2 shadow-xs">
-            <Building className="w-4 h-4 text-emerald-600 shrink-0" />
-            <select
-              value={activeFacility?.id || ''}
-              onChange={(e) => {
-                const found = allFacilities.find((f) => f.id === parseInt(e.target.value));
-                if (found) setActiveFacility(found);
-              }}
-              className="bg-transparent text-xs text-slate-800 font-semibold focus:outline-none w-full cursor-pointer"
-            >
-              {allFacilities.map((fac) => (
-                <option key={fac.id} value={fac.id} className="bg-white text-slate-800">
-                  {fac.facility_name} ({fac.facility_type.replace('_', ' ')})
-                </option>
-              ))}
-            </select>
-          </div>
+          
+          {user?.role === 'DISTRICT_OFFICER' ? (
+            <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-lg p-2 shadow-xs">
+              <Building className="w-4 h-4 text-emerald-600 shrink-0" />
+              <select
+                value={activeFacility?.id || ''}
+                onChange={(e) => {
+                  const found = allFacilities.find((f) => f.id === parseInt(e.target.value));
+                  if (found) setActiveFacility(found);
+                }}
+                className="bg-transparent text-xs text-slate-800 font-semibold focus:outline-none w-full cursor-pointer"
+              >
+                {allFacilities.map((fac) => (
+                  <option key={fac.id} value={fac.id} className="bg-white text-slate-800">
+                    {fac.facility_name} ({fac.facility_type.replace('_', ' ')})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-emerald-50/80 border border-emerald-300 rounded-lg p-2 shadow-xs">
+              <Building className="w-4 h-4 text-emerald-700 shrink-0" />
+              <div className="truncate">
+                <span className="text-xs font-extrabold text-emerald-950 block truncate">
+                  {user?.facility_name || activeFacility?.facility_name || 'Assigned Hospital'}
+                </span>
+                <span className="text-[9px] text-emerald-700 font-bold uppercase tracking-wider block">
+                  Authorized Facility Scope
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Navigation Items */}
@@ -151,15 +167,17 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             })}
         </nav>
 
-        {/* User Footer */}
+        {/* User Footer with Identity & Scope */}
         <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-2 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-xs font-bold text-emerald-800 shrink-0">
+            <div className="w-8 h-8 rounded-full bg-emerald-600 border border-emerald-400 flex items-center justify-center text-xs font-black text-white shrink-0 shadow-xs">
               {user?.full_name?.charAt(0) || 'U'}
             </div>
             <div className="truncate">
               <p className="text-xs font-bold text-slate-900 truncate">{user?.full_name || 'Demo User'}</p>
-              <p className="text-[10px] text-emerald-700 font-bold">{user?.role_display}</p>
+              <p className="text-[10px] text-emerald-700 font-extrabold truncate">
+                {user?.role_display} • {user?.role === 'DISTRICT_OFFICER' ? 'District Scope' : (user?.facility_name || 'Facility Scope')}
+              </p>
             </div>
           </div>
           <button
@@ -170,6 +188,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             <LogOut className="w-4 h-4" />
           </button>
         </div>
+
       </aside>
 
       {/* Main Content Area */}

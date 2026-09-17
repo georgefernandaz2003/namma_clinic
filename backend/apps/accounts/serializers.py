@@ -18,12 +18,15 @@ class UserSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     facility_details = serializers.SerializerMethodField()
     role_display = serializers.CharField(source='get_role_display', read_only=True)
+    permissions = serializers.SerializerMethodField()
+    scope_type = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'full_name', 'email', 'phone', 'role',
-            'role_display', 'assigned_facility', 'assigned_district', 'facility_details'
+            'role_display', 'assigned_facility', 'assigned_district',
+            'facility_details', 'permissions', 'scope_type'
         ]
 
     def get_facility_details(self, obj):
@@ -36,3 +39,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 'district_name': obj.assigned_facility.district.name if obj.assigned_facility.district else ''
             }
         return None
+
+    def get_permissions(self, obj):
+        from apps.accounts.permissions import ROLE_PERMISSIONS
+        return list(ROLE_PERMISSIONS.get(obj.role, set()))
+
+    def get_scope_type(self, obj):
+        if obj.role == 'DISTRICT_OFFICER':
+            return 'DISTRICT'
+        return 'FACILITY'
+

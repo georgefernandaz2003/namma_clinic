@@ -126,7 +126,12 @@ class VisitViewSet(viewsets.ModelViewSet):
             ).aggregate(models.Max('token_number'))['token_number__max'] or 0
             
             token_number = max_token + 1
-            visit_id = f"VIS-{today.strftime('%Y%m%d')}-{token_number:03d}"
+            base_id = f"VIS-F{facility_id}-{today.strftime('%Y%m%d')}-{token_number:03d}"
+            visit_id = base_id
+            seq = 1
+            while Visit.objects.filter(visit_id=visit_id).exists():
+                visit_id = f"{base_id}-{seq}"
+                seq += 1
 
             visit = Visit.objects.create(
                 visit_id=visit_id,

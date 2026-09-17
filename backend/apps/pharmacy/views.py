@@ -31,11 +31,18 @@ class MedicineMasterViewSet(viewsets.ModelViewSet):
     serializer_class = MedicineMasterSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
-from apps.accounts.permissions import get_accessible_facility_ids_for_user
+from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
 
 class MedicineBatchViewSet(viewsets.ModelViewSet):
     serializer_class = MedicineBatchSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permissions = {
+        'GET': 'inventory.view',
+        'POST': 'inventory.create',
+        'PUT': 'inventory.update',
+        'PATCH': 'inventory.update',
+        'DELETE': 'inventory.update'
+    }
     filterset_fields = ['facility', 'status', 'medicine']
 
     def get_queryset(self):
@@ -46,7 +53,9 @@ class MedicineBatchViewSet(viewsets.ModelViewSet):
         return queryset
 
 class DispenseMedicineView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permission = 'pharmacy.dispense'
+
 
     def post(self, request):
         prescription_id = request.data.get('prescription_id')

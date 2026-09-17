@@ -3,13 +3,14 @@ from rest_framework import permissions
 ROLE_PERMISSIONS = {
     'DISTRICT_OFFICER': {
         'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
-        'audit_logs.view', 'dashboard.view'
+        'audit_logs.view', 'dashboard.view', 'referrals.view', 'inventory.view', 'queue.view',
+        'lab_orders.view', 'patients.view'
     },
     'HOSPITAL_ADMIN': {
         'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update',
-        'patients.view', 'patients.create', 'appointments.view', 'appointments.create', 'appointments.update',
+        'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.create', 'appointments.update',
         'inventory.view', 'inventory.create', 'inventory.update', 'reports.view', 'reports.export',
-        'system_config.view', 'system_config.update', 'dashboard.view'
+        'system_config.view', 'system_config.update', 'dashboard.view', 'queue.view', 'referrals.view'
     },
     'DOCTOR': {
         'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
@@ -18,12 +19,12 @@ ROLE_PERMISSIONS = {
         'clinic.view', 'queue.view', 'dashboard.view'
     },
     'NURSE': {
-        'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.create',
-        'vitals.view', 'vitals.create', 'triage.view', 'triage.create', 'queue.view', 'queue.update',
-        'clinic.view', 'dashboard.view'
+        'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.update',
+        'vitals.view', 'vitals.create', 'vitals.update', 'triage.view', 'triage.create', 'triage.update',
+        'queue.view', 'queue.update', 'clinic.view', 'dashboard.view'
     },
     'LAB_TECHNICIAN': {
-        'patients.view', 'lab_orders.view', 'lab_results.view', 'lab_results.create', 'lab_results.update',
+        'patients.view', 'lab_orders.view', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update',
         'clinic.view', 'dashboard.view'
     },
     'PHARMACIST': {
@@ -41,22 +42,32 @@ def has_role_permission(user, permission_name):
 
 def get_accessible_facility_ids_for_user(user):
     """
-    Hierarchical Access Control Scoping Helper:
-    - DISTRICT_OFFICER or unassigned district user:
-      Returns None (Full district-wide network data access).
-    - Hospital Administrator / Main Hospital User:
-      Returns [Main Hospital ID + All Child Facility IDs]
-    - Clinic User (DOCTOR, NURSE, LAB_TECHNICIAN, PHARMACIST):
-      Returns [Assigned Facility ID only]
+    Facility Scoping Helper:
+    - DISTRICT_OFFICER: Returns list of facility IDs in user's assigned district (or None for all facilities in district).
+    - Operational Users (HOSPITAL_ADMIN, DOCTOR, NURSE, LAB_TECHNICIAN, PHARMACIST):
+      Returns [user.assigned_facility_id] only.
     """
     if not user or not user.is_authenticated:
         return []
-    
-    if user.role == 'DISTRICT_OFFICER' or not user.assigned_facility:
+
+    if user.role == 'DISTRICT_OFFICER':
+        if user.assigned_district_id:
+            from apps.facilities.models import Facility
+            return list(Facility.objects.filter(district_id=user.assigned_district_id).values_list('id', flat=True))
         return None
-        
-    facility = user.assigned_facility
-    return facility.get_all_descendant_ids()
+
+    if user.assigned_facility_id:
+        return [user.assigned_facility_id]
+
+    return []
+
+def can_access_facility(user, facility_id):
+    """Verifies if user has authorization to access the specified facility ID."""
+    if not user or not user.is_authenticated or not facility_id:
+        return False
+    if user.role == 'DISTRICT_OFFICER':
+        return True
+    return user.assigned_facility_id == int(facility_id)
 
 
 class IsAuthenticatedAndRoleAuthorized(permissions.BasePermission):
@@ -67,22 +78,70 @@ class IsAuthenticatedAndRoleAuthorized(permissions.BasePermission):
 
 class HasPermission(permissions.BasePermission):
     """
-    DRF Custom Permission class that checks view.required_permission against user's role.
-    Supports required_permissions dict keyed by HTTP method (GET, POST, PUT, DELETE).
+    DRF Custom Permission class checking method or view-level permission.
     """
     message = "You do not have permission to perform this action."
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-            
+
         perm_map = getattr(view, 'required_permissions', {})
         if perm_map and request.method in perm_map:
             req_perm = perm_map[request.method]
         else:
             req_perm = getattr(view, 'required_permission', None)
-            
+
         if not req_perm:
             return True
-            
+
         return has_role_permission(request.user, req_perm)
+
+
+class HasFacilityScope(permissions.BasePermission):
+    """
+    DRF Permission enforcing Facility & Resource Scoping on API requests:
+    - DISTRICT_OFFICER: Read-only access across facilities in district. Cannot perform clinical mutations.
+    - HOSPITAL_ADMIN, DOCTOR, NURSE, LAB_TECHNICIAN, PHARMACIST: Scoped strictly to their assigned facility.
+    """
+    message = "You do not have authorization to access resources outside your assigned facility."
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        # District Officer is blocked from direct clinical mutation endpoints
+        if request.user.role == 'DISTRICT_OFFICER':
+            if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
+                clinical_views = {'ConsultationViewSet', 'PrescriptionViewSet', 'TriageVitalsViewSet', 'DispenseMedicineView'}
+                if view.__class__.__name__ in clinical_views:
+                    self.message = "District Officers do not have permission to create or modify clinical records."
+                    return False
+
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        if request.user.role == 'DISTRICT_OFFICER':
+            if request.method in permissions.SAFE_METHODS:
+                return True
+            return False
+
+        user_fac_id = request.user.assigned_facility_id
+        if not user_fac_id:
+            return False
+
+        obj_fac_id = getattr(obj, 'facility_id', None) or getattr(obj, 'assigned_facility_id', None) or getattr(obj, 'registered_at_facility_id', None)
+
+        # Cross-facility referral exemption: if user's facility is destination or source of referral
+        if hasattr(obj, 'source_facility_id') and hasattr(obj, 'destination_facility_id'):
+            if obj.source_facility_id == user_fac_id or obj.destination_facility_id == user_fac_id:
+                return True
+
+        if obj_fac_id:
+            return obj_fac_id == user_fac_id
+
+        return True
+
