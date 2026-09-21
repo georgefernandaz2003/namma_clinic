@@ -3,9 +3,13 @@ from rest_framework.response import Response
 from apps.consultations.models import Consultation, Prescription, PrescriptionItem
 
 class PrescriptionItemSerializer(serializers.ModelSerializer):
+    medicine_generic_name = serializers.ReadOnlyField(source='medicine.generic_name')
+    medicine_brand_name = serializers.ReadOnlyField(source='medicine.brand_name')
+
     class Meta:
         model = PrescriptionItem
         fields = '__all__'
+
 
 class PrescriptionSerializer(serializers.ModelSerializer):
     items = PrescriptionItemSerializer(many=True, read_only=True)
@@ -96,16 +100,34 @@ class ConsultationViewSet(viewsets.ModelViewSet):
             else:
                 prescription.items.all().delete()
 
+            from apps.pharmacy.models import MedicineMaster
             for item in prescription_items:
+                medicine_id = item.get('medicine_id') or item.get('medicine')
+                medicine_obj = None
+                if medicine_id:
+                    medicine_obj = MedicineMaster.objects.filter(id=medicine_id).first()
+                elif item.get('medicine_name'):
+                    clean_name = item.get('medicine_name').strip()
+                    medicine_obj = MedicineMaster.objects.filter(
+                        generic_name__iexact=clean_name
+                    ).first()
+                    if not medicine_obj:
+                        first_word = clean_name.split()[0]
+                        medicine_obj = MedicineMaster.objects.filter(generic_name__icontains=first_word).first()
+
+                med_name = item.get('medicine_name') or (medicine_obj.generic_name if medicine_obj else 'Prescribed Medicine')
+
                 PrescriptionItem.objects.create(
                     prescription=prescription,
-                    medicine_name=item.get('medicine_name'),
+                    medicine=medicine_obj,
+                    medicine_name=med_name,
                     dosage=item.get('dosage', '1-0-1 After Food'),
                     frequency=item.get('frequency', 'Twice Daily'),
                     duration_days=item.get('duration_days', 7),
                     quantity=item.get('quantity', 14),
                     status='PENDING'
                 )
+
 
         # Update visit status & queue
         visit = consultation.visit

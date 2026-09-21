@@ -139,8 +139,8 @@ To ensure absolute analytical integrity, prevent data discrepancies, and elimina
 ---
 
 ### KPI 10: SCHEDULED LONGITUDINAL FOLLOW-UPS
-- **Business Meaning**: The count of chronic disease reviews, post-referral returns, and maternal health appointments due on or before the specified date.
-- **Ambiguity Eliminated**: Corrects the critical bug where `DoctorDashboard.tsx` was displaying `referrals_summary.completed` under the label "Follow-ups".
+- **Business Meaning**: The count of chronic disease reviews and post-referral routine return appointments due on or before the specified date.
+- **Ambiguity Eliminated**: Corrects the critical bug where `DoctorDashboard.tsx` was displaying `referrals_summary.completed` under the label "Follow-ups". Now directly bound to `summary.followups_summary.due_today` backed by `referrals_followup`.
 - **Formal SQL Definition**:
   ```sql
   SELECT COUNT(fu.id)

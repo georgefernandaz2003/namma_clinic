@@ -35,6 +35,7 @@ class Prescription(models.Model):
 
 class PrescriptionItem(models.Model):
     prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='items')
+    medicine = models.ForeignKey('pharmacy.MedicineMaster', on_delete=models.SET_NULL, null=True, blank=True, related_name='prescription_items')
     medicine_name = models.CharField(max_length=150)
     dosage = models.CharField(max_length=50, default='1-0-1 After Food')
     frequency = models.CharField(max_length=50, default='Twice Daily')
@@ -44,3 +45,4 @@ class PrescriptionItem(models.Model):
 
     def __str__(self):
         return f"{self.medicine_name} ({self.quantity} units) - {self.status}"
+

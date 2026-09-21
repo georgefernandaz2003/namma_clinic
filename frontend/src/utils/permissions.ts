@@ -3,24 +3,25 @@ import type { Role } from '../types';
 export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
   DISTRICT_OFFICER: new Set([
     'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
-    'audit_logs.view', 'dashboard.view'
+    'audit_logs.view', 'dashboard.view', 'patients.view', 'ncd.view', 'surveillance.view',
+    'referrals.view', 'inventory.view', 'queue.view', 'lab_orders.view'
   ]),
   HOSPITAL_ADMIN: new Set([
     'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update',
     'patients.view', 'patients.create', 'appointments.view', 'appointments.create', 'appointments.update',
     'inventory.view', 'inventory.create', 'inventory.update', 'reports.view', 'reports.export',
-    'system_config.view', 'system_config.update', 'dashboard.view'
+    'system_config.view', 'system_config.update', 'dashboard.view', 'ncd.view', 'surveillance.view'
   ]),
   DOCTOR: new Set([
     'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
     'diagnosis.view', 'diagnosis.create', 'diagnosis.update', 'prescription.view', 'prescription.create', 'prescription.update',
     'lab_orders.view', 'lab_orders.create', 'lab_results.view', 'referrals.view', 'referrals.create',
-    'clinic.view', 'queue.view', 'dashboard.view'
+    'clinic.view', 'queue.view', 'dashboard.view', 'ncd.view', 'ncd.create', 'ncd.update', 'surveillance.view'
   ]),
   NURSE: new Set([
     'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.create',
     'vitals.view', 'vitals.create', 'triage.view', 'triage.create', 'queue.view', 'queue.update',
-    'clinic.view', 'dashboard.view'
+    'clinic.view', 'dashboard.view', 'ncd.view', 'ncd.create', 'ncd.update', 'surveillance.view'
   ]),
   LAB_TECHNICIAN: new Set([
     'patients.view', 'lab_orders.view', 'lab_results.view', 'lab_results.create', 'lab_results.update',
@@ -51,7 +52,7 @@ export const getHumanRoleLabel = (role: Role | string | undefined): string => {
 
 export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
   DISTRICT_OFFICER: [
-    '/', '/network', '/facilities', '/queue', '/referrals', '/pharmacy', '/reports', '/alerts', '/compliance', '/audit'
+    '/', '/network', '/facilities', '/patients', '/queue', '/ncd', '/surveillance', '/referrals', '/pharmacy', '/reports', '/alerts', '/compliance', '/audit'
   ],
   HOSPITAL_ADMIN: [
     '/', '/patients', '/queue', '/facilities', '/pharmacy', '/referrals', '/followups', '/infrastructure', '/reports', '/alerts'
@@ -60,7 +61,7 @@ export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
     '/', '/patients', '/queue', '/consultation', '/lab', '/referrals', '/followups', '/teleconsultation', '/alerts'
   ],
   NURSE: [
-    '/', '/patients', '/triage', '/queue', '/followups', '/ncd', '/maternal-child', '/outreach', '/wellness', '/alerts'
+    '/', '/patients', '/triage', '/queue', '/followups', '/ncd', '/outreach', '/wellness', '/alerts'
   ],
   LAB_TECHNICIAN: [
     '/', '/queue', '/lab', '/alerts'
@@ -69,6 +70,7 @@ export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
     '/', '/queue', '/pharmacy', '/infrastructure', '/alerts'
   ]
 };
+
 
 export const hasPermission = (role: Role | undefined, permission: string): boolean => {
   if (!role) return false;

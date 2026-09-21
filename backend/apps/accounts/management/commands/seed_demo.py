@@ -504,21 +504,21 @@ class Command(BaseCommand):
         # 11. PRESCRIPTIONS & DISPENSATIONS
         # Facility 1 Prescription
         pr_dh = Prescription.objects.create(consultation=c_dh_1, patient=p_dh_2, doctor=u_dh_doc, facility=hosp_a, status='DISPENSED')
-        PrescriptionItem.objects.create(prescription=pr_dh, medicine_name='Telmisartan 40 mg Tablet', dosage='1-0-0 Morning', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
-        PrescriptionItem.objects.create(prescription=pr_dh, medicine_name='Amlodipine 5 mg Tablet', dosage='0-0-1 Night', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
+        PrescriptionItem.objects.create(prescription=pr_dh, medicine=med_tel, medicine_name='Telmisartan 40 mg Tablet', dosage='1-0-0 Morning', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
+        PrescriptionItem.objects.create(prescription=pr_dh, medicine=med_aml, medicine_name='Amlodipine 5 mg Tablet', dosage='0-0-1 Night', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
 
         # Facility 2 Prescription
         pr_sdh = Prescription.objects.create(consultation=c_sdh_1, patient=p_anita, doctor=u_sdh_doc, facility=nc_a1, status='DISPENSED')
-        PrescriptionItem.objects.create(prescription=pr_sdh, medicine_name='Iron & Folic Acid Tablet', dosage='1-0-0 After Food', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
+        PrescriptionItem.objects.create(prescription=pr_sdh, medicine=med_ifa, medicine_name='Iron & Folic Acid Tablet', dosage='1-0-0 After Food', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
 
         # Facility 3 Prescription (Pending Dispensation)
         pr_rc = Prescription.objects.create(consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, status='PENDING')
-        PrescriptionItem.objects.create(prescription=pr_rc, medicine_name='Metformin 500 mg Tablet', dosage='1-0-1 After Food', frequency='Twice Daily', duration_days=14, quantity=28, status='PENDING')
-        PrescriptionItem.objects.create(prescription=pr_rc, medicine_name='Amlodipine 5 mg Tablet', dosage='1-0-0 Morning', frequency='Once Daily', duration_days=14, quantity=14, status='PENDING')
+        PrescriptionItem.objects.create(prescription=pr_rc, medicine=med_met, medicine_name='Metformin 500 mg Tablet', dosage='1-0-1 After Food', frequency='Twice Daily', duration_days=14, quantity=28, status='PENDING')
+        PrescriptionItem.objects.create(prescription=pr_rc, medicine=med_aml, medicine_name='Amlodipine 5 mg Tablet', dosage='1-0-0 Morning', frequency='Once Daily', duration_days=14, quantity=14, status='PENDING')
 
         # Facility 4 Prescription
         pr_vc = Prescription.objects.create(consultation=c_vc_1, patient=p_suresh, doctor=u_vh2_doc, facility=vc_a4_1, status='DISPENSED')
-        PrescriptionItem.objects.create(prescription=pr_vc, medicine_name='Paracetamol 650 mg Tablet', dosage='1-1-1 After Food', frequency='Three Times Daily', duration_days=3, quantity=9, status='DISPENSED')
+        PrescriptionItem.objects.create(prescription=pr_vc, medicine=med_pcm, medicine_name='Paracetamol 650 mg Tablet', dosage='1-1-1 After Food', frequency='Three Times Daily', duration_days=3, quantity=9, status='DISPENSED')
 
         # 12. LAB ORDERS & RESULTS ACROSS ALL FACILITIES
         # Facility 1 Lab Order
@@ -575,8 +575,9 @@ class Command(BaseCommand):
 
         # 14. CROSS-FACILITY REFERRALS & RESPONSES
         ref_ramesh = Referral.objects.create(
-            referral_id='REF-20260903-0001', patient=p_ramesh, source_facility=rc_a4, destination_facility=hosp_a,
-            referring_doctor=u_doc, reason='Specialist evaluation for uncontrolled hypertension & diabetic review',
+            referral_id='REF-20260903-0001', patient=p_ramesh, visit=v_rc_1, consultation=c_rc_1,
+            source_facility=rc_a4, destination_facility=hosp_a, referring_doctor=u_doc,
+            reason='Specialist evaluation for uncontrolled hypertension & diabetic review',
             clinical_summary='52/M with BP 148/96, HbA1c 8.4%. Referred for secondary hospital cardiology consult.',
             required_service='Cardiology & Endocrine Review', urgency='HIGH', status='COMPLETED'
         )
@@ -589,8 +590,9 @@ class Command(BaseCommand):
         )
 
         ref_anita = Referral.objects.create(
-            referral_id='REF-20260903-0002', patient=p_anita, source_facility=nc_a1, destination_facility=hosp_a,
-            referring_doctor=u_sdh_doc, reason='Obstetric Ultrasound & High Risk ANC Specialist Assessment',
+            referral_id='REF-20260903-0002', patient=p_anita, visit=v_sdh_1, consultation=c_sdh_1,
+            source_facility=nc_a1, destination_facility=hosp_a, referring_doctor=u_sdh_doc,
+            reason='Obstetric Ultrasound & High Risk ANC Specialist Assessment',
             clinical_summary='30/F, 24 weeks pregnant with mild anemia. Needs detailed anomaly scan.',
             required_service='Obstetric Ultrasonography Hub', urgency='ROUTINE', status='ACCEPTED'
         )

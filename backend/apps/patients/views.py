@@ -45,7 +45,8 @@ class PatientViewSet(viewsets.ModelViewSet):
                 Q(referrals__destination_facility_id=facility_param)
             ).distinct()
 
-        return queryset
+        return queryset.order_by('-id')
+
 
     def create(self, request, *args, **kwargs):
         # Duplicate check by name & mobile

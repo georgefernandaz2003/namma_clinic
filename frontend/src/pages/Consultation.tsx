@@ -24,10 +24,11 @@ export const Consultation: React.FC = () => {
   const [notes] = useState('Advised low salt diet, lifestyle modifications, and regular monitoring.');
 
   // Prescription items
-  const [prescriptions, setPrescriptions] = useState<Array<{ medicine_name: string; dosage: string; quantity: number }>>([
-    { medicine_name: 'Metformin HCl 500 mg Tablet', dosage: '1-0-1 After Food', quantity: 28 },
-    { medicine_name: 'Amlodipine Besylate 5 mg Tablet', dosage: '1-0-0 Morning', quantity: 14 }
+  const [prescriptions, setPrescriptions] = useState<Array<{ medicine_id?: number | null; medicine_name: string; dosage: string; quantity: number }>>([
+    { medicine_id: 26, medicine_name: 'Metformin HCl 500 mg Tablet', dosage: '1-0-1 After Food', quantity: 28 },
+    { medicine_id: 27, medicine_name: 'Amlodipine Besylate 5 mg Tablet', dosage: '1-0-0 Morning', quantity: 14 }
   ]);
+  const [availableMedicines, setAvailableMedicines] = useState<any[]>([]);
 
   // Referral creation state
   const [createReferral, setCreateReferral] = useState(true);
@@ -56,8 +57,19 @@ export const Consultation: React.FC = () => {
         console.error('Failed to load lab test master', e);
       }
     };
+    const fetchMedicines = async () => {
+      try {
+        const res = await api.get('pharmacy/medicines/');
+        const meds = res.data.results || res.data || [];
+        setAvailableMedicines(meds);
+      } catch (e) {
+        console.error('Failed to load medicines formulary', e);
+      }
+    };
     fetchLabTests();
+    fetchMedicines();
   }, []);
+
 
   const loadQueue = async () => {
     if (!activeFacility) return;
@@ -131,7 +143,16 @@ export const Consultation: React.FC = () => {
   }, [referralDestinations]);
 
   const handleAddMed = () => {
-    setPrescriptions([...prescriptions, { medicine_name: 'Paracetamol 650 mg Tablet', dosage: '1-0-1', quantity: 10 }]);
+    const firstMed = availableMedicines.length > 0 ? availableMedicines[0] : null;
+    setPrescriptions([
+      ...prescriptions,
+      {
+        medicine_id: firstMed?.id || null,
+        medicine_name: firstMed ? `${firstMed.generic_name} ${firstMed.strength}` : 'Paracetamol 650 mg Tablet',
+        dosage: '1-0-1 After Food',
+        quantity: 10
+      }
+    ]);
   };
 
   const handleRemoveMed = (idx: number) => {
@@ -153,7 +174,7 @@ export const Consultation: React.FC = () => {
 
     try {
       // 1. Save Consultation & Prescription
-      await api.post('consultations/', {
+      const consultRes = await api.post('consultations/', {
         visit: selectedVisit.id,
         patient: selectedVisit.patient,
         facility: activeFacility.id,
@@ -166,10 +187,14 @@ export const Consultation: React.FC = () => {
         prescription_items: prescriptions
       });
 
-      // 2. Save Referral if checked
+      const consultationId = consultRes.data?.id;
+
+      // 2. Save Referral if checked with authoritative Visit and Consultation links
       if (createReferral && destFacilityId) {
         await api.post('referrals/', {
           patient: selectedVisit.patient,
+          visit: selectedVisit.id,
+          consultation: consultationId,
           source_facility: activeFacility.id,
           destination_facility: destFacilityId,
           reason: refReason,
@@ -178,6 +203,7 @@ export const Consultation: React.FC = () => {
           urgency: refUrgency
         });
       }
+
 
       // 3. Save Diagnostic Lab Orders
       for (const testId of selectedTestIds) {
@@ -380,17 +406,40 @@ export const Consultation: React.FC = () => {
                 <div className="space-y-2">
                   {prescriptions.map((p, idx) => (
                     <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200">
+                      {availableMedicines.length > 0 ? (
+                        <select
+                          value={p.medicine_id || ''}
+                          onChange={(e) => {
+                            const medId = parseInt(e.target.value) || null;
+                            const found = availableMedicines.find((m) => m.id === medId);
+                            const updated = [...prescriptions];
+                            updated[idx].medicine_id = medId;
+                            updated[idx].medicine_name = found ? `${found.generic_name} ${found.strength}` : p.medicine_name;
+                            setPrescriptions(updated);
+                          }}
+                          className="flex-1 px-2 py-1 bg-slate-50 border border-slate-300 rounded text-slate-900 text-xs font-semibold"
+                        >
+                          <option value="">Select Medicine from Formulary...</option>
+                          {availableMedicines.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.generic_name} ({m.brand_name || 'Generic'}) - {m.strength}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={p.medicine_name}
+                          onChange={(e) => {
+                            const updated = [...prescriptions];
+                            updated[idx].medicine_name = e.target.value;
+                            setPrescriptions(updated);
+                          }}
+                          className="flex-1 px-2 py-1 bg-slate-50 border border-slate-300 rounded text-slate-900 text-xs font-semibold"
+                        />
+                      )}
                       <input
-                        type="text"
-                        value={p.medicine_name}
-                        onChange={(e) => {
-                          const updated = [...prescriptions];
-                          updated[idx].medicine_name = e.target.value;
-                          setPrescriptions(updated);
-                        }}
-                        className="flex-1 px-2 py-1 bg-slate-50 border border-slate-300 rounded text-slate-900 text-xs font-semibold"
-                      />
-                      <input
+
                         type="text"
                         value={p.dosage}
                         onChange={(e) => {

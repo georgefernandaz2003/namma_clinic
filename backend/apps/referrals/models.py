@@ -3,6 +3,8 @@ from django.db import models
 class Referral(models.Model):
     referral_id = models.CharField(max_length=50, unique=True)
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='referrals')
+    visit = models.ForeignKey('visits.Visit', on_delete=models.SET_NULL, null=True, blank=True, related_name='referrals')
+    consultation = models.ForeignKey('consultations.Consultation', on_delete=models.SET_NULL, null=True, blank=True, related_name='referrals')
     source_facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='outgoing_referrals')
     destination_facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='incoming_referrals')
     referring_doctor = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)

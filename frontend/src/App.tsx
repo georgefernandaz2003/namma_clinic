@@ -17,7 +17,6 @@ import { Pharmacy } from './pages/Pharmacy';
 import { Referrals } from './pages/Referrals';
 import { FollowUps } from './pages/FollowUps';
 import { NCD } from './pages/NCD';
-import { MaternalChild } from './pages/MaternalChild';
 import { Surveillance } from './pages/Surveillance';
 import { Teleconsultation } from './pages/Teleconsultation';
 import { Outreach } from './pages/Outreach';
@@ -87,7 +86,6 @@ export const App: React.FC = () => {
           <Route path="/referrals" element={<ProtectedRoute><Referrals /></ProtectedRoute>} />
           <Route path="/followups" element={<ProtectedRoute><FollowUps /></ProtectedRoute>} />
           <Route path="/ncd" element={<ProtectedRoute><NCD /></ProtectedRoute>} />
-          <Route path="/maternal-child" element={<ProtectedRoute><MaternalChild /></ProtectedRoute>} />
           <Route path="/surveillance" element={<ProtectedRoute><Surveillance /></ProtectedRoute>} />
           <Route path="/teleconsultation" element={<ProtectedRoute><Teleconsultation /></ProtectedRoute>} />
           <Route path="/outreach" element={<ProtectedRoute><Outreach /></ProtectedRoute>} />

@@ -71,12 +71,17 @@ class DashboardSummaryView(APIView):
         completed_count = opd_visits_qs.filter(status='COMPLETED').count()
 
         # Overall Totals
-        total_patients = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids).count()
-        registered_today = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids, registration_date=target_date).count()
+        if accessible_ids is None and not facility_param:
+            total_patients = Patient.objects.count()
+            registered_today = Patient.objects.filter(registration_date=target_date).count()
+        else:
+            total_patients = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids).count()
+            registered_today = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids, registration_date=target_date).count()
+
 
         # Inventory Counts
         inventory_batches = MedicineBatch.objects.filter(facility_id__in=target_fac_ids)
-        total_medicines = inventory_batches.values('medicine').distinct().count() or 14
+        total_medicines = inventory_batches.values('medicine').distinct().count()
         low_stock_count = inventory_batches.filter(quantity__gt=0, quantity__lte=100).count()
         out_of_stock_count = inventory_batches.filter(quantity=0).count()
         near_expiry_count = inventory_batches.filter(expiry_date__gt=datetime.date.today(), expiry_date__lte=datetime.date.today() + datetime.timedelta(days=90)).count()
@@ -87,12 +92,32 @@ class DashboardSummaryView(APIView):
         accepted_referrals = Referral.objects.filter(destination_facility_id__in=target_fac_ids, status='ACCEPTED').count()
         completed_referrals = Referral.objects.filter(source_facility_id__in=target_fac_ids, status='COMPLETED').count()
 
+        # FollowUp Counts
+        followups_qs = FollowUp.objects.filter(facility_id__in=target_fac_ids)
+        followups_due_today = followups_qs.filter(due_date=target_date, status__in=['PENDING', 'DUE_TODAY']).count()
+        followups_pending = followups_qs.filter(status__in=['PENDING', 'DUE_TODAY', 'OVERDUE']).count()
+        followups_completed = followups_qs.filter(status='COMPLETED').count()
+
+        # Global Pharmacy Counts
+        rx_facility_qs = Prescription.objects.filter(facility_id__in=target_fac_ids)
+        rx_total_count = rx_facility_qs.count()
+        rx_pending_count = rx_facility_qs.filter(status__in=['ACTIVE', 'PENDING', 'PARTIALLY_DISPENSED']).count()
+        rx_dispensed_today_count = rx_facility_qs.filter(status='DISPENSED', date=target_date).count()
+
+        # Global Lab Counts
+        lab_facility_qs = LabOrder.objects.filter(facility_id__in=target_fac_ids)
+        lab_ordered_count = lab_facility_qs.filter(status='ORDERED').count()
+        lab_sample_collected_count = lab_facility_qs.filter(status='SAMPLE_COLLECTED').count()
+        lab_verified_count = lab_facility_qs.filter(status='VERIFIED').count()
+        lab_total_count = lab_facility_qs.count()
+
         # Staff Counts
         from apps.accounts.models import User
         staff_qs = User.objects.filter(assigned_facility_id__in=target_fac_ids)
         doctors_count = staff_qs.filter(role='DOCTOR').count()
         nurses_count = staff_qs.filter(role='NURSE').count()
         labs_count = staff_qs.filter(role='LAB_TECHNICIAN').count()
+
         pharmacists_count = staff_qs.filter(role='PHARMACIST').count()
 
         # Facility Overview List for District Officer / Admin
@@ -158,7 +183,7 @@ class DashboardSummaryView(APIView):
             'registered_today': registered_today,
             'todays_opd': todays_opd,
             'opd_stage_flow': {
-                'registration': registered_today or todays_opd,
+                'registration': registered_today,
                 'triage': triage_waiting + in_triage,
                 'doctor': doctor_waiting + in_consultation,
                 'lab': lab_pending,
@@ -183,6 +208,25 @@ class DashboardSummaryView(APIView):
                 'accepted': accepted_referrals,
                 'completed': completed_referrals
             },
+            'followups_summary': {
+                'due_today': followups_due_today,
+                'pending': followups_pending,
+                'completed': followups_completed
+            },
+            'pharmacy_summary': {
+                'total_prescriptions': rx_total_count,
+                'pending': rx_pending_count,
+                'dispensed_today': rx_dispensed_today_count,
+                'low_stock': low_stock_count,
+                'expiring_soon': near_expiry_count
+            },
+            'lab_summary': {
+                'ordered': lab_ordered_count,
+                'sample_collected': lab_sample_collected_count,
+                'processing': lab_sample_collected_count,
+                'verified': lab_verified_count,
+                'total': lab_total_count
+            },
             'kpis': {
                 'triage_waiting': triage_waiting,
                 'in_triage': in_triage,
@@ -193,11 +237,16 @@ class DashboardSummaryView(APIView):
                 'pharmacy_waiting': pharmacy_waiting,
                 'completed': completed_count,
                 'low_stock': low_stock_count,
-                'expiring_soon': near_expiry_count
+                'expiring_soon': near_expiry_count,
+                'followups_due': followups_due_today,
+                'followups_completed': followups_completed,
+                'pharmacy_total': rx_total_count,
+                'pharmacy_dispensed_today': rx_dispensed_today_count
             },
             'facility_overview': facility_overview,
             'action_required': action_required
         })
+
 
 class CSVExportView(APIView):
     permission_classes = [permissions.IsAuthenticated]

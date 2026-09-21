@@ -4,7 +4,8 @@ ROLE_PERMISSIONS = {
     'DISTRICT_OFFICER': {
         'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
         'audit_logs.view', 'dashboard.view', 'referrals.view', 'inventory.view', 'queue.view',
-        'lab_orders.view', 'patients.view', 'po.view', 'vendor.view'
+        'lab_orders.view', 'patients.view', 'po.view', 'vendor.view', 'ncd.view', 'surveillance.view',
+        'triage.view', 'consultation.view', 'prescription.view', 'telemedicine.view', 'outreach.view', 'wellness.view'
     },
     'HOSPITAL_ADMIN': {
         'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update',
@@ -12,19 +13,22 @@ ROLE_PERMISSIONS = {
         'inventory.view', 'inventory.create', 'inventory.update', 'reports.view', 'reports.export',
         'system_config.view', 'system_config.update', 'dashboard.view', 'queue.view', 'referrals.view',
         'po.view', 'po.create', 'po.update', 'po.approve', 'vendor.view', 'vendor.create', 'vendor.update',
-        'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update'
+        'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update',
+        'ncd.view', 'surveillance.view'
     },
     'DOCTOR': {
         'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
         'diagnosis.view', 'diagnosis.create', 'diagnosis.update', 'prescription.view', 'prescription.create', 'prescription.update',
         'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update',
-        'referrals.view', 'referrals.create', 'clinic.view', 'queue.view', 'dashboard.view'
+        'referrals.view', 'referrals.create', 'clinic.view', 'queue.view', 'dashboard.view',
+        'ncd.view', 'ncd.create', 'ncd.update', 'surveillance.view', 'surveillance.create', 'surveillance.update'
     },
     'NURSE': {
         'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.update',
         'vitals.view', 'vitals.create', 'vitals.update', 'triage.view', 'triage.create', 'triage.update',
         'queue.view', 'queue.update', 'clinic.view', 'dashboard.view',
-        'lab_orders.view', 'lab_orders.update', 'lab_results.view'
+        'lab_orders.view', 'lab_orders.update', 'lab_results.view',
+        'ncd.view', 'ncd.create', 'ncd.update', 'surveillance.view', 'surveillance.create', 'surveillance.update'
     },
     'LAB_TECHNICIAN': {
         'patients.view', 'lab_orders.view', 'lab_orders.create', 'lab_orders.update',
@@ -37,6 +41,7 @@ ROLE_PERMISSIONS = {
         'po.view', 'po.create', 'po.update', 'po.receive', 'vendor.view', 'vendor.create', 'vendor.update'
     }
 }
+
 
 def has_role_permission(user, permission_name):
     """Check if user role possesses the requested permission code."""
@@ -118,20 +123,21 @@ class HasFacilityScope(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        # District Officer is blocked from direct clinical and facility procurement mutations
+        # District Officer is blocked from direct clinical, demographic, surveillance, and facility procurement mutations
         if request.user.role == 'DISTRICT_OFFICER':
             if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
                 mutation_restricted_views = {
                     'ConsultationViewSet', 'PrescriptionViewSet', 'TriageVitalsViewSet', 'DispenseMedicineView',
-                    'PurchaseOrderViewSet', 'VendorViewSet'
+                    'PurchaseOrderViewSet', 'VendorViewSet', 'PatientViewSet', 'NCDRecordViewSet',
+                    'DiseaseCaseViewSet', 'ReferralViewSet', 'FollowUpViewSet', 'LabOrderViewSet',
+                    'LabResultViewSet', 'VisitViewSet', 'MedicineMasterViewSet', 'MedicineBatchViewSet'
                 }
                 if view.__class__.__name__ in mutation_restricted_views:
-                    self.message = "District Officers have read-only access and cannot modify facility clinical or procurement records."
+                    self.message = "District Officers have read-only oversight access and cannot modify clinical, patient, or facility records."
                     return False
 
         return True
 
-        return True
 
     def has_object_permission(self, request, view, obj):
         if not request.user or not request.user.is_authenticated:

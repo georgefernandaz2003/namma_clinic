@@ -794,11 +794,19 @@ class DispenseMedicineView(APIView):
                 if not p_item:
                     continue
 
-                # FEFO Batch selection: if batch_id provided, select it; else pick earliest expiry active batch
+                # FEFO Batch selection: if batch_id provided, select it; else pick earliest expiry active batch matching p_item.medicine
                 if batch_id and int(batch_id) > 0:
                     batch = MedicineBatch.objects.select_for_update().filter(pk=int(batch_id), facility=prescription.facility).first()
+                elif p_item.medicine:
+                    batch = MedicineBatch.objects.select_for_update().filter(
+                        facility=prescription.facility,
+                        medicine=p_item.medicine,
+                        quantity__gt=0,
+                        expiry_date__gt=today,
+                        status__in=['ACTIVE', 'LOW_STOCK', 'EXPIRING_SOON']
+                    ).order_by('expiry_date').first()
                 else:
-                    med_keyword = p_item.medicine_name.split()[0].lower()
+                    med_keyword = p_item.medicine_name.split()[0].lower() if p_item.medicine_name else ''
                     batch = MedicineBatch.objects.select_for_update().filter(
                         facility=prescription.facility,
                         medicine__generic_name__icontains=med_keyword,
@@ -806,6 +814,7 @@ class DispenseMedicineView(APIView):
                         expiry_date__gt=today,
                         status__in=['ACTIVE', 'LOW_STOCK', 'EXPIRING_SOON']
                     ).order_by('expiry_date').first()
+
 
                 if not batch:
                     return Response({'error': f"No active stock batch available for '{p_item.medicine_name}' in facility scope."}, status=status.HTTP_400_BAD_REQUEST)
@@ -902,6 +911,7 @@ class PharmacyDashboardSummaryView(APIView):
         if facility_param:
             rx_qs = rx_qs.filter(facility_id=facility_param)
 
+        total_prescriptions_count = rx_qs.count()
         pending_prescriptions_count = rx_qs.filter(status__in=['ACTIVE', 'PENDING', 'PARTIALLY_DISPENSED']).count()
         dispensed_today_count = rx_qs.filter(status='DISPENSED', date=datetime.date.today()).count()
 
@@ -949,12 +959,14 @@ class PharmacyDashboardSummaryView(APIView):
             'out_of_stock_count': out_of_stock_count,
             'expiring_soon_count': expiring_soon_count,
             'expired_count': expired_count,
+            'total_prescriptions_count': total_prescriptions_count,
             'pending_prescriptions_count': pending_prescriptions_count,
             'dispensed_today_count': dispensed_today_count,
             'pending_purchase_orders_count': pending_purchase_orders_count,
             'total_vendors_count': total_vendors_count,
 
             # Backwards compatibility keys
+            'total_prescriptions': total_prescriptions_count,
             'prescriptions_waiting': pending_prescriptions_count,
             'dispensed_today': dispensed_today_count,
             'current_stock_items': total_medicines - out_of_stock_count,
@@ -963,6 +975,7 @@ class PharmacyDashboardSummaryView(APIView):
             'expiring_soon': expiring_soon_count,
             'pending_purchase_orders': pending_purchase_orders_count
         })
+
 
 
 class PharmacyAlertsView(APIView):

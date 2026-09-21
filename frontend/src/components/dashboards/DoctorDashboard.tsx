@@ -131,8 +131,9 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
           <div className="flex justify-between items-start">
             <div>
               <p className="text-xs font-bold text-slate-500 uppercase">Follow-ups</p>
-              <h3 className="text-2xl font-black text-emerald-900 mt-1">{summary?.referrals_summary?.completed || 0}</h3>
+              <h3 className="text-2xl font-black text-emerald-900 mt-1">{summary?.followups_summary?.due_today ?? summary?.kpis?.followups_due ?? 0}</h3>
               <p className="text-[10px] text-emerald-700 font-medium mt-1">Scheduled Reviews</p>
+
             </div>
             <div className="p-3 bg-emerald-50 rounded-xl text-emerald-700 border border-emerald-100">
               <CalendarCheck className="w-5 h-5" />

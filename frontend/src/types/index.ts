@@ -142,12 +142,20 @@ export interface Visit {
   facility: number;
   facility_name?: string;
   visit_date: string;
+  opd_date?: string;
   visit_type: string;
-  status: 'WAITING' | 'TRIAGED' | 'IN_CONSULTATION' | 'COMPLETED' | 'CANCELLED';
+  status: string;
+  current_queue?: string;
   chief_complaint: string;
   assigned_doctor?: number | null;
+  assigned_doctor_name?: string;
+  priority?: string;
+  arrival_time?: string;
+  waiting_time_minutes?: number;
+  status_history_list?: any[];
   token_details?: Token;
 }
+
 
 export interface TriageVitals {
   id: number;
@@ -308,8 +316,10 @@ export interface MedicineBatch {
   facility_name?: string;
   medicine: number;
   medicine_name?: string;
+  generic_name?: string;
   medicine_brand?: string;
   medicine_unit?: string;
+
   batch_number: string;
   vendor?: number | null;
   vendor_name?: string;

@@ -68,6 +68,8 @@ class ReferralViewSet(viewsets.ModelViewSet):
         referral = Referral.objects.create(
             referral_id=ref_id,
             patient_id=request.data.get('patient'),
+            visit_id=request.data.get('visit'),
+            consultation_id=request.data.get('consultation'),
             source_facility_id=request.data.get('source_facility'),
             destination_facility_id=request.data.get('destination_facility'),
             referring_doctor=request.user,
@@ -77,6 +79,7 @@ class ReferralViewSet(viewsets.ModelViewSet):
             urgency=request.data.get('urgency', 'ROUTINE'),
             status='CREATED'
         )
+
         return Response(ReferralSerializer(referral).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
