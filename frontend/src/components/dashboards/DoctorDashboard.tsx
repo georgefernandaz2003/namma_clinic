@@ -262,16 +262,25 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
                       <td className="py-3 px-4 text-center font-mono text-slate-500">{v.waiting_time_minutes || 12} mins</td>
                       <td className="py-3 px-4 text-slate-600">{v.visit_type}</td>
                       <td className="py-3 px-4 text-center">
-                        <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold text-[10px] border border-blue-200">
-                          {v.status}
+                        <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] border ${
+                          v.status === 'LAB_COMPLETED'
+                            ? 'bg-purple-100 text-purple-800 border-purple-300 font-extrabold'
+                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
+                          {v.status === 'LAB_COMPLETED' ? 'LAB READY' : v.status}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right space-x-1">
                         <Link
                           to={`/consultation?visit=${v.id}`}
-                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] rounded-lg transition"
+                          state={{ visitId: v.id }}
+                          className={`px-2.5 py-1 font-bold text-[11px] rounded-lg transition ${
+                            v.status === 'LAB_COMPLETED'
+                              ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-xs'
+                              : 'bg-blue-50 hover:bg-blue-100 text-blue-700'
+                          }`}
                         >
-                          Consult
+                          {v.status === 'LAB_COMPLETED' ? 'Re-Consult' : 'Consult'}
                         </Link>
                       </td>
                     </tr>

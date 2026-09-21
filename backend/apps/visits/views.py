@@ -209,9 +209,10 @@ class VisitViewSet(viewsets.ModelViewSet):
 
             priority_case = models.Case(
                 models.When(priority='EMERGENCY', then=models.Value(1)),
-                models.When(priority='HIGH', then=models.Value(2)),
-                models.When(priority='NORMAL', then=models.Value(3)),
-                default=models.Value(4),
+                models.When(status='LAB_COMPLETED', then=models.Value(2)),
+                models.When(priority='HIGH', then=models.Value(3)),
+                models.When(priority='NORMAL', then=models.Value(4)),
+                default=models.Value(5),
                 output_field=models.IntegerField()
             )
 
@@ -220,7 +221,7 @@ class VisitViewSet(viewsets.ModelViewSet):
                 facility_id=facility_id,
                 opd_date=today,
                 current_queue=target_queue,
-                status__in=[req_status, 'WAITING', 'TRIAGED']
+                status__in=[req_status, 'WAITING', 'TRIAGED', 'LAB_COMPLETED']
             ).annotate(priority_weight=priority_case).order_by('priority_weight', 'arrival_time').first()
 
             if not next_visit:

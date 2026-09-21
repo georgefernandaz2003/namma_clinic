@@ -64,7 +64,7 @@ class DashboardSummaryView(APIView):
         # Stage Queue Counts for target date
         triage_waiting = opd_visits_qs.filter(current_queue='TRIAGE', status__in=['WAITING', 'WAITING_FOR_TRIAGE']).count()
         in_triage = opd_visits_qs.filter(current_queue='TRIAGE', status='IN_TRIAGE').count()
-        doctor_waiting = opd_visits_qs.filter(current_queue='DOCTOR', status__in=['WAITING_FOR_DOCTOR', 'TRIAGED']).count()
+        doctor_waiting = opd_visits_qs.filter(current_queue='DOCTOR', status__in=['WAITING_FOR_DOCTOR', 'TRIAGED', 'LAB_COMPLETED']).count()
         in_consultation = opd_visits_qs.filter(current_queue='DOCTOR', status='IN_CONSULTATION').count()
         lab_pending = LabOrder.objects.filter(facility_id__in=target_fac_ids, order_date__date=target_date, status__in=['ORDERED', 'SAMPLE_COLLECTED']).count()
         pharmacy_waiting = Prescription.objects.filter(facility_id__in=target_fac_ids, date=target_date, status='PENDING').count()

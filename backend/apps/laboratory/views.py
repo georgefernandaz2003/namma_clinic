@@ -58,7 +58,7 @@ class LabOrderViewSet(viewsets.ModelViewSet):
         'PATCH': 'lab_orders.update',
         'DELETE': 'lab_orders.update'
     }
-    filterset_fields = ['facility', 'status', 'patient']
+    filterset_fields = ['facility', 'status', 'patient', 'visit']
 
 
     def get_queryset(self):
@@ -185,7 +185,7 @@ class LabOrderViewSet(viewsets.ModelViewSet):
                     order.visit.status = 'WAITING_FOR_PHARMACY'
                 else:
                     order.visit.current_queue = 'DOCTOR'
-                    order.visit.status = 'WAITING_FOR_DOCTOR'
+                    order.visit.status = 'LAB_COMPLETED'
                 order.visit.save(update_fields=['current_queue', 'status'])
 
         AuditLog.objects.create(

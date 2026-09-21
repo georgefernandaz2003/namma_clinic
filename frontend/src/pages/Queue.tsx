@@ -177,9 +177,9 @@ export const Queue: React.FC = () => {
   // Dynamic KPI Calculations based on allVisits for selectedDate
   const totalOpdCount = allVisits.length;
   const waitingTriageCount = allVisits.filter(v => v.status === 'WAITING_FOR_TRIAGE' || (v.current_queue === 'TRIAGE' && v.status !== 'COMPLETED')).length;
-  const waitingDoctorCount = allVisits.filter(v => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED').length;
+  const waitingDoctorCount = allVisits.filter(v => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'LAB_COMPLETED').length;
   const inConsultationCount = allVisits.filter(v => v.status === 'IN_CONSULTATION').length;
-  const labPendingCount = allVisits.filter(v => v.current_queue === 'LAB' || v.status.includes('LAB')).length;
+  const labPendingCount = allVisits.filter(v => v.current_queue === 'LAB' || v.status === 'LAB_PENDING' || v.status === 'LAB_IN_PROGRESS').length;
   const waitingPharmacyCount = allVisits.filter(v => v.current_queue === 'PHARMACY' || v.status.includes('PHARMACY')).length;
   const completedCount = allVisits.filter(v => v.status === 'COMPLETED').length;
 
@@ -532,16 +532,18 @@ export const Queue: React.FC = () => {
                               </button>
                             )}
 
-                            {(v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'IN_CONSULTATION') && (
+                            {(v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'IN_CONSULTATION' || v.status === 'LAB_COMPLETED') && (
                               <button
                                 onClick={() => navigate('/consultation', { state: { visitId: v.id } })}
-                                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                className={`px-3 py-1 font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs text-white ${
+                                  v.status === 'LAB_COMPLETED' ? 'bg-purple-600 hover:bg-purple-500' : 'bg-blue-600 hover:bg-blue-500'
+                                }`}
                               >
-                                <span>Consult</span> <ArrowRight className="w-3 h-3" />
+                                <span>{v.status === 'LAB_COMPLETED' ? 'Re-Consult' : 'Consult'}</span> <ArrowRight className="w-3 h-3" />
                               </button>
                             )}
 
-                            {(v.current_queue === 'LAB' || v.status.includes('LAB')) && (
+                            {(v.current_queue === 'LAB' || v.status === 'LAB_PENDING' || v.status === 'LAB_IN_PROGRESS') && (
                               <button
                                 onClick={() => navigate('/lab', { state: { selectedDate } })}
                                 className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"

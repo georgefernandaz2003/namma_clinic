@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers, viewsets, permissions, status
 from rest_framework.response import Response
 from apps.consultations.models import Consultation, Prescription, PrescriptionItem
@@ -113,7 +114,8 @@ class ConsultationViewSet(viewsets.ModelViewSet):
             from apps.laboratory.models import LabOrder
             from django.db.models import Q
             has_pending_lab = LabOrder.objects.filter(
-                Q(consultation=consultation) | Q(visit=visit) | Q(patient=consultation.patient, facility=consultation.facility, status__in=['ORDERED', 'SAMPLE_COLLECTED'])
+                Q(consultation=consultation) | Q(visit=visit) | Q(patient=consultation.patient, facility=consultation.facility),
+                status__in=['ORDERED', 'SAMPLE_COLLECTED']
             ).exists()
 
             if has_pending_lab:
