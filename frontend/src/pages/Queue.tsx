@@ -8,6 +8,7 @@ import {
   FileText, TestTube, Pill, Lock, History, Eye, Play
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { isPathAllowedForRole } from '../utils/permissions';
 
 export const Queue: React.FC = () => {
   const { activeFacility, user } = useAuth();
@@ -514,39 +515,55 @@ export const Queue: React.FC = () => {
                         {isToday ? (
                           <div className="flex items-center gap-1.5">
                             {(v.status === 'WAITING_FOR_TRIAGE' || v.status === 'WAITING') && (
-                              <button
-                                onClick={() => navigate('/triage', { state: { visitId: v.id } })}
-                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
-                              >
-                                <span>Triage</span> <ArrowRight className="w-3 h-3" />
-                              </button>
+                              isPathAllowedForRole(user?.role, '/triage') ? (
+                                <button
+                                  onClick={() => navigate('/triage', { state: { visitId: v.id } })}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                >
+                                  <span>Triage</span> <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 font-medium italic">Awaiting Triage</span>
+                              )
                             )}
 
                             {(v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'IN_CONSULTATION') && (
-                              <button
-                                onClick={() => navigate('/consultation', { state: { visitId: v.id } })}
-                                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
-                              >
-                                <span>Consult</span> <ArrowRight className="w-3 h-3" />
-                              </button>
+                              isPathAllowedForRole(user?.role, '/consultation') ? (
+                                <button
+                                  onClick={() => navigate('/consultation', { state: { visitId: v.id } })}
+                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                >
+                                  <span>Consult</span> <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 font-medium italic">Awaiting Doctor</span>
+                              )
                             )}
 
                             {v.status.includes('LAB') && (
-                              <button
-                                onClick={() => navigate('/lab')}
-                                className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
-                              >
-                                <span>Lab</span> <ArrowRight className="w-3 h-3" />
-                              </button>
+                              isPathAllowedForRole(user?.role, '/lab') ? (
+                                <button
+                                  onClick={() => navigate('/lab')}
+                                  className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                >
+                                  <span>Lab</span> <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 font-medium italic">In Lab</span>
+                              )
                             )}
 
                             {v.status.includes('PHARMACY') && (
-                              <button
-                                onClick={() => navigate('/pharmacy')}
-                                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
-                              >
-                                <span>Dispense</span> <ArrowRight className="w-3 h-3" />
-                              </button>
+                              isPathAllowedForRole(user?.role, '/pharmacy') ? (
+                                <button
+                                  onClick={() => navigate('/pharmacy')}
+                                  className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                >
+                                  <span>Dispense</span> <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 font-medium italic">In Pharmacy</span>
+                              )
                             )}
 
                             {v.status === 'COMPLETED' && (

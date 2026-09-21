@@ -14,8 +14,25 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
   const kpis = summary?.kpis || {};
   const [opdQueue, setOpdQueue] = useState<any[]>([]);
   const [activeVisit, setActiveVisit] = useState<any>(null);
+  const [activeTriage, setActiveTriage] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const actionRequired = summary?.action_required || [];
+
+  useEffect(() => {
+    if (activeVisit?.triage_details) {
+      setActiveTriage(activeVisit.triage_details);
+    } else if (activeVisit?.id) {
+      api.get(`triage/?visit=${activeVisit.id}`)
+        .then(res => {
+          const list = res.data?.results || res.data || [];
+          const record = Array.isArray(list) ? list[0] : list;
+          setActiveTriage(record || null);
+        })
+        .catch(() => setActiveTriage(null));
+    } else {
+      setActiveTriage(null);
+    }
+  }, [activeVisit?.id, activeVisit?.triage_details]);
 
   const fetchDoctorQueue = async () => {
     setLoading(true);
@@ -182,19 +199,35 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Blood Pressure</span>
-              <span className="font-bold text-white block">150/96 mmHg</span>
+              <span className={`block font-bold ${activeTriage?.high_bp_flag ? 'text-rose-300' : 'text-white'}`}>
+                {activeTriage && (activeTriage.blood_pressure_systolic || activeTriage.blood_pressure_diastolic)
+                  ? `${activeTriage.blood_pressure_systolic}/${activeTriage.blood_pressure_diastolic} mmHg`
+                  : 'Vitals not recorded'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Pulse / SpO2</span>
-              <span className="font-bold text-white block">88 bpm / 97%</span>
+              <span className="font-bold text-white block">
+                {activeTriage && (activeTriage.pulse_bpm || activeTriage.spo2_percent)
+                  ? `${activeTriage.pulse_bpm ? `${activeTriage.pulse_bpm} bpm` : ''}${activeTriage.pulse_bpm && activeTriage.spo2_percent ? ' / ' : ''}${activeTriage.spo2_percent ? `${activeTriage.spo2_percent}%` : ''}`
+                  : 'Vitals not recorded'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Blood Glucose</span>
-              <span className="font-bold text-rose-300 block">190 mg/dL (HIGH)</span>
+              <span className={`block font-bold ${activeTriage?.high_glucose_flag ? 'text-rose-300' : 'text-white'}`}>
+                {activeTriage && activeTriage.blood_glucose_mgdl
+                  ? `${activeTriage.blood_glucose_mgdl} mg/dL${activeTriage.high_glucose_flag ? ' (HIGH)' : ''}`
+                  : 'Vitals not recorded'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Temperature</span>
-              <span className="font-bold text-white block">101.2 °F</span>
+              <span className={`block font-bold ${activeTriage?.fever_flag ? 'text-amber-300' : 'text-white'}`}>
+                {activeTriage && activeTriage.temperature_f
+                  ? `${activeTriage.temperature_f} °F`
+                  : 'Vitals not recorded'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Priority</span>

@@ -9,7 +9,8 @@ export const Consultation: React.FC = () => {
   const { activeFacility, allFacilities } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const stateVisitId = location.state?.visitId;
+  const queryVisitParam = new URLSearchParams(location.search).get('visit');
+  const targetVisitId = location.state?.visitId || (queryVisitParam ? parseInt(queryVisitParam) : undefined);
 
   const [triagedVisits, setTriagedVisits] = useState<Visit[]>([]);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
@@ -76,8 +77,19 @@ export const Consultation: React.FC = () => {
       const activeDoctorList = rawList.filter((v) => v.current_queue === 'DOCTOR' && v.status !== 'COMPLETED');
       setTriagedVisits(activeDoctorList);
 
-      if (stateVisitId) {
-        const found = activeDoctorList.find((v) => v.id === stateVisitId);
+      if (targetVisitId) {
+        let found = activeDoctorList.find((v) => v.id === targetVisitId);
+        if (!found) {
+          try {
+            const singleRes = await api.get(`visits/${targetVisitId}/`);
+            if (singleRes.data && singleRes.data.id) {
+              found = singleRes.data;
+              setTriagedVisits((prev) => [found!, ...prev.filter((x) => x.id !== found!.id)]);
+            }
+          } catch (err) {
+            console.error('Failed to fetch specific visit for consultation', err);
+          }
+        }
         if (found) selectVisit(found);
         else if (activeDoctorList.length > 0) selectVisit(activeDoctorList[0]);
         else {

@@ -76,7 +76,7 @@ export const Triage: React.FC = () => {
 
       alert(`Nurse triage vitals logged for ${selectedVisit.patient_details?.name}! High Risk flags evaluated.`);
       loadQueue();
-      navigate('/consultation', { state: { visitId: selectedVisit.id } });
+      navigate('/queue');
     } finally {
       setSaving(false);
     }
