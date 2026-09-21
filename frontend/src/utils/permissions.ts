@@ -63,7 +63,7 @@ export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
     '/', '/patients', '/triage', '/queue', '/followups', '/ncd', '/maternal-child', '/outreach', '/wellness', '/alerts'
   ],
   LAB_TECHNICIAN: [
-    '/', '/queue', '/lab', '/alerts'
+    '/', '/lab', '/alerts'
   ],
   PHARMACIST: [
     '/', '/queue', '/pharmacy', '/infrastructure', '/alerts'

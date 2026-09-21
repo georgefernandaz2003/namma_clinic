@@ -263,16 +263,6 @@ export const Laboratory: React.FC = () => {
             {dateMode === 'ALL' ? 'Showing All Dates' : 'View All Dates'}
           </button>
 
-          {/* Quick link to OPD Queue */}
-          <button
-            onClick={() => navigate('/queue', { state: { selectedDate } })}
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 border border-emerald-300 text-emerald-800 hover:bg-emerald-100 font-bold text-xs rounded-xl shadow-xs transition"
-          >
-            <Clock className="w-3.5 h-3.5 text-emerald-600" />
-            <span>OPD Queue</span>
-            <ArrowRight className="w-3.5 h-3.5 text-emerald-600" />
-          </button>
-
           <button
             onClick={() => {
               loadData();
