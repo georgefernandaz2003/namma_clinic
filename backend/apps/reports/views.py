@@ -272,10 +272,14 @@ class CSVExportView(APIView):
 
         target_fac_ids = accessible_ids
         if facility_param:
-            if target_fac_ids is not None:
-                target_fac_ids = [int(facility_param)] if int(facility_param) in target_fac_ids else []
-            else:
-                target_fac_ids = [int(facility_param)]
+            try:
+                fac_id = int(facility_param)
+                if target_fac_ids is not None:
+                    target_fac_ids = [fac_id] if fac_id in target_fac_ids else []
+                else:
+                    target_fac_ids = [fac_id]
+            except (ValueError, TypeError):
+                target_fac_ids = []
 
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="namma_clinic_{report_type}_report.csv"'

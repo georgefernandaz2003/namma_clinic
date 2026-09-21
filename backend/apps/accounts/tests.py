@@ -830,6 +830,87 @@ class PhaseC1RegressionTests(TestCase):
         self.assertIn('Registration Date', content)
         self.assertIn(self.patient.patient_id, content)
 
+    def test_fnd04_dho_cross_district_export_isolation(self):
+        """
+        DHO for District A must NOT be able to export records from District B,
+        even if explicitly passing ?facility=<DistrictB_Facility_ID>.
+        """
+        district_b = District.objects.create(name='Mysuru District', code='KA-MYS', state=self.state)
+        zone_b = Zone.objects.create(name='Mysuru City Zone', district=district_b)
+        ward_b = Ward.objects.create(name='KRP', ward_number=1, zone=zone_b)
+        fac_b = Facility.objects.create(
+            facility_name='Mysuru Community Hospital', facility_type='COMMUNITY_HEALTH',
+            district=district_b, state=self.state, zone=zone_b, ward=ward_b
+        )
+        patient_b = Patient.objects.create(
+            patient_id='PAT-MYS-001', name='Anand Kumar Mysuru', age=50, gender='MALE',
+            mobile='9123456780', registered_at_facility=fac_b, district=district_b
+        )
+
+        # Create records in District A
+        NCDRecord.objects.create(
+            patient=self.patient, facility=self.clinic, hypertension_diagnosed=True,
+            diabetes_diagnosed=False, risk_level='MODERATE', control_status='CONTROLLED',
+            last_bp='130/84', last_glucose=110
+        )
+        DiseaseCase.objects.create(
+            disease_name='Acute Gastroenteritis', patient=self.patient, facility=self.clinic,
+            ward=self.ward, severity='MILD', status='CONFIRMED', notes='District A case'
+        )
+
+        # Create records in District B
+        NCDRecord.objects.create(
+            patient=patient_b, facility=fac_b, hypertension_diagnosed=True,
+            diabetes_diagnosed=True, risk_level='HIGH', control_status='UNCONTROLLED',
+            last_bp='170/110', last_glucose=250
+        )
+        DiseaseCase.objects.create(
+            disease_name='Cholera Outbreak', patient=patient_b, facility=fac_b,
+            ward=ward_b, severity='SEVERE', status='CONFIRMED', notes='District B epidemic alert'
+        )
+
+        # Authenticate as DHO for District A
+        self.client.force_authenticate(user=self.dho)
+
+        # 1. Attacking/cross-district NCD export by supplying District B facility parameter
+        res_ncd_b = self.client.get(f'/api/reports/export/?type=ncd&facility={fac_b.id}')
+        self.assertEqual(res_ncd_b.status_code, status.HTTP_200_OK)
+        content_ncd_b = res_ncd_b.content.decode('utf-8')
+        self.assertNotIn('Anand Kumar Mysuru', content_ncd_b)
+        self.assertNotIn('170/110', content_ncd_b)
+        self.assertNotIn('Mysuru Community Hospital', content_ncd_b)
+        # Verify only header line was written (0 data records)
+        lines_ncd = [line.strip() for line in content_ncd_b.strip().splitlines() if line.strip()]
+        self.assertEqual(len(lines_ncd), 1, "Should contain only CSV header row")
+
+        # 2. Attacking/cross-district Surveillance export by supplying District B facility parameter
+        res_surv_b = self.client.get(f'/api/reports/export/?type=surveillance&facility={fac_b.id}')
+        self.assertEqual(res_surv_b.status_code, status.HTTP_200_OK)
+        content_surv_b = res_surv_b.content.decode('utf-8')
+        self.assertNotIn('Cholera Outbreak', content_surv_b)
+        self.assertNotIn('Anand Kumar Mysuru', content_surv_b)
+        self.assertNotIn('District B epidemic alert', content_surv_b)
+        lines_surv = [line.strip() for line in content_surv_b.strip().splitlines() if line.strip()]
+        self.assertEqual(len(lines_surv), 1, "Should contain only CSV header row")
+
+        # 3. Requesting NCD export without facility param: District A returned, District B excluded
+        res_ncd_all = self.client.get('/api/reports/export/?type=ncd')
+        self.assertEqual(res_ncd_all.status_code, status.HTTP_200_OK)
+        content_ncd_all = res_ncd_all.content.decode('utf-8')
+        self.assertIn(self.patient.name, content_ncd_all)
+        self.assertIn('130/84', content_ncd_all)
+        self.assertNotIn('Anand Kumar Mysuru', content_ncd_all)
+        self.assertNotIn('170/110', content_ncd_all)
+
+        # 4. Requesting Surveillance export without facility param: District A returned, District B excluded
+        res_surv_all = self.client.get('/api/reports/export/?type=surveillance')
+        self.assertEqual(res_surv_all.status_code, status.HTTP_200_OK)
+        content_surv_all = res_surv_all.content.decode('utf-8')
+        self.assertIn('Acute Gastroenteritis', content_surv_all)
+        self.assertIn('District A case', content_surv_all)
+        self.assertNotIn('Cholera Outbreak', content_surv_all)
+        self.assertNotIn('District B epidemic alert', content_surv_all)
+
     # =========================================================================
     # FND-07: CLINICAL RE-SAVE IDEMPOTENCY (No HTTP 500 on Re-save)
     # =========================================================================
