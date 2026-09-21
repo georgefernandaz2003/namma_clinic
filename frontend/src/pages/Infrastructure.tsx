@@ -227,8 +227,8 @@ export const Infrastructure: React.FC = () => {
     notes: 'Manifold system operational'
   };
 
-  const totalBedsCount = bedCapacities.reduce((acc, b) => acc + b.total_beds, 0) || 10;
-  const totalOccupiedCount = bedCapacities.reduce((acc, b) => acc + b.occupied_beds, 0) || 4;
+  const totalBedsCount = bedCapacities.reduce((acc, b) => acc + b.total_beds, 0);
+  const totalOccupiedCount = bedCapacities.reduce((acc, b) => acc + b.occupied_beds, 0);
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">

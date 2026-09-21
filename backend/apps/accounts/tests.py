@@ -520,3 +520,113 @@ class PhaseABRegressionTests(TestCase):
         self.assertEqual(fu.patient_id, self.patient.id)
         self.assertEqual(fu.visit_id, v.id)
         self.assertEqual(fu.referral_id, ref.id)
+
+    def test_dho_cross_district_read_isolation(self):
+        """
+        DHO Data-Scope Security:
+        Verify DHO District A can access District A data, but is strictly isolated from District B data.
+        """
+        # Create District B and its entities
+        district_b = District.objects.create(name='Mysuru District', code='MYS', state=self.state)
+        zone_b = Zone.objects.create(name='Mysuru Central Zone', code='MCZ', district=district_b)
+        ward_b = Ward.objects.create(name='KRS Ward', ward_number='101', zone=zone_b)
+        clinic_b = Facility.objects.create(
+            facility_name='Mysuru Central Clinic', facility_code='MYS-CLINIC-01',
+            facility_type='URBAN_PHC', state=self.state, district=district_b, ward=ward_b
+        )
+        patient_b = Patient.objects.create(
+            patient_id='PAT-MYS-0001', name='Basavaraj Bommai', age=45, gender='MALE',
+            mobile='9123456780', address='KRS Road Mysuru', registered_at_facility=clinic_b,
+            district=district_b, ward=ward_b, registration_date=datetime.date.today()
+        )
+        ncd_b = NCDRecord.objects.create(
+            patient=patient_b, facility=clinic_b, hypertension_diagnosed=True,
+            risk_level='MEDIUM', control_status='CONTROLLED', treatment_status='UNDER_TREATMENT'
+        )
+        case_b = DiseaseCase.objects.create(
+            patient=patient_b, facility=clinic_b, ward=ward_b,
+            disease_name='Dengue Fever', severity='MODERATE', status='CONFIRMED',
+            report_date=datetime.date.today()
+        )
+        ref_b = Referral.objects.create(
+            referral_id='REF-MYS-0001', patient=patient_b,
+            source_facility=clinic_b, destination_facility=clinic_b, referring_doctor=self.doctor,
+            reason='Specialist consult in Mysuru', clinical_summary='Dengue management',
+            required_service='General Medicine', urgency='MEDIUM', status='CREATED'
+        )
+        batch_b = MedicineBatch.objects.create(
+            facility=clinic_b, medicine=self.med_met, batch_number='MYS-MET-01',
+            received_date=datetime.date.today(), expiry_date=datetime.date.today() + datetime.timedelta(days=120),
+            quantity=150, unit_cost=3.0, status='ACTIVE'
+        )
+
+        # 1. Test DHO of District A (self.dho)
+        self.client.force_authenticate(user=self.dho)
+
+        # Patients isolation
+        res_patients = self.client.get('/api/patients/')
+        self.assertEqual(res_patients.status_code, status.HTTP_200_OK)
+        patient_ids = [p['id'] for p in res_patients.data.get('results', res_patients.data)]
+        self.assertIn(self.patient.id, patient_ids)
+        self.assertNotIn(patient_b.id, patient_ids)
+
+        # Direct detail access to District B patient should be blocked (404/403)
+        res_patient_b_detail = self.client.get(f'/api/patients/{patient_b.id}/')
+        self.assertIn(res_patient_b_detail.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN])
+
+        # NCD isolation
+        res_ncd = self.client.get('/api/ncd/')
+        self.assertEqual(res_ncd.status_code, status.HTTP_200_OK)
+        ncd_ids = [n['id'] for n in res_ncd.data.get('results', res_ncd.data)]
+        self.assertNotIn(ncd_b.id, ncd_ids)
+
+        # Surveillance isolation
+        res_surv = self.client.get('/api/surveillance/')
+        self.assertEqual(res_surv.status_code, status.HTTP_200_OK)
+        case_ids = [c['id'] for c in res_surv.data.get('results', res_surv.data)]
+        self.assertNotIn(case_b.id, case_ids)
+
+        # Referral isolation
+        res_ref = self.client.get('/api/referrals/')
+        self.assertEqual(res_ref.status_code, status.HTTP_200_OK)
+        ref_ids = [r['id'] for r in res_ref.data.get('results', res_ref.data)]
+        self.assertNotIn(ref_b.id, ref_ids)
+
+        # Pharmacy batches isolation
+        res_batch = self.client.get('/api/pharmacy/batches/')
+        self.assertEqual(res_batch.status_code, status.HTTP_200_OK)
+        batch_ids = [b['id'] for b in res_batch.data.get('results', res_batch.data)]
+        self.assertNotIn(batch_b.id, batch_ids)
+
+        # Reporting summary for District B facility should yield 0 for District A DHO
+        res_summary = self.client.get(f'/api/dashboard/summary/?facility={clinic_b.id}')
+        self.assertEqual(res_summary.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_summary.data['total_patients'], 0)
+        self.assertEqual(res_summary.data['todays_opd'], 0)
+
+        # 2. Test DHO of District B
+        dho_b = User.objects.create_user(
+            username='dho_mysuru', password='password123', role='DISTRICT_OFFICER',
+            assigned_district=district_b, full_name='Dr. Mysuru DHO'
+        )
+        self.client.force_authenticate(user=dho_b)
+
+        # District B DHO should see District B patient, and NOT see District A patient
+        res_b_patients = self.client.get('/api/patients/')
+        self.assertEqual(res_b_patients.status_code, status.HTTP_200_OK)
+        b_patient_ids = [p['id'] for p in res_b_patients.data.get('results', res_b_patients.data)]
+        self.assertIn(patient_b.id, b_patient_ids)
+        self.assertNotIn(self.patient.id, b_patient_ids)
+
+        # District B DHO can see District B NCD, surveillance, referrals, batches
+        res_b_ncd = self.client.get('/api/ncd/')
+        b_ncd_ids = [n['id'] for n in res_b_ncd.data.get('results', res_b_ncd.data)]
+        self.assertIn(ncd_b.id, b_ncd_ids)
+
+        res_b_surv = self.client.get('/api/surveillance/')
+        b_case_ids = [c['id'] for c in res_b_surv.data.get('results', res_b_surv.data)]
+        self.assertIn(case_b.id, b_case_ids)
+
+        res_b_batch = self.client.get('/api/pharmacy/batches/')
+        b_batch_ids = [b['id'] for b in res_b_batch.data.get('results', res_b_batch.data)]
+        self.assertIn(batch_b.id, b_batch_ids)

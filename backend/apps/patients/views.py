@@ -28,16 +28,27 @@ class PatientViewSet(viewsets.ModelViewSet):
         facility_param = self.request.query_params.get('facility')
         
         if accessible_ids is not None:
-            # Patients registered at user facility OR with active visits/referrals to user facility
             from django.db.models import Q
-            user_fac_id = facility_param or self.request.user.assigned_facility_id
-            queryset = queryset.filter(
-                Q(registered_at_facility_id__in=accessible_ids) |
-                Q(visits__facility_id=user_fac_id) |
-                Q(referrals__destination_facility_id=user_fac_id)
-            ).distinct()
+            if self.request.user.role == 'DISTRICT_OFFICER':
+                dho_dist_id = self.request.user.assigned_district_id
+                queryset = queryset.filter(
+                    Q(district_id=dho_dist_id) |
+                    Q(registered_at_facility_id__in=accessible_ids) |
+                    Q(visits__facility_id__in=accessible_ids) |
+                    Q(referrals__destination_facility_id__in=accessible_ids)
+                ).distinct()
+            else:
+                user_fac_id = facility_param or self.request.user.assigned_facility_id
+                queryset = queryset.filter(
+                    Q(registered_at_facility_id__in=accessible_ids) |
+                    Q(visits__facility_id=user_fac_id) |
+                    Q(referrals__destination_facility_id=user_fac_id)
+                ).distinct()
 
         if facility_param:
+            # If user has scoped facilities and requested facility is outside their scope, return none
+            if accessible_ids is not None and int(facility_param) not in accessible_ids:
+                return queryset.none()
             from django.db.models import Q
             queryset = queryset.filter(
                 Q(registered_at_facility_id=facility_param) |

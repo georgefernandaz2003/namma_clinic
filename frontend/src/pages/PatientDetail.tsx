@@ -1465,8 +1465,6 @@ export const PatientDetail: React.FC = () => {
                   >
                     <option value="GENERAL_OPD">General OPD</option>
                     <option value="NCD_SCREENING">NCD Screening</option>
-                    <option value="MATERNAL_ANC">Maternal ANC</option>
-                    <option value="CHILD_IMMUNIZATION">Child Immunization</option>
                     <option value="TELECONSULTATION">Teleconsultation</option>
                   </select>
                 </div>
@@ -1481,7 +1479,6 @@ export const PatientDetail: React.FC = () => {
                     <option value="NORMAL">Normal / Routine</option>
                     <option value="HIGH">High Priority</option>
                     <option value="EMERGENCY">Emergency 🚨</option>
-                    <option value="MATERNAL">Maternal ANC Care</option>
                   </select>
                 </div>
               </div>

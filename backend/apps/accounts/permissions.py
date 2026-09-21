@@ -76,6 +76,9 @@ def can_access_facility(user, facility_id):
     if not user or not user.is_authenticated or not facility_id:
         return False
     if user.role == 'DISTRICT_OFFICER':
+        if user.assigned_district_id:
+            from apps.facilities.models import Facility
+            return Facility.objects.filter(id=facility_id, district_id=user.assigned_district_id).exists()
         return True
     return user.assigned_facility_id == int(facility_id)
 
@@ -117,7 +120,7 @@ class HasFacilityScope(permissions.BasePermission):
     - DISTRICT_OFFICER: Read-only access across facilities in district. Cannot perform clinical or procurement mutations.
     - HOSPITAL_ADMIN, DOCTOR, NURSE, LAB_TECHNICIAN, PHARMACIST: Scoped strictly to their assigned facility.
     """
-    message = "You do not have authorization to access resources outside your assigned facility."
+    message = "You do not have authorization to access resources outside your assigned facility or district scope."
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
@@ -144,9 +147,28 @@ class HasFacilityScope(permissions.BasePermission):
             return False
 
         if request.user.role == 'DISTRICT_OFFICER':
-            if request.method in permissions.SAFE_METHODS:
-                return True
-            return False
+            if request.method not in permissions.SAFE_METHODS:
+                return False
+            # Check district isolation if DHO has assigned district
+            if request.user.assigned_district_id:
+                from apps.facilities.models import Facility
+                dist_fac_ids = set(Facility.objects.filter(district_id=request.user.assigned_district_id).values_list('id', flat=True))
+
+                # Check patient direct district
+                if getattr(obj, 'district_id', None):
+                    return obj.district_id == request.user.assigned_district_id
+
+                # Check referral source / destination
+                if hasattr(obj, 'source_facility_id') or hasattr(obj, 'destination_facility_id'):
+                    src = getattr(obj, 'source_facility_id', None)
+                    dst = getattr(obj, 'destination_facility_id', None)
+                    return (src in dist_fac_ids or dst in dist_fac_ids)
+
+                # Check facility foreign keys
+                obj_fac_id = getattr(obj, 'facility_id', None) or getattr(obj, 'assigned_facility_id', None) or getattr(obj, 'registered_at_facility_id', None)
+                if obj_fac_id:
+                    return obj_fac_id in dist_fac_ids
+            return True
 
         user_fac_id = request.user.assigned_facility_id
         if not user_fac_id:

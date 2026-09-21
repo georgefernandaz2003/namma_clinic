@@ -130,7 +130,7 @@ export interface Patient {
 export interface Token {
   id: number;
   token_number: number;
-  priority: 'NORMAL' | 'EMERGENCY' | 'MATERNAL' | 'SENIOR_CITIZEN';
+  priority: 'NORMAL' | 'HIGH' | 'EMERGENCY' | 'SENIOR_CITIZEN';
   status: string;
 }
 

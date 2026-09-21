@@ -198,7 +198,7 @@ export const Consultation: React.FC = () => {
           source_facility: activeFacility.id,
           destination_facility: destFacilityId,
           reason: refReason,
-          clinical_summary: `${diagName} - BP ${vitals?.blood_pressure_systolic || 140}/${vitals?.blood_pressure_diastolic || 90} mmHg`,
+          clinical_summary: vitals?.blood_pressure_systolic ? `${diagName} - BP ${vitals.blood_pressure_systolic}/${vitals.blood_pressure_diastolic} mmHg` : diagName,
           required_service: 'Specialist Consultation',
           urgency: refUrgency
         });

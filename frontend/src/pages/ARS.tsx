@@ -54,7 +54,7 @@ export const ARS: React.FC = () => {
               </div>
 
               <div className="flex justify-between items-center text-[11px] pt-1">
-                <span className="text-slate-600">Action Plan Items: <strong className="text-slate-900">{m.action_items?.length || 1} Tasks Assigned</strong></span>
+                <span className="text-slate-600">Action Plan Items: <strong className="text-slate-900">{m.action_items?.length ?? 0} Tasks Assigned</strong></span>
                 <span className="text-emerald-700 font-bold font-mono">Untied Grant Approved: ₹ {m.untied_funds_spent_rs}</span>
               </div>
             </div>

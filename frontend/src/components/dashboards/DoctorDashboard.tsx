@@ -155,10 +155,10 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
                   ACTIVE PATIENT IN CONSULTATION
                 </span>
                 <h2 className="text-lg font-black text-white mt-0.5">
-                  {activeVisit.patient_details?.name || 'Ramesh Kumar'}
+                  {activeVisit.patient_details?.name || 'Patient'}
                 </h2>
                 <p className="text-xs text-blue-200 font-medium">
-                  {activeVisit.patient_details?.age || 52} Yrs • {activeVisit.patient_details?.gender || 'MALE'} • UHID: {activeVisit.patient_details?.patient_id || 'NC-001'}
+                  {activeVisit.patient_details?.age ? `${activeVisit.patient_details.age} Yrs • ` : ''}{activeVisit.patient_details?.gender || 'N/A'} • UHID: {activeVisit.patient_details?.patient_id || 'N/A'}
                 </p>
               </div>
             </div>
@@ -259,8 +259,8 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
                         #{v.token_details?.token_number || v.id}
                       </td>
                       <td className="py-3 px-4 font-bold text-slate-900">{v.patient_details?.name || 'Patient'}</td>
-                      <td className="py-3 px-4 text-center text-slate-600">{v.patient_details?.age || 45}</td>
-                      <td className="py-3 px-4 text-center font-mono text-slate-500">{v.waiting_time_minutes || 12} mins</td>
+                      <td className="py-3 px-4 text-center text-slate-600">{v.patient_details?.age ?? '-'}</td>
+                      <td className="py-3 px-4 text-center font-mono text-slate-500">{v.waiting_time_minutes ? `${v.waiting_time_minutes} mins` : '-'}</td>
                       <td className="py-3 px-4 text-slate-600">{v.visit_type}</td>
                       <td className="py-3 px-4 text-center">
                         <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold text-[10px] border border-blue-200">

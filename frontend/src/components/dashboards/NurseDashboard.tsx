@@ -158,8 +158,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date, i
           {selectedVisit ? (
             <form onSubmit={handleSaveTriage} className="space-y-3">
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-                <p className="font-bold text-slate-900">{selectedVisit.patient_details?.name || 'Patient Name'}</p>
-                <p className="text-slate-500">{selectedVisit.patient_details?.age || 45} Yrs • {selectedVisit.patient_details?.gender} • {selectedVisit.chief_complaint}</p>
+                <p className="font-bold text-slate-900">{selectedVisit.patient_details?.name || 'Patient'}</p>
+                <p className="text-slate-500">{selectedVisit.patient_details?.age ? `${selectedVisit.patient_details.age} Yrs • ` : ''}{selectedVisit.patient_details?.gender || 'N/A'}{selectedVisit.chief_complaint ? ` • ${selectedVisit.chief_complaint}` : ''}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs">
@@ -278,8 +278,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date, i
                         #{v.token_details?.token_number || v.id}
                       </td>
                       <td className="py-3 px-4 font-bold text-slate-900">{v.patient_details?.name || 'Patient'}</td>
-                      <td className="py-3 px-4 text-center text-slate-600">{v.patient_details?.age || 45}</td>
-                      <td className="py-3 px-4 text-center text-slate-500">{v.waiting_time_minutes || 5}m ago</td>
+                      <td className="py-3 px-4 text-center text-slate-600">{v.patient_details?.age ?? '-'}</td>
+                      <td className="py-3 px-4 text-center text-slate-500">{v.waiting_time_minutes ? `${v.waiting_time_minutes}m ago` : '-'}</td>
                       <td className="py-3 px-4 text-center">
                         <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 font-bold text-[10px] border border-amber-200">
                           {v.status}

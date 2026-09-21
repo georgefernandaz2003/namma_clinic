@@ -80,12 +80,25 @@ class DashboardSummaryView(APIView):
 
 
         # Inventory Counts
+        from apps.pharmacy.models import MedicineMaster
+        from django.db.models import Sum, Q
+        today_date = datetime.date.today()
         inventory_batches = MedicineBatch.objects.filter(facility_id__in=target_fac_ids)
-        total_medicines = inventory_batches.values('medicine').distinct().count()
-        low_stock_count = inventory_batches.filter(quantity__gt=0, quantity__lte=100).count()
-        out_of_stock_count = inventory_batches.filter(quantity=0).count()
-        near_expiry_count = inventory_batches.filter(expiry_date__gt=datetime.date.today(), expiry_date__lte=datetime.date.today() + datetime.timedelta(days=90)).count()
-        expired_count = inventory_batches.filter(expiry_date__lte=datetime.date.today()).count()
+        active_batches = inventory_batches.filter(quantity__gt=0, expiry_date__gt=today_date).exclude(status='EXPIRED')
+        total_medicines = active_batches.values('medicine').distinct().count()
+
+        expiring_threshold = today_date + datetime.timedelta(days=60)
+        near_expiry_count = inventory_batches.filter(quantity__gt=0, expiry_date__gt=today_date, expiry_date__lte=expiring_threshold).exclude(status='EXPIRED').count()
+        expired_count = inventory_batches.filter(Q(expiry_date__lte=today_date) | Q(status='EXPIRED')).count()
+
+        low_stock_count = 0
+        out_of_stock_count = 0
+        for m in MedicineMaster.objects.all():
+            tot_qty = active_batches.filter(medicine=m).aggregate(t=Sum('quantity'))['t'] or 0
+            if tot_qty == 0:
+                out_of_stock_count += 1
+            elif tot_qty <= m.minimum_stock or tot_qty <= m.reorder_level:
+                low_stock_count += 1
 
         # Referral Counts
         pending_referrals = Referral.objects.filter(source_facility_id__in=target_fac_ids, status__in=['CREATED', 'ACCEPTED', 'IN_TRANSIT', 'UNDER_TREATMENT']).count()

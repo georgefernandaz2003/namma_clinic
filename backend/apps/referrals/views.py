@@ -56,10 +56,12 @@ class ReferralViewSet(viewsets.ModelViewSet):
             ).distinct()
         facility_param = self.request.query_params.get('facility')
         if facility_param:
+            if accessible_ids is not None and int(facility_param) not in accessible_ids:
+                return queryset.none()
             queryset = queryset.filter(
                 Q(source_facility_id=facility_param) | Q(destination_facility_id=facility_param)
             ).distinct()
-        return queryset
+        return queryset.order_by('-id')
 
     def create(self, request, *args, **kwargs):
         count = Referral.objects.count() + 1

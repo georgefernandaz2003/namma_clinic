@@ -30,7 +30,7 @@ export const FollowUps: React.FC = () => {
           Patient Follow-up & Care Continuity Tracker
         </h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Tracking overdue, due today, and scheduled follow-up visits across NCD, Maternal, and Referral cases
+          Tracking overdue, due today, and scheduled follow-up visits across NCD and Referral cases
         </p>
       </div>
 
