@@ -81,6 +81,16 @@ class LabOrderViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def create(self, request, *args, **kwargs):
+        visit_id = request.data.get('visit')
+        test_master_id = request.data.get('test_master')
+        if visit_id and test_master_id:
+            existing = LabOrder.objects.filter(visit_id=visit_id, test_master_id=test_master_id).first()
+            if existing:
+                serializer = self.get_serializer(existing)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         doctor = serializer.validated_data.get('doctor') or self.request.user
         order = serializer.save(doctor=doctor)
@@ -176,16 +186,10 @@ class LabOrderViewSet(viewsets.ModelViewSet):
 
         # Check if all lab orders for this patient/visit are verified
         if order.visit and order.visit.status != 'COMPLETED':
-            pending_orders = LabOrder.objects.filter(visit=order.visit).exclude(status='VERIFIED').count()
+            pending_orders = LabOrder.objects.filter(visit=order.visit).exclude(status__in=['VERIFIED', 'CANCELLED']).count()
             if pending_orders == 0:
-                from apps.consultations.models import Prescription
-                has_pending_rx = Prescription.objects.filter(patient=order.patient, facility=order.facility, status='PENDING').exists()
-                if has_pending_rx:
-                    order.visit.current_queue = 'PHARMACY'
-                    order.visit.status = 'WAITING_FOR_PHARMACY'
-                else:
-                    order.visit.current_queue = 'DOCTOR'
-                    order.visit.status = 'LAB_COMPLETED'
+                order.visit.current_queue = 'DOCTOR'
+                order.visit.status = 'LAB_COMPLETED'
                 order.visit.save(update_fields=['current_queue', 'status'])
 
         AuditLog.objects.create(

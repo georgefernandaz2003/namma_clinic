@@ -19,7 +19,9 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
 
   const fetchPrescriptions = async () => {
     try {
-      const res = await api.get('prescriptions/');
+      const facParam = summary?.active_facility_id ? `facility=${summary.active_facility_id}&` : '';
+      const dateParam = date ? `date=${date}` : '';
+      const res = await api.get(`prescriptions/?${facParam}${dateParam}`);
       const list = res.data.results || res.data || [];
       setPrescriptions(list);
       if (list.length > 0 && !selectedRx) {
@@ -32,7 +34,7 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
 
   useEffect(() => {
     fetchPrescriptions();
-  }, [date]);
+  }, [date, summary?.active_facility_id]);
 
   const handleDispense = async (rxId: number) => {
     if (!isToday) {
@@ -92,7 +94,9 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
 
         <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-amber-800 uppercase">Waiting</p>
-          <h3 className="text-xl font-black text-amber-900 mt-1">{prescriptions.filter(p => p.status === 'PENDING').length}</h3>
+          <h3 className="text-xl font-black text-amber-900 mt-1">
+            {prescriptions.filter(p => p.status === 'PENDING' || p.status === 'ACTIVE' || p.status === 'PARTIALLY_DISPENSED').length}
+          </h3>
           <p className="text-[10px] text-amber-700 font-medium mt-0.5">Dispense Queue</p>
         </div>
 
@@ -197,6 +201,7 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
               <thead>
                 <tr className="bg-slate-100/70 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                   <th className="py-3 px-4">Rx ID</th>
+                  <th className="py-3 px-4 text-center">Token</th>
                   <th className="py-3 px-4">Patient</th>
                   <th className="py-3 px-4">Prescribed Items</th>
                   <th className="py-3 px-4 text-center">Status</th>
@@ -207,7 +212,10 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
                 {prescriptions.length > 0 ? (
                   prescriptions.map((p: any) => (
                     <tr key={p.id} className="hover:bg-slate-50 transition">
-                      <td className="py-3 px-4 font-mono font-bold text-amber-700">#{p.id}</td>
+                      <td className="py-3 px-4 font-mono font-bold text-amber-700">#RX-{String(p.id).padStart(4, '0')}</td>
+                      <td className="py-3 px-4 text-center font-mono font-bold text-emerald-700">
+                        {p.token_number ? `Token #${p.token_number}` : '—'}
+                      </td>
                       <td className="py-3 px-4 font-bold text-slate-900">{p.patient_name || 'Patient'}</td>
                       <td className="py-3 px-4 text-slate-600">
                         {p.items ? p.items.map((i: any) => i.medicine_name).join(', ') : 'EDL Medications'}
@@ -219,19 +227,28 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
                           {p.status}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-4 text-right space-x-1.5">
                         <button
                           onClick={() => setSelectedRx(p)}
-                          className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] rounded-lg transition cursor-pointer"
+                          className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] rounded-lg transition cursor-pointer"
                         >
-                          View Rx
+                          View
                         </button>
+                        {p.status !== 'DISPENSED' && isToday && (
+                          <button
+                            onClick={() => handleDispense(p.id)}
+                            disabled={dispensing}
+                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] rounded-lg shadow-2xs transition cursor-pointer"
+                          >
+                            Dispense
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-xs text-slate-400 font-medium">
+                    <td colSpan={6} className="py-8 text-center text-xs text-slate-400 font-medium">
                       No prescriptions found for selected date.
                     </td>
                   </tr>

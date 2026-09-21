@@ -3,6 +3,8 @@ from rest_framework import serializers, viewsets, permissions, status
 from rest_framework.response import Response
 from apps.consultations.models import Consultation, Prescription, PrescriptionItem
 
+import datetime
+
 class PrescriptionItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = PrescriptionItem
@@ -12,10 +14,26 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     items = PrescriptionItemSerializer(many=True, read_only=True)
     doctor_name = serializers.ReadOnlyField(source='doctor.full_name')
     patient_name = serializers.ReadOnlyField(source='patient.name')
+    patient_age = serializers.ReadOnlyField(source='patient.age')
+    patient_gender = serializers.ReadOnlyField(source='patient.gender')
+    token_number = serializers.SerializerMethodField()
+    visit_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Prescription
         fields = '__all__'
+
+    def get_token_number(self, obj):
+        if hasattr(obj, 'consultation') and obj.consultation and hasattr(obj.consultation, 'visit') and obj.consultation.visit:
+            if hasattr(obj.consultation.visit, 'token') and obj.consultation.visit.token:
+                return obj.consultation.visit.token.token_number
+            return obj.consultation.visit.id
+        return None
+
+    def get_visit_id(self, obj):
+        if hasattr(obj, 'consultation') and obj.consultation and obj.consultation.visit:
+            return obj.consultation.visit.id
+        return None
 
 class ConsultationSerializer(serializers.ModelSerializer):
     prescription = PrescriptionSerializer(read_only=True)
@@ -92,9 +110,11 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                     patient_id=patient_id,
                     doctor=request.user,
                     facility_id=facility_id,
-                    status='ACTIVE'
+                    status='PENDING'
                 )
             else:
+                prescription.status = 'PENDING'
+                prescription.save(update_fields=['status'])
                 prescription.items.all().delete()
 
             for item in prescription_items:
@@ -107,6 +127,28 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                     quantity=item.get('quantity', 14),
                     status='PENDING'
                 )
+
+        # Handle Lab Diagnostic Orders if provided directly
+        lab_test_ids = data.get('lab_test_ids') or data.get('tests') or []
+        if lab_test_ids:
+            from apps.laboratory.models import LabOrder, LabTestMaster
+            for tid in lab_test_ids:
+                try:
+                    test_obj = LabTestMaster.objects.filter(pk=tid).first()
+                    if test_obj:
+                        LabOrder.objects.get_or_create(
+                            visit_id=visit_id,
+                            test_master=test_obj,
+                            defaults={
+                                'patient_id': patient_id,
+                                'facility_id': facility_id,
+                                'doctor': request.user,
+                                'status': 'ORDERED',
+                                'consultation': consultation
+                            }
+                        )
+                except Exception:
+                    pass
 
         # Update visit status & queue
         visit = consultation.visit
@@ -147,13 +189,25 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     }
     filterset_fields = ['facility', 'status', 'patient']
 
-
     def get_queryset(self):
-        queryset = Prescription.objects.all().select_related('consultation', 'patient', 'doctor', 'facility').prefetch_related('items')
+        queryset = Prescription.objects.all().select_related('consultation', 'consultation__visit', 'consultation__visit__token', 'patient', 'doctor', 'facility').prefetch_related('items').order_by('-date', '-id')
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
         facility_param = self.request.query_params.get('facility')
         if facility_param:
             queryset = queryset.filter(facility_id=facility_param)
+        
+        req_date = self.request.query_params.get('date')
+        if req_date and req_date != 'all':
+            try:
+                target_date = datetime.datetime.strptime(req_date, '%Y-%m-%d').date()
+                queryset = queryset.filter(date=target_date)
+            except ValueError:
+                pass
+
+        visit_param = self.request.query_params.get('visit')
+        if visit_param:
+            queryset = queryset.filter(consultation__visit_id=visit_param)
+
         return queryset

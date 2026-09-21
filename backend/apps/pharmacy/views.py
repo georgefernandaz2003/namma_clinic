@@ -860,16 +860,30 @@ class DispenseMedicineView(APIView):
             prescription.save()
 
             # Update OPD Visit status to COMPLETED if all dispensed
+            target_v = None
             if hasattr(prescription, 'consultation') and prescription.consultation and prescription.consultation.visit:
-                v = prescription.consultation.visit
+                target_v = prescription.consultation.visit
+            elif prescription.patient and prescription.facility:
+                from apps.visits.models import Visit
+                target_v = Visit.objects.filter(
+                    patient=prescription.patient,
+                    facility=prescription.facility,
+                    opd_date=prescription.date if hasattr(prescription, 'date') and prescription.date else today
+                ).exclude(status='COMPLETED').first()
+
+            if target_v:
                 if all_dispensed:
-                    v.current_queue = 'COMPLETED'
-                    v.status = 'COMPLETED'
-                    v.completed_time = timezone.now()
-                    v.save()
-                    if hasattr(v, 'token') and v.token:
-                        v.token.status = 'COMPLETED'
-                        v.token.save()
+                    target_v.current_queue = 'COMPLETED'
+                    target_v.status = 'COMPLETED'
+                    target_v.completed_time = timezone.now()
+                    target_v.save()
+                    if hasattr(target_v, 'token') and target_v.token:
+                        target_v.token.status = 'COMPLETED'
+                        target_v.token.save()
+                elif any_dispensed:
+                    target_v.current_queue = 'PHARMACY'
+                    target_v.status = 'IN_PHARMACY'
+                    target_v.save()
 
             AuditLog.objects.create(
                 user=request.user,

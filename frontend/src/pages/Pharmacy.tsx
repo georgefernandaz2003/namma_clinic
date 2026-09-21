@@ -48,7 +48,7 @@ import {
   Info,
   RefreshCw,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 type ActiveTab =
   | 'DASHBOARD'
@@ -64,6 +64,7 @@ type ActiveTab =
 export const Pharmacy: React.FC = () => {
   const { activeFacility, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const isHospitalAdmin = user?.role === 'HOSPITAL_ADMIN';
   const isPharmacist = user?.role === 'PHARMACIST' || isHospitalAdmin;
@@ -239,6 +240,15 @@ export const Pharmacy: React.FC = () => {
         if (!curr) return null;
         return poList.find((p: any) => p.id === curr.id) || curr;
       });
+
+      // Handle direct queue dispatch
+      if (location.state?.visitId) {
+        const targetRx = rxList.find((r: any) => r.visit_id === location.state.visitId || r.consultation?.visit === location.state.visitId);
+        if (targetRx && targetRx.status !== 'DISPENSED') {
+          setActiveTab('PRESCRIPTIONS');
+          setTimeout(() => openDispenseModal(targetRx), 150);
+        }
+      }
     } catch (e) {
       console.error('Failed to load pharmacy module data', e);
     } finally {
@@ -249,6 +259,14 @@ export const Pharmacy: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [activeFacility]);
+
+  useEffect(() => {
+    if (location.state?.activeTab) {
+      setActiveTab(location.state.activeTab);
+    } else if (location.state?.visitId || location.state?.patientId) {
+      setActiveTab('PRESCRIPTIONS');
+    }
+  }, [location.state]);
 
   // Helper to match medicine names between batch records and prescriptions
   const matchMedicineBatch = (batchMedName?: string, itemMedName?: string) => {
@@ -1025,7 +1043,10 @@ export const Pharmacy: React.FC = () => {
                       p.patient_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                       String(p.id).includes(searchQuery);
                     const matchStatus =
-                      prescriptionStatusFilter === 'ALL' || p.status === prescriptionStatusFilter;
+                      prescriptionStatusFilter === 'ALL' ||
+                      (prescriptionStatusFilter === 'PENDING'
+                        ? p.status === 'PENDING' || p.status === 'ACTIVE'
+                        : p.status === prescriptionStatusFilter);
                     return matchSearch && matchStatus;
                   }).length === 0 ? (
                     <tr>
@@ -1041,12 +1062,22 @@ export const Pharmacy: React.FC = () => {
                           p.patient_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           String(p.id).includes(searchQuery);
                         const matchStatus =
-                          prescriptionStatusFilter === 'ALL' || p.status === prescriptionStatusFilter;
+                          prescriptionStatusFilter === 'ALL' ||
+                          (prescriptionStatusFilter === 'PENDING'
+                            ? p.status === 'PENDING' || p.status === 'ACTIVE'
+                            : p.status === prescriptionStatusFilter);
                         return matchSearch && matchStatus;
                       })
                       .map((p) => (
                         <tr key={p.id} className="hover:bg-slate-50/80 transition">
-                          <td className="p-4 font-mono font-bold text-amber-700">#RX-{String(p.id).padStart(4, '0')}</td>
+                          <td className="p-4 font-mono font-bold text-amber-700">
+                            <div>#RX-{String(p.id).padStart(4, '0')}</div>
+                            {(p as any).token_number && (
+                              <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 text-[10px] font-mono font-bold border border-emerald-200">
+                                Token #{(p as any).token_number}
+                              </span>
+                            )}
+                          </td>
                           <td className="p-4 font-bold text-slate-900">{p.patient_name}</td>
                           <td className="p-4 text-slate-600">{p.doctor_name || 'Staff Doctor'}</td>
                           <td className="p-4 space-y-1">

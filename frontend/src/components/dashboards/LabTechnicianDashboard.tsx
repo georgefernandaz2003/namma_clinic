@@ -19,7 +19,9 @@ export const LabTechnicianDashboard: React.FC<LabTechnicianDashboardProps> = ({ 
 
   const fetchLabOrders = async () => {
     try {
-      const res = await api.get('lab/orders/');
+      const facParam = summary?.active_facility_id ? `facility=${summary.active_facility_id}&` : '';
+      const dateParam = date ? `date=${date}` : '';
+      const res = await api.get(`lab/orders/?${facParam}${dateParam}`);
       const list = res.data.results || res.data || [];
       setLabOrders(list);
       if (list.length > 0 && !selectedOrder) {
@@ -32,7 +34,7 @@ export const LabTechnicianDashboard: React.FC<LabTechnicianDashboardProps> = ({ 
 
   useEffect(() => {
     fetchLabOrders();
-  }, [date]);
+  }, [date, summary?.active_facility_id]);
 
   const handleSaveResult = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,6 +204,7 @@ export const LabTechnicianDashboard: React.FC<LabTechnicianDashboardProps> = ({ 
               <thead>
                 <tr className="bg-slate-100/70 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                   <th className="py-3 px-4">Order ID</th>
+                  <th className="py-3 px-4 text-center">Token</th>
                   <th className="py-3 px-4">Patient</th>
                   <th className="py-3 px-4">Test Requested</th>
                   <th className="py-3 px-4 text-center">Status</th>
@@ -213,6 +216,9 @@ export const LabTechnicianDashboard: React.FC<LabTechnicianDashboardProps> = ({ 
                   labOrders.map((o: any) => (
                     <tr key={o.id} className="hover:bg-slate-50 transition">
                       <td className="py-3 px-4 font-mono font-bold text-purple-700">#{o.id}</td>
+                      <td className="py-3 px-4 text-center font-mono font-bold text-emerald-700">
+                        {o.token_number ? `Token #${o.token_number}` : '—'}
+                      </td>
                       <td className="py-3 px-4 font-bold text-slate-900">{o.patient_name || 'Patient'}</td>
                       <td className="py-3 px-4 text-slate-700">{o.test_name}</td>
                       <td className="py-3 px-4 text-center">
@@ -234,7 +240,7 @@ export const LabTechnicianDashboard: React.FC<LabTechnicianDashboardProps> = ({ 
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-xs text-slate-400 font-medium">
+                    <td colSpan={6} className="py-8 text-center text-xs text-slate-400 font-medium">
                       No active lab orders found for selected date.
                     </td>
                   </tr>

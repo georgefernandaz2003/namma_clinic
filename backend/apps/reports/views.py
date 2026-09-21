@@ -66,8 +66,14 @@ class DashboardSummaryView(APIView):
         in_triage = opd_visits_qs.filter(current_queue='TRIAGE', status='IN_TRIAGE').count()
         doctor_waiting = opd_visits_qs.filter(current_queue='DOCTOR', status__in=['WAITING_FOR_DOCTOR', 'TRIAGED', 'LAB_COMPLETED']).count()
         in_consultation = opd_visits_qs.filter(current_queue='DOCTOR', status='IN_CONSULTATION').count()
-        lab_pending = LabOrder.objects.filter(facility_id__in=target_fac_ids, order_date__date=target_date, status__in=['ORDERED', 'SAMPLE_COLLECTED']).count()
-        pharmacy_waiting = Prescription.objects.filter(facility_id__in=target_fac_ids, date=target_date, status='PENDING').count()
+        lab_visits = opd_visits_qs.filter(current_queue='LAB', status__in=['LAB_PENDING', 'LAB_IN_PROGRESS']).count()
+        lab_orders_pending = LabOrder.objects.filter(facility_id__in=target_fac_ids, order_date__date=target_date, status__in=['ORDERED', 'SAMPLE_COLLECTED']).count()
+        lab_pending = max(lab_visits, lab_orders_pending)
+
+        pharmacy_visits = opd_visits_qs.filter(current_queue='PHARMACY', status__in=['WAITING_FOR_PHARMACY', 'IN_PHARMACY']).count()
+        pharmacy_rx = Prescription.objects.filter(facility_id__in=target_fac_ids, date=target_date, status__in=['PENDING', 'ACTIVE', 'PARTIALLY_DISPENSED']).count()
+        pharmacy_waiting = max(pharmacy_visits, pharmacy_rx)
+
         completed_count = opd_visits_qs.filter(status='COMPLETED').count()
         emergency_count = opd_visits_qs.filter(priority='EMERGENCY').count()
 

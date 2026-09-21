@@ -20,7 +20,8 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
   const fetchDoctorQueue = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`visits/?queue=DOCTOR&date=${date}`);
+      const facParam = summary?.active_facility_id ? `&facility=${summary.active_facility_id}` : '';
+      const res = await api.get(`visits/?queue=DOCTOR&date=${date}${facParam}`);
       const list = res.data.results || res.data || [];
       setOpdQueue(list);
       
@@ -36,15 +37,17 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
 
   useEffect(() => {
     fetchDoctorQueue();
-  }, [date]);
+  }, [date, summary?.active_facility_id]);
 
-  const handleCallPatient = async (visitId: number) => {
+  const handleCallPatient = async (_visitId?: number) => {
     if (!isToday) {
       alert('Queue status modifications are blocked on historical OPD dates.');
       return;
     }
     try {
-      const res = await api.post('visits/call-next/', { queue: 'DOCTOR' });
+      const payload: any = { queue: 'DOCTOR' };
+      if (summary?.active_facility_id) payload.facility = summary.active_facility_id;
+      const res = await api.post('visits/call-next/', payload);
       if (res.data && res.data.id) {
         setActiveVisit(res.data);
         fetchDoctorQueue();

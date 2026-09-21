@@ -552,9 +552,9 @@ export const Queue: React.FC = () => {
                               </button>
                             )}
 
-                            {v.status.includes('PHARMACY') && (
+                            {(v.status.includes('PHARMACY') || v.current_queue === 'PHARMACY') && (
                               <button
-                                onClick={() => navigate('/pharmacy')}
+                                onClick={() => navigate('/pharmacy', { state: { visitId: v.id, patientId: v.patient, activeTab: 'PRESCRIPTIONS' } })}
                                 className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
                               >
                                 <span>Dispense</span> <ArrowRight className="w-3 h-3" />
