@@ -297,7 +297,7 @@ export const Queue: React.FC = () => {
             </h2>
             <p className="text-[11px] opacity-90 mt-0.5">
               {isToday
-                ? 'Token numbers are unique per facility and date (restarting at #1 every morning). Call Next and clinical workflow transitions are enabled.'
+                ? 'Token numbers are unique per facility and date (restarting at #1 every morning). Clinical workflow transitions and triage routing are enabled.'
                 : isPast
                 ? 'Historical queue entries are stored for audit and reporting. Clinical transitions and token generation are read-only for past dates.'
                 : 'Future OPD tokens cannot be created in advance. Normal OPD queues operate strictly on the current day.'}
@@ -417,18 +417,6 @@ export const Queue: React.FC = () => {
             </button>
           ))}
         </div>
-
-        {/* Call Next Patient Button */}
-        {isToday && (
-          <button
-            onClick={handleCallNext}
-            disabled={callingNext}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md transition shrink-0"
-          >
-            <Play className={`w-4 h-4 fill-white ${callingNext ? 'animate-spin' : ''}`} />
-            <span>{callingNext ? 'Calling Patient...' : 'Call Next Waiting Patient'}</span>
-          </button>
-        )}
       </div>
 
       {/* Enhanced Date-Based Queue Table */}
