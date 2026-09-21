@@ -16,7 +16,7 @@ from apps.referrals.models import Referral, FollowUp
 from apps.ncd.models import NCDRecord
 from apps.surveillance.models import DiseaseCase
 from apps.alerts.models import Alert
-from apps.accounts.permissions import get_accessible_facility_ids_for_user
+from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission
 
 class DashboardSummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -262,10 +262,11 @@ class DashboardSummaryView(APIView):
 
 
 class CSVExportView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    required_permission = 'reports.export'
 
     def get(self, request):
-        report_type = request.query_params.get('type', 'opd')
+        report_type = request.query_params.get('type', 'opd').lower()
         facility_param = request.query_params.get('facility')
         accessible_ids = get_accessible_facility_ids_for_user(request.user)
 
@@ -305,6 +306,43 @@ class CSVExportView(APIView):
                 refs = refs.filter(Q(source_facility_id__in=target_fac_ids) | Q(destination_facility_id__in=target_fac_ids))
             for r in refs:
                 writer.writerow([r.referral_id, r.patient.name, r.source_facility.facility_name, r.destination_facility.facility_name, r.urgency, r.status, r.referral_date])
+
+        elif report_type == 'ncd':
+            writer.writerow(['Patient ID', 'Patient Name', 'Facility', 'Screening Date', 'Hypertension Diagnosed', 'Diabetes Diagnosed', 'Risk Level', 'Control Status', 'Last BP', 'Last Glucose', 'Next Followup Due'])
+            ncd_records = NCDRecord.objects.all().select_related('patient', 'facility')
+            if target_fac_ids is not None:
+                ncd_records = ncd_records.filter(facility_id__in=target_fac_ids)
+            for nr in ncd_records:
+                writer.writerow([
+                    nr.patient.patient_id,
+                    nr.patient.name,
+                    nr.facility.facility_name,
+                    nr.screening_date,
+                    'YES' if nr.hypertension_diagnosed else 'NO',
+                    'YES' if nr.diabetes_diagnosed else 'NO',
+                    nr.risk_level,
+                    nr.control_status,
+                    nr.last_bp,
+                    nr.last_glucose,
+                    nr.next_followup_due or ''
+                ])
+
+        elif report_type == 'surveillance':
+            writer.writerow(['Disease Name', 'Patient Name', 'Facility', 'Ward', 'Report Date', 'Severity', 'Status', 'Notes'])
+            cases = DiseaseCase.objects.all().select_related('patient', 'facility', 'ward')
+            if target_fac_ids is not None:
+                cases = cases.filter(facility_id__in=target_fac_ids)
+            for c in cases:
+                writer.writerow([
+                    c.disease_name,
+                    c.patient.name,
+                    c.facility.facility_name,
+                    c.ward.name if c.ward else '',
+                    c.report_date,
+                    c.severity,
+                    c.status,
+                    c.notes
+                ])
 
         else:
             writer.writerow(['Patient ID', 'Name', 'Age', 'Gender', 'Mobile', 'District', 'Registration Date'])

@@ -45,6 +45,15 @@ class VisitViewSet(viewsets.ModelViewSet):
     serializer_class = VisitSerializer
     permission_classes = [permissions.IsAuthenticated, HasPermission]
     required_permissions = {
+        'list': 'queue.view',
+        'retrieve': 'queue.view',
+        'history_summary': 'queue.view',
+        'create': 'queue.create',
+        'call_next_patient': 'queue.call_next',
+        'transition_status': 'queue.transition',
+        'update': 'queue.update',
+        'partial_update': 'queue.update',
+        'destroy': 'queue.update',
         'GET': 'queue.view',
         'POST': 'queue.update',
         'PUT': 'queue.update',
@@ -186,6 +195,13 @@ class VisitViewSet(viewsets.ModelViewSet):
 
         if not facility_id:
             return Response({'error': 'Facility context required to call next patient.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Enforce minimum necessary queue privilege per role
+        user_role = getattr(request.user, 'role', '')
+        if user_role == 'DOCTOR' and target_queue != 'DOCTOR':
+            return Response({'error': 'Doctors are only authorized to call patients from the DOCTOR consultation queue.'}, status=status.HTTP_403_FORBIDDEN)
+        elif user_role == 'NURSE' and target_queue != 'TRIAGE':
+            return Response({'error': 'Nurses are only authorized to call patients from the TRIAGE queue.'}, status=status.HTTP_403_FORBIDDEN)
 
         with transaction.atomic():
             waiting_status_map = {

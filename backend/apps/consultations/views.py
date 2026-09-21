@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers, viewsets, permissions, status
 from rest_framework.response import Response
 from apps.consultations.models import Consultation, Prescription, PrescriptionItem
@@ -59,15 +60,23 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         visit_id = data.get('visit')
         patient_id = data.get('patient')
         facility_id = data.get('facility')
+
+        if not visit_id:
+            return Response({'error': 'Visit is required for consultation.'}, status=status.HTTP_400_BAD_REQUEST)
         
         consultation = Consultation.objects.filter(visit_id=visit_id).first()
-        if consultation:
+        is_update = consultation is not None
+
+        if is_update:
             consultation.chief_complaint = data.get('chief_complaint', consultation.chief_complaint)
             consultation.clinical_history = data.get('clinical_history', consultation.clinical_history)
             consultation.clinical_assessment = data.get('clinical_assessment', consultation.clinical_assessment)
             consultation.diagnosis_code = data.get('diagnosis_code', consultation.diagnosis_code)
             consultation.diagnosis_name = data.get('diagnosis_name', consultation.diagnosis_name)
             consultation.clinical_notes = data.get('clinical_notes', consultation.clinical_notes)
+            consultation.treatment_plan = data.get('treatment_plan', consultation.treatment_plan)
+            if data.get('follow_up_date'):
+                consultation.follow_up_date = data.get('follow_up_date')
             consultation.save()
         else:
             consultation = Consultation.objects.create(
@@ -92,9 +101,9 @@ class ConsultationViewSet(viewsets.ModelViewSet):
             if not prescription:
                 prescription = Prescription.objects.create(
                     consultation=consultation,
-                    patient_id=patient_id,
+                    patient_id=patient_id or consultation.patient_id,
                     doctor=request.user,
-                    facility_id=facility_id,
+                    facility_id=facility_id or consultation.facility_id,
                     status='ACTIVE'
                 )
             else:
@@ -128,7 +137,6 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                     status='PENDING'
                 )
 
-
         # Update visit status & queue
         visit = consultation.visit
         if visit:
@@ -144,7 +152,8 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                 visit.token.status = 'COMPLETED' if visit.status == 'COMPLETED' else 'IN_PROGRESS'
                 visit.token.save()
 
-        return Response(ConsultationSerializer(consultation).data, status=status.HTTP_201_CREATED)
+        res_status = status.HTTP_200_OK if is_update else status.HTTP_201_CREATED
+        return Response(ConsultationSerializer(consultation).data, status=res_status)
 
 class PrescriptionViewSet(viewsets.ModelViewSet):
     serializer_class = PrescriptionSerializer

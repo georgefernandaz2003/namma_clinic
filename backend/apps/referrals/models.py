@@ -59,5 +59,22 @@ class FollowUp(models.Model):
     ], default='PENDING')
     notes = models.TextField(blank=True)
 
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.referral:
+            if self.patient_id and self.referral.patient_id and self.patient_id != self.referral.patient_id:
+                raise ValidationError("FollowUp patient must match Referral patient.")
+            if self.visit_id and self.referral.visit_id and self.visit_id != self.referral.visit_id:
+                raise ValidationError(f"FollowUp visit #{self.visit_id} must match Referral encounter visit #{self.referral.visit_id}.")
+
+    def save(self, *args, **kwargs):
+        if self.referral:
+            if not self.visit_id and self.referral.visit_id:
+                self.visit = self.referral.visit
+            if not self.patient_id and self.referral.patient_id:
+                self.patient = self.referral.patient
+        self.clean()
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"FollowUp for {self.patient.name} [{self.category}] due {self.due_date}"

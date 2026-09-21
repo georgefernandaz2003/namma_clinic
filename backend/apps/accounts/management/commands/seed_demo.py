@@ -598,7 +598,7 @@ class Command(BaseCommand):
         )
 
         FollowUp.objects.create(
-            patient=p_ramesh, referral=ref_ramesh, visit=v_rc_1, facility=rc_a4, category='REFERRAL',
+            patient=p_ramesh, referral=ref_ramesh, visit=ref_ramesh.visit, facility=rc_a4, category='REFERRAL',
             due_date=today + datetime.timedelta(days=14), status='PENDING', notes='Review post-specialist referral response'
         )
         FollowUp.objects.create(

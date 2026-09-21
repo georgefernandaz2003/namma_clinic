@@ -630,3 +630,315 @@ class PhaseABRegressionTests(TestCase):
         res_b_batch = self.client.get('/api/pharmacy/batches/')
         b_batch_ids = [b['id'] for b in res_b_batch.data.get('results', res_b_batch.data)]
         self.assertIn(batch_b.id, b_batch_ids)
+
+
+class PhaseC1RegressionTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+        # Geography setup
+        self.state = State.objects.create(name='Karnataka', code='KA')
+        self.district = District.objects.create(name='Bengaluru Urban', code='BLR', state=self.state)
+        self.zone = Zone.objects.create(name='South Zone', code='SZ', district=self.district)
+        self.ward = Ward.objects.create(name='Jayanagar', ward_number='153', zone=self.zone)
+
+        # Facilities
+        self.hosp = Facility.objects.create(
+            facility_name='Victoria District Hospital', facility_code='HOSP-01',
+            facility_type='MAIN_HOSPITAL', state=self.state, district=self.district, ward=self.ward
+        )
+        self.clinic = Facility.objects.create(
+            facility_name='Varthur Rural Primary Clinic', facility_code='CLINIC-01',
+            facility_type='RURAL_CLINIC', state=self.state, district=self.district, ward=self.ward,
+            parent_facility=self.hosp
+        )
+
+        # Users
+        self.dho = User.objects.create_user(
+            username='dho_c1', password='password123', role='DISTRICT_OFFICER',
+            assigned_district=self.district, full_name='Dr. District Officer'
+        )
+        self.admin = User.objects.create_user(
+            username='admin_c1', password='password123', role='HOSPITAL_ADMIN',
+            assigned_facility=self.clinic, full_name='Hospital Admin'
+        )
+        self.doctor = User.objects.create_user(
+            username='doc_c1', password='password123', role='DOCTOR',
+            assigned_facility=self.clinic, full_name='Dr. Clinic Doctor'
+        )
+        self.nurse = User.objects.create_user(
+            username='nurse_c1', password='password123', role='NURSE',
+            assigned_facility=self.clinic, full_name='Nurse Ananya'
+        )
+
+        # Patient
+        self.patient = Patient.objects.create(
+            patient_id='PAT-C1-001', name='Ramesh Kumar', age=52, gender='MALE',
+            mobile='9876543210', address='Varthur Road', registered_at_facility=self.clinic,
+            district=self.district, ward=self.ward, registration_date=datetime.date.today()
+        )
+
+        # Visits
+        today = datetime.date.today()
+        self.visit_doc = Visit.objects.create(
+            visit_id='VIS-C1-DOC-01', patient=self.patient, facility=self.clinic,
+            opd_date=today, current_queue='DOCTOR', status='WAITING_FOR_DOCTOR', priority='NORMAL'
+        )
+        self.token_doc = Token.objects.create(
+            token_number=1, visit=self.visit_doc, facility=self.clinic, date=today, status='WAITING'
+        )
+
+        self.visit_triage = Visit.objects.create(
+            visit_id='VIS-C1-TRI-01', patient=self.patient, facility=self.clinic,
+            opd_date=today, current_queue='TRIAGE', status='WAITING_FOR_TRIAGE', priority='NORMAL'
+        )
+        self.token_triage = Token.objects.create(
+            token_number=2, visit=self.visit_triage, facility=self.clinic, date=today, status='WAITING'
+        )
+
+    # =========================================================================
+    # FND-01: ROUTE GUARD PERMISSIONS (ARS, Quality, Integrations)
+    # =========================================================================
+
+    def test_fnd01_dho_and_admin_have_access_to_ars_quality_and_integrations(self):
+        """DHO and Hospital Admin must be authorized to access ARS, Quality, and Integrations."""
+        from apps.ars.models import ARSMeeting
+        from apps.quality.models import QualityChecklist, BiomedicalWasteLog
+        from apps.integrations.models import IntegrationConfiguration
+
+        ARSMeeting.objects.create(facility=self.clinic, meeting_date=datetime.date.today(), chairperson_name='Corporator Ramesh', agenda='Primary Care Review')
+        QualityChecklist.objects.create(facility=self.clinic, cleanliness_score=92)
+        BiomedicalWasteLog.objects.create(facility=self.clinic, yellow_bag_kg=4.5)
+        IntegrationConfiguration.objects.get_or_create(system_name='ABDM_TEST', defaults={'display_name': 'ABDM M1/M2 Connector'})
+
+        for user in [self.dho, self.admin]:
+            self.client.force_authenticate(user=user)
+            res_ars = self.client.get('/api/ars/meetings/')
+            self.assertEqual(res_ars.status_code, status.HTTP_200_OK)
+
+            res_qc = self.client.get('/api/quality/checklists/')
+            self.assertEqual(res_qc.status_code, status.HTTP_200_OK)
+
+            res_waste = self.client.get('/api/quality/waste-logs/')
+            self.assertEqual(res_waste.status_code, status.HTTP_200_OK)
+
+            res_int = self.client.get('/api/integrations/')
+            self.assertEqual(res_int.status_code, status.HTTP_200_OK)
+
+    # =========================================================================
+    # FND-02: DOCTOR QUEUE ACTIONS & PRIVILEGE ENFORCEMENT
+    # =========================================================================
+
+    def test_fnd02_doctor_can_call_next_patient_in_doctor_queue(self):
+        """Doctor can call the next patient waiting in the DOCTOR queue."""
+        self.client.force_authenticate(user=self.doctor)
+        res = self.client.post('/api/visits/call-next/', {
+            'facility': self.clinic.id,
+            'queue': 'DOCTOR'
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['status'], 'IN_CONSULTATION')
+        self.assertEqual(res.data['assigned_doctor_name'], self.doctor.full_name)
+
+    def test_fnd02_doctor_cannot_call_triage_queue(self):
+        """Doctor is forbidden from calling patients from the TRIAGE queue."""
+        self.client.force_authenticate(user=self.doctor)
+        res = self.client.post('/api/visits/call-next/', {
+            'facility': self.clinic.id,
+            'queue': 'TRIAGE'
+        })
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_fnd02_doctor_cannot_create_arbitrary_visits(self):
+        """Doctor does not have queue.create permission and cannot create new OPD visits."""
+        self.client.force_authenticate(user=self.doctor)
+        res = self.client.post('/api/visits/', {
+            'patient': self.patient.id,
+            'facility': self.clinic.id,
+            'visit_type': 'GENERAL_OPD'
+        })
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_fnd02_nurse_can_call_triage_queue_but_not_doctor_queue(self):
+        """Nurse can call TRIAGE queue, but is blocked from calling DOCTOR queue."""
+        self.client.force_authenticate(user=self.nurse)
+        res_triage = self.client.post('/api/visits/call-next/', {
+            'facility': self.clinic.id,
+            'queue': 'TRIAGE'
+        })
+        self.assertEqual(res_triage.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_triage.data['status'], 'IN_TRIAGE')
+
+        res_doc = self.client.post('/api/visits/call-next/', {
+            'facility': self.clinic.id,
+            'queue': 'DOCTOR'
+        })
+        self.assertEqual(res_doc.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_fnd02_dho_cannot_call_next_patient(self):
+        """DHO has read-only oversight and cannot call patients in active queues."""
+        self.client.force_authenticate(user=self.dho)
+        res = self.client.post('/api/visits/call-next/', {
+            'facility': self.clinic.id,
+            'queue': 'DOCTOR'
+        })
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    # =========================================================================
+    # FND-04: NCD AND SURVEILLANCE EXPORT
+    # =========================================================================
+
+    def test_fnd04_ncd_export_returns_ncd_records_not_patient_master(self):
+        """Exporting NCD report must output NCDRecord dataset with screening columns."""
+        NCDRecord.objects.create(
+            patient=self.patient, facility=self.clinic, hypertension_diagnosed=True,
+            diabetes_diagnosed=True, risk_level='HIGH', control_status='UNCONTROLLED',
+            last_bp='150/96', last_glucose=185
+        )
+        self.client.force_authenticate(user=self.dho)
+        res = self.client.get(f'/api/reports/export/?type=ncd&facility={self.clinic.id}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        content = res.content.decode('utf-8')
+        self.assertIn('Hypertension Diagnosed', content)
+        self.assertIn('Diabetes Diagnosed', content)
+        self.assertIn('150/96', content)
+        self.assertIn('185', content)
+        self.assertIn(self.patient.name, content)
+
+    def test_fnd04_surveillance_export_returns_disease_cases_not_patient_master(self):
+        """Exporting Surveillance report must output DiseaseCase dataset with disease columns."""
+        DiseaseCase.objects.create(
+            disease_name='Dengue Fever', patient=self.patient, facility=self.clinic,
+            ward=self.ward, severity='SEVERE', status='CONFIRMED', notes='Platelet drop below 50k'
+        )
+        self.client.force_authenticate(user=self.dho)
+        res = self.client.get(f'/api/reports/export/?type=surveillance&facility={self.clinic.id}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        content = res.content.decode('utf-8')
+        self.assertIn('Disease Name', content)
+        self.assertIn('Dengue Fever', content)
+        self.assertIn('Platelet drop below 50k', content)
+        self.assertIn(self.ward.name, content)
+
+    def test_fnd04_patients_export_returns_patient_directory(self):
+        """Exporting patients report must output patient demographic columns."""
+        self.client.force_authenticate(user=self.dho)
+        res = self.client.get(f'/api/reports/export/?type=patients&facility={self.clinic.id}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        content = res.content.decode('utf-8')
+        self.assertIn('Patient ID', content)
+        self.assertIn('Registration Date', content)
+        self.assertIn(self.patient.patient_id, content)
+
+    # =========================================================================
+    # FND-07: CLINICAL RE-SAVE IDEMPOTENCY (No HTTP 500 on Re-save)
+    # =========================================================================
+
+    def test_fnd07_triage_resave_updates_existing_record_without_500(self):
+        """Re-saving triage vitals on the same visit must update and return HTTP 200, never 500."""
+        self.client.force_authenticate(user=self.nurse)
+        # 1. Initial save
+        res1 = self.client.post('/api/triage/', {
+            'visit': self.visit_triage.id,
+            'patient': self.patient.id,
+            'blood_pressure_systolic': 130,
+            'blood_pressure_diastolic': 85,
+            'pulse_bpm': 75,
+            'temperature_f': 98.6
+        })
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res1.data['blood_pressure_systolic'], 130)
+
+        # 2. Re-save / update with revised systolic BP
+        res2 = self.client.post('/api/triage/', {
+            'visit': self.visit_triage.id,
+            'patient': self.patient.id,
+            'blood_pressure_systolic': 145,
+            'blood_pressure_diastolic': 90,
+            'pulse_bpm': 80,
+            'temperature_f': 99.1
+        })
+        self.assertEqual(res2.status_code, status.HTTP_200_OK)
+        self.assertEqual(res2.data['blood_pressure_systolic'], 145)
+        self.assertEqual(TriageVitals.objects.filter(visit=self.visit_triage).count(), 1)
+
+    def test_fnd07_consultation_resave_updates_existing_record_without_500(self):
+        """Re-saving consultation on the same visit must update and return HTTP 200, never 500."""
+        self.client.force_authenticate(user=self.doctor)
+        # 1. Initial consultation save
+        res1 = self.client.post('/api/consultations/', {
+            'visit': self.visit_doc.id,
+            'patient': self.patient.id,
+            'facility': self.clinic.id,
+            'chief_complaint': 'Severe headache',
+            'diagnosis_name': 'Essential Hypertension'
+        })
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+
+        # 2. Re-save / update with revised diagnosis
+        res2 = self.client.post('/api/consultations/', {
+            'visit': self.visit_doc.id,
+            'patient': self.patient.id,
+            'facility': self.clinic.id,
+            'chief_complaint': 'Severe headache and blurred vision',
+            'diagnosis_name': 'Hypertensive Urgency with Type 2 Diabetes'
+        })
+        self.assertEqual(res2.status_code, status.HTTP_200_OK)
+        self.assertEqual(res2.data['diagnosis_name'], 'Hypertensive Urgency with Type 2 Diabetes')
+        self.assertEqual(Consultation.objects.filter(visit=self.visit_doc).count(), 1)
+
+    # =========================================================================
+    # FND-03: FOLLOWUP CROSS-ENCOUNTER INTEGRITY
+    # =========================================================================
+
+    def test_fnd03_followup_consistent_with_referral_succeeds(self):
+        """Creating FollowUp matching Referral patient, visit, and facility succeeds."""
+        referral = Referral.objects.create(
+            referral_id='REF-TEST-001', patient=self.patient, visit=self.visit_doc,
+            source_facility=self.clinic, destination_facility=self.hosp, referring_doctor=self.doctor,
+            reason='Specialist cardiology consult'
+        )
+
+        followup = FollowUp.objects.create(
+            patient=self.patient, referral=referral, visit=self.visit_doc,
+            facility=self.clinic, category='REFERRAL', due_date=datetime.date.today() + datetime.timedelta(days=14)
+        )
+        self.assertEqual(followup.patient, referral.patient)
+        self.assertEqual(followup.visit, referral.visit)
+        self.assertEqual(followup.facility, referral.source_facility)
+
+    def test_fnd03_followup_cross_encounter_mismatch_rejected(self):
+        """Creating FollowUp referencing Referral from a different visit is rejected by validation."""
+        other_visit = Visit.objects.create(
+            visit_id='VIS-OTHER-999', patient=self.patient, facility=self.clinic,
+            opd_date=datetime.date.today() - datetime.timedelta(days=7),
+            current_queue='COMPLETED', status='COMPLETED'
+        )
+        referral = Referral.objects.create(
+            referral_id='REF-TEST-002', patient=self.patient, visit=self.visit_doc,
+            source_facility=self.clinic, destination_facility=self.hosp, referring_doctor=self.doctor,
+            reason='Specialist cardiology consult'
+        )
+
+        # 1. Serializer validation check
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.post('/api/followups/', {
+            'patient': self.patient.id,
+            'referral': referral.id,
+            'visit': other_visit.id,  # Mismatch!
+            'facility': self.clinic.id,
+            'category': 'REFERRAL',
+            'due_date': str(datetime.date.today() + datetime.timedelta(days=14))
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('visit', str(res.data))
+
+        # 2. Model clean validation check
+        from django.core.exceptions import ValidationError
+        bad_fu = FollowUp(
+            patient=self.patient, referral=referral, visit=other_visit,
+            facility=self.clinic, category='REFERRAL', due_date=datetime.date.today()
+        )
+        with self.assertRaises(ValidationError):
+            bad_fu.clean()
+

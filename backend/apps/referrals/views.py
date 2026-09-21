@@ -31,6 +31,31 @@ class FollowUpSerializer(serializers.ModelSerializer):
         model = FollowUp
         fields = '__all__'
 
+    def validate(self, attrs):
+        referral = attrs.get('referral') or (self.instance.referral if self.instance else None)
+        patient = attrs.get('patient') or (self.instance.patient if self.instance else None)
+        visit = attrs.get('visit') or (self.instance.visit if self.instance else None)
+        facility = attrs.get('facility') or (self.instance.facility if self.instance else None)
+
+        if referral:
+            if patient and referral.patient_id != patient.id:
+                raise serializers.ValidationError({
+                    'patient': f"FollowUp patient '{patient.name}' must match Referral patient '{referral.patient.name}'."
+                })
+            if visit and referral.visit_id and referral.visit_id != visit.id:
+                raise serializers.ValidationError({
+                    'visit': f"FollowUp visit #{visit.id} must match Referral encounter visit #{referral.visit_id}."
+                })
+            if not visit and referral.visit:
+                attrs['visit'] = referral.visit
+            if not patient and referral.patient:
+                attrs['patient'] = referral.patient
+            if facility and referral.source_facility_id and facility.id != referral.source_facility_id:
+                raise serializers.ValidationError({
+                    'facility': f"FollowUp return facility '{facility.facility_name}' must match Referral source facility '{referral.source_facility.facility_name}'."
+                })
+        return attrs
+
 from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
 
 class ReferralViewSet(viewsets.ModelViewSet):
@@ -108,6 +133,7 @@ class ReferralViewSet(viewsets.ModelViewSet):
         FollowUp.objects.create(
             patient=referral.patient,
             referral=referral,
+            visit=referral.visit,
             facility=referral.source_facility,
             category='REFERRAL',
             due_date=datetime.date.today() + datetime.timedelta(days=7),
