@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Visit, TriageVitals } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { FileText, Pill, Share2, Plus, Trash2, TestTube } from 'lucide-react';
+import { FileText, Pill, Share2, Plus, Trash2 } from 'lucide-react';
 
 export const Consultation: React.FC = () => {
   const { activeFacility, allFacilities } = useAuth();
@@ -15,7 +15,6 @@ export const Consultation: React.FC = () => {
   const [triagedVisits, setTriagedVisits] = useState<Visit[]>([]);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
   const [vitals, setVitals] = useState<TriageVitals | null>(null);
-  const [patientLabOrders, setPatientLabOrders] = useState<any[]>([]);
 
   // Form states
   const [chiefComplaint, setChiefComplaint] = useState('');
@@ -100,20 +99,6 @@ export const Consultation: React.FC = () => {
       else setVitals(null);
     } catch (e) {
       setVitals(null);
-    }
-
-    // Fetch existing Lab Orders & verified results for this patient/visit
-    try {
-      const labRes = await api.get(`lab/orders/?visit=${v.id}`);
-      const labList = labRes.data.results || labRes.data || [];
-      if (labList.length > 0) {
-        setPatientLabOrders(labList);
-      } else {
-        const patLabRes = await api.get(`lab/orders/?patient=${v.patient}&facility=${v.facility}`);
-        setPatientLabOrders(patLabRes.data.results || patLabRes.data || []);
-      }
-    } catch (e) {
-      setPatientLabOrders([]);
     }
   };
 
@@ -357,57 +342,6 @@ export const Consultation: React.FC = () => {
                     <div className="bg-white p-2 rounded border border-slate-200">
                       <span className="text-[10px] text-slate-500 block font-semibold">BMI</span>
                       <span className="font-bold font-mono text-slate-800">{vitals.bmi}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Lab Diagnostic Results for Re-Consultation Review */}
-                {patientLabOrders.length > 0 && (
-                  <div className="p-3.5 bg-purple-50/80 border border-purple-200 rounded-xl space-y-2 mt-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
-                        <TestTube className="w-4 h-4 text-purple-600" />
-                        Diagnostic Lab Results (Re-Consultation Review)
-                      </span>
-                      <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-200">
-                        {patientLabOrders.filter((o: any) => o.status === 'VERIFIED').length} / {patientLabOrders.length} Verified
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {patientLabOrders.map((lo: any) => (
-                        <div key={lo.id} className="p-2.5 bg-white border border-purple-200 rounded-lg text-xs space-y-1 shadow-2xs">
-                          <div className="flex justify-between items-center">
-                            <span className="font-bold text-slate-900">{lo.test_master_name || lo.test_master?.name || 'Diagnostic Test'}</span>
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                              lo.status === 'VERIFIED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                            }`}>
-                              {lo.status}
-                            </span>
-                          </div>
-                          {lo.result ? (
-                            <div className="flex items-baseline justify-between text-[11px] pt-1 border-t border-slate-100">
-                              <span className="font-mono font-bold text-slate-900">
-                                {lo.result.result_value} {lo.result.unit}
-                              </span>
-                              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                                lo.result.interpretation_flag === 'HIGH' || lo.result.interpretation_flag === 'CRITICAL'
-                                  ? 'bg-rose-100 text-rose-700'
-                                  : lo.result.interpretation_flag === 'LOW'
-                                  ? 'bg-amber-100 text-amber-700'
-                                  : 'bg-emerald-50 text-emerald-700'
-                              }`}>
-                                [{lo.result.interpretation_flag}]
-                              </span>
-                            </div>
-                          ) : (
-                            <p className="text-[10px] text-slate-400 italic">Specimen currently in laboratory pipeline</p>
-                          )}
-                          {lo.result?.reference_range && (
-                            <p className="text-[9px] text-slate-400">Ref: {lo.result.reference_range}</p>
-                          )}
-                        </div>
-                      ))}
                     </div>
                   </div>
                 )}
