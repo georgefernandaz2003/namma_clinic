@@ -33,37 +33,170 @@ import {
   Wrench
 } from 'lucide-react';
 
+import type { Role } from '../types';
+
 interface NavItem {
   name: string;
   path: string;
   icon: React.ReactNode;
 }
 
-const navItems: NavItem[] = [
-  { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-5 h-5" /> },
-  { name: 'Healthcare Network', path: '/network', icon: <Network className="w-5 h-5 text-teal-600" /> },
-  { name: 'Facilities Master', path: '/facilities', icon: <Building2 className="w-5 h-5" /> },
-  { name: 'Patients', path: '/patients', icon: <Users className="w-5 h-5" /> },
-  { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-5 h-5" /> },
-  { name: 'Nurse Triage', path: '/triage', icon: <Stethoscope className="w-5 h-5 text-emerald-600" /> },
-  { name: 'Doctor Consultation', path: '/consultation', icon: <FileText className="w-5 h-5 text-blue-600" /> },
-  { name: 'Diagnostics Lab', path: '/lab', icon: <TestTube className="w-5 h-5 text-purple-600" /> },
-  { name: 'Pharmacy & FEFO', path: '/pharmacy', icon: <Pill className="w-5 h-5 text-amber-600" /> },
-  { name: 'Referral Network', path: '/referrals', icon: <Share2 className="w-5 h-5 text-rose-600" /> },
-  { name: 'Follow-up Care', path: '/followups', icon: <CalendarCheck className="w-5 h-5" /> },
-  { name: 'NCD Management', path: '/ncd', icon: <Activity className="w-5 h-5" /> },
-  { name: 'Disease Surveillance', path: '/surveillance', icon: <Radio className="w-5 h-5 text-red-600" /> },
-  { name: 'Outreach & Camps', path: '/outreach', icon: <MapPin className="w-5 h-5" /> },
-  { name: 'Wellness Sessions', path: '/wellness', icon: <Smile className="w-5 h-5" /> },
-  { name: 'ARS Committee', path: '/ars', icon: <Users2 className="w-5 h-5" /> },
-  { name: 'Quality & Waste', path: '/quality', icon: <ShieldCheck className="w-5 h-5" /> },
-  { name: 'Clinic Infra & Maintenance', path: '/infrastructure', icon: <Wrench className="w-5 h-5 text-amber-600" /> },
-  { name: 'Reports & CSV', path: '/reports', icon: <FileSpreadsheet className="w-5 h-5" /> },
-  { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-5 h-5 text-yellow-600" /> },
-  { name: 'Integrations (Mock)', path: '/integrations', icon: <Sliders className="w-5 h-5" /> },
-  { name: 'Namma Compliance', path: '/compliance', icon: <CheckSquare className="w-5 h-5 text-emerald-600" /> },
-  { name: 'Audit Trail', path: '/audit', icon: <Lock className="w-5 h-5" /> },
-];
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
+
+const ROLE_NAV_SECTIONS: Record<Role, NavSection[]> = {
+  DOCTOR: [
+    {
+      title: 'CLINICAL CARE',
+      items: [
+        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-blue-600" /> },
+        { name: 'Patients', path: '/patients', icon: <Users className="w-4 h-4 text-blue-600" /> },
+        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-emerald-600" /> },
+        { name: 'Doctor Consultation', path: '/consultation', icon: <FileText className="w-4 h-4 text-blue-600" /> },
+        { name: 'Diagnostics Lab', path: '/lab', icon: <TestTube className="w-4 h-4 text-purple-600" /> },
+        { name: 'Referral Network', path: '/referrals', icon: <Share2 className="w-4 h-4 text-rose-600" /> },
+        { name: 'Follow-up Care', path: '/followups', icon: <CalendarCheck className="w-4 h-4 text-teal-600" /> },
+        { name: 'NCD Management', path: '/ncd', icon: <Activity className="w-4 h-4 text-rose-500" /> },
+      ],
+    },
+    {
+      title: 'SYSTEM',
+      items: [
+        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
+      ],
+    },
+  ],
+  NURSE: [
+    {
+      title: 'PRIMARY CARE & TRIAGE',
+      items: [
+        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-emerald-600" /> },
+        { name: 'Patients', path: '/patients', icon: <Users className="w-4 h-4 text-emerald-600" /> },
+        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-emerald-600" /> },
+        { name: 'Nurse Triage', path: '/triage', icon: <Stethoscope className="w-4 h-4 text-emerald-600" /> },
+        { name: 'Follow-up Care', path: '/followups', icon: <CalendarCheck className="w-4 h-4 text-teal-600" /> },
+        { name: 'NCD Management', path: '/ncd', icon: <Activity className="w-4 h-4 text-rose-500" /> },
+      ],
+    },
+    {
+      title: 'COMMUNITY HEALTH',
+      items: [
+        { name: 'Outreach & Camps', path: '/outreach', icon: <MapPin className="w-4 h-4 text-emerald-600" /> },
+        { name: 'Wellness Sessions', path: '/wellness', icon: <Smile className="w-4 h-4 text-teal-600" /> },
+      ],
+    },
+    {
+      title: 'SYSTEM',
+      items: [
+        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
+      ],
+    },
+  ],
+  LAB_TECHNICIAN: [
+    {
+      title: 'DIAGNOSTICS',
+      items: [
+        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-purple-600" /> },
+        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-purple-600" /> },
+        { name: 'Diagnostics Lab', path: '/lab', icon: <TestTube className="w-4 h-4 text-purple-600" /> },
+      ],
+    },
+    {
+      title: 'SYSTEM',
+      items: [
+        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
+      ],
+    },
+  ],
+  PHARMACIST: [
+    {
+      title: 'PHARMACY & DRUG LEDGER',
+      items: [
+        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-amber-600" /> },
+        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-amber-600" /> },
+        { name: 'Pharmacy & FEFO', path: '/pharmacy', icon: <Pill className="w-4 h-4 text-amber-600" /> },
+        { name: 'Clinic Infra & Maintenance', path: '/infrastructure', icon: <Wrench className="w-4 h-4 text-amber-600" /> },
+      ],
+    },
+    {
+      title: 'SYSTEM',
+      items: [
+        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
+      ],
+    },
+  ],
+  HOSPITAL_ADMIN: [
+    {
+      title: 'FACILITY OPERATIONS',
+      items: [
+        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-indigo-600" /> },
+        { name: 'Facilities Master', path: '/facilities', icon: <Building2 className="w-4 h-4 text-indigo-600" /> },
+        { name: 'Patients', path: '/patients', icon: <Users className="w-4 h-4 text-blue-600" /> },
+        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-emerald-600" /> },
+        { name: 'Pharmacy & FEFO', path: '/pharmacy', icon: <Pill className="w-4 h-4 text-amber-600" /> },
+        { name: 'Referral Network', path: '/referrals', icon: <Share2 className="w-4 h-4 text-rose-600" /> },
+        { name: 'Follow-up Care', path: '/followups', icon: <CalendarCheck className="w-4 h-4 text-teal-600" /> },
+        { name: 'Clinic Infra & Maintenance', path: '/infrastructure', icon: <Wrench className="w-4 h-4 text-amber-600" /> },
+      ],
+    },
+    {
+      title: 'GOVERNANCE & QUALITY',
+      items: [
+        { name: 'ARS Committee', path: '/ars', icon: <Users2 className="w-4 h-4 text-indigo-600" /> },
+        { name: 'Quality & Waste', path: '/quality', icon: <ShieldCheck className="w-4 h-4 text-emerald-600" /> },
+        { name: 'Reports & CSV', path: '/reports', icon: <FileSpreadsheet className="w-4 h-4 text-teal-600" /> },
+      ],
+    },
+    {
+      title: 'SYSTEM',
+      items: [
+        { name: 'Integrations (Mock)', path: '/integrations', icon: <Sliders className="w-4 h-4 text-slate-600" /> },
+        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
+      ],
+    },
+  ],
+  DISTRICT_OFFICER: [
+    {
+      title: 'DISTRICT OVERSIGHT',
+      items: [
+        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-teal-700" /> },
+        { name: 'Healthcare Network', path: '/network', icon: <Network className="w-4 h-4 text-teal-600" /> },
+        { name: 'Facilities Master', path: '/facilities', icon: <Building2 className="w-4 h-4 text-indigo-600" /> },
+        { name: 'Patients', path: '/patients', icon: <Users className="w-4 h-4 text-blue-600" /> },
+        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-emerald-600" /> },
+        { name: 'Pharmacy & FEFO', path: '/pharmacy', icon: <Pill className="w-4 h-4 text-amber-600" /> },
+        { name: 'Referral Network', path: '/referrals', icon: <Share2 className="w-4 h-4 text-rose-600" /> },
+      ],
+    },
+    {
+      title: 'PUBLIC HEALTH',
+      items: [
+        { name: 'NCD Management', path: '/ncd', icon: <Activity className="w-4 h-4 text-rose-500" /> },
+        { name: 'Disease Surveillance', path: '/surveillance', icon: <Radio className="w-4 h-4 text-red-600" /> },
+      ],
+    },
+    {
+      title: 'GOVERNANCE, AUDIT & COMPLIANCE',
+      items: [
+        { name: 'ARS Committee', path: '/ars', icon: <Users2 className="w-4 h-4 text-indigo-600" /> },
+        { name: 'Quality & Waste', path: '/quality', icon: <ShieldCheck className="w-4 h-4 text-emerald-600" /> },
+        { name: 'Clinic Infra & Maintenance', path: '/infrastructure', icon: <Wrench className="w-4 h-4 text-amber-600" /> },
+        { name: 'Reports & CSV', path: '/reports', icon: <FileSpreadsheet className="w-4 h-4 text-teal-600" /> },
+        { name: 'Namma Compliance', path: '/compliance', icon: <CheckSquare className="w-4 h-4 text-emerald-600" /> },
+        { name: 'Audit Trail', path: '/audit', icon: <Lock className="w-4 h-4 text-slate-600" /> },
+      ],
+    },
+    {
+      title: 'SYSTEM',
+      items: [
+        { name: 'Integrations (Mock)', path: '/integrations', icon: <Sliders className="w-4 h-4 text-slate-600" /> },
+        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
+      ],
+    },
+  ],
+};
 
 export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, activeFacility, allFacilities, logout, setActiveFacility, refreshUserData } = useAuth();
@@ -142,26 +275,38 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-          {navItems
-            .filter((item) => isPathAllowedForRole(user?.role, item.path))
-            .map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                    isActive
-                      ? 'bg-emerald-100/70 text-emerald-900 border border-emerald-300 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  {item.icon}
-                  <span>{item.name}</span>
-                </Link>
-              );
-            })}
+        <nav className="flex-1 overflow-y-auto p-3 space-y-3">
+          {(user?.role && ROLE_NAV_SECTIONS[user.role] ? ROLE_NAV_SECTIONS[user.role] : []).map((section, sIdx) => {
+            const visibleItems = section.items.filter((item) => isPathAllowedForRole(user?.role, item.path));
+            if (visibleItems.length === 0) return null;
+
+            return (
+              <div key={section.title || sIdx} className="space-y-1">
+                {section.title && (
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-3 pt-2 pb-1 select-none">
+                    {section.title}
+                  </div>
+                )}
+                {visibleItems.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        isActive
+                          ? 'bg-emerald-100/80 text-emerald-900 border border-emerald-300 shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                    >
+                      {item.icon}
+                      <span>{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            );
+          })}
         </nav>
 
         {/* User Footer with Identity & Scope */}

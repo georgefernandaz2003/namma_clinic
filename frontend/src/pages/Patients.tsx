@@ -4,9 +4,10 @@ import type { Patient } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { Users, Search, UserPlus, Clock, History, X, Activity, FileText, Pill, Share2, Stethoscope } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { hasPermission } from '../utils/permissions';
 
 export const Patients: React.FC = () => {
-  const { activeFacility } = useAuth();
+  const { activeFacility, user } = useAuth();
   const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState('');
@@ -147,13 +148,15 @@ export const Patients: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowRegisterModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm transition"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Register New Patient</span>
-        </button>
+        {hasPermission(user?.role, 'patients.create') && (
+          <button
+            onClick={() => setShowRegisterModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm transition"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Register New Patient</span>
+          </button>
+        )}
       </div>
 
       {/* Search Bar */}
@@ -206,17 +209,21 @@ export const Patients: React.FC = () => {
                     </span>
                   </td>
                   <td className="p-4 text-right">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setTargetPatient(p);
-                        setShowTokenModal(true);
-                      }}
-                      className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1 shadow-xs transition"
-                    >
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>Issue Token</span>
-                    </button>
+                    {hasPermission(user?.role, 'queue.create') ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTargetPatient(p);
+                          setShowTokenModal(true);
+                        }}
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1 shadow-xs transition"
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Issue Token</span>
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 font-medium italic">Read-Only</span>
+                    )}
                   </td>
                 </tr>
               ))}

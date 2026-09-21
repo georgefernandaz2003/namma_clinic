@@ -680,20 +680,24 @@ export const Pharmacy: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowAddVendorModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
-          >
-            <Building2 className="w-4 h-4 text-slate-600" />
-            <span>+ Add Vendor</span>
-          </button>
-          <button
-            onClick={() => setShowCreatePOModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100 font-bold text-xs rounded-xl transition"
-          >
-            <ShoppingCart className="w-4 h-4 text-amber-700" />
-            <span>+ Create PO</span>
-          </button>
+          {!isReadOnly && (
+            <>
+              <button
+                onClick={() => setShowAddVendorModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+              >
+                <Building2 className="w-4 h-4 text-slate-600" />
+                <span>+ Add Vendor</span>
+              </button>
+              <button
+                onClick={() => setShowCreatePOModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100 font-bold text-xs rounded-xl transition"
+              >
+                <ShoppingCart className="w-4 h-4 text-amber-700" />
+                <span>+ Create PO</span>
+              </button>
+            </>
+          )}
           <button
             onClick={loadData}
             className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs transition"
@@ -1078,12 +1082,16 @@ export const Pharmacy: React.FC = () => {
                           </td>
                           <td className="p-4">
                             {p.status !== 'DISPENSED' ? (
-                              <button
-                                onClick={() => openDispenseModal(p)}
-                                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition"
-                              >
-                                <PackageCheck className="w-3.5 h-3.5" /> Controlled Dispense
-                              </button>
+                              user?.role === 'PHARMACIST' ? (
+                                <button
+                                  onClick={() => openDispenseModal(p)}
+                                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition"
+                                >
+                                  <PackageCheck className="w-3.5 h-3.5" /> Controlled Dispense
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 font-medium italic">Pending Dispensing</span>
+                              )
                             ) : (
                               <button
                                 onClick={() => navigate(`/patients/${p.patient}`)}

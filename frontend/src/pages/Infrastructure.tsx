@@ -80,7 +80,8 @@ interface BedAllocation {
 }
 
 export const Infrastructure: React.FC = () => {
-  const { activeFacility } = useAuth();
+  const { activeFacility, user } = useAuth();
+  const canManageInfra = user?.role === 'HOSPITAL_ADMIN';
   const [activeTab, setActiveTab] = useState<'oxygen' | 'beds' | 'consumables' | 'maintenance'>('oxygen');
   
   const [oxygenList, setOxygenList] = useState<OxygenSupply[]>([]);
@@ -367,13 +368,15 @@ export const Infrastructure: React.FC = () => {
                 <h2 className="text-lg font-bold text-slate-900">Medical Oxygen Manifold & Pressure Status</h2>
                 <p className="text-xs text-slate-500">Live pressure monitoring, cylinder manifold counts, and refill requests.</p>
               </div>
-              <button
-                onClick={() => setShowRefillModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs rounded-xl transition-colors shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Request Oxygen Refill Indent
-              </button>
+              {canManageInfra && (
+                <button
+                  onClick={() => setShowRefillModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs rounded-xl transition-colors shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Request Oxygen Refill Indent
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -436,13 +439,15 @@ export const Infrastructure: React.FC = () => {
                 <h2 className="text-lg font-bold text-slate-900">Ward Bed Capacity & Patient Bed Allocations</h2>
                 <p className="text-xs text-slate-500">OPD observation ward beds, emergency triage bays, and oxygen supported beds.</p>
               </div>
-              <button
-                onClick={() => setShowBedAssignModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl transition-colors shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Admit Patient to Bed
-              </button>
+              {canManageInfra && (
+                <button
+                  onClick={() => setShowBedAssignModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl transition-colors shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Admit Patient to Bed
+                </button>
+              )}
             </div>
 
             {/* Bed Category Cards */}
@@ -565,15 +570,19 @@ export const Infrastructure: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={() => {
-                            setSelectedConsumable(item);
-                            setShowUsageModal(true);
-                          }}
-                          className="px-3 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold border border-emerald-200 rounded text-xs transition-colors"
-                        >
-                          Log Usage
-                        </button>
+                        {canManageInfra ? (
+                          <button
+                            onClick={() => {
+                              setSelectedConsumable(item);
+                              setShowUsageModal(true);
+                            }}
+                            className="px-3 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold border border-emerald-200 rounded text-xs transition-colors"
+                          >
+                            Log Usage
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-medium italic">Inspected</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -593,13 +602,15 @@ export const Infrastructure: React.FC = () => {
                 <h2 className="text-lg font-bold text-slate-900">Facility Electrical, Plumbing & Equipment Maintenance Work Orders</h2>
                 <p className="text-xs text-slate-500">Log repair tickets for solar UPS backup, electrical wiring, plumbing, and clinic equipment.</p>
               </div>
-              <button
-                onClick={() => setShowTicketModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs rounded-xl transition-colors shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Log Maintenance Work Order
-              </button>
+              {canManageInfra && (
+                <button
+                  onClick={() => setShowTicketModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs rounded-xl transition-colors shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Log Maintenance Work Order
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto">

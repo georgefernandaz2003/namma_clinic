@@ -6,7 +6,7 @@ import { Share2, CheckCircle2, Stethoscope, RefreshCw, Repeat, ArrowRight } from
 import { useNavigate } from 'react-router-dom';
 
 export const Referrals: React.FC = () => {
-  const { activeFacility } = useAuth();
+  const { activeFacility, user } = useAuth();
   const navigate = useNavigate();
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [selectedReferral, setSelectedReferral] = useState<Referral | null>(null);
@@ -176,7 +176,7 @@ export const Referrals: React.FC = () => {
                       </span>
                     </td>
                     <td className="p-4">
-                      {r.destination_facility === activeFacility?.id && r.status !== 'COMPLETED' ? (
+                      {r.destination_facility === activeFacility?.id && r.status !== 'COMPLETED' && (user?.role === 'DOCTOR' || user?.role === 'HOSPITAL_ADMIN') ? (
                         <button
                           onClick={() => setSelectedReferral(r)}
                           className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-[10px] flex items-center gap-1 shadow-xs transition"
@@ -191,7 +191,9 @@ export const Referrals: React.FC = () => {
                           <CheckCircle2 className="w-3.5 h-3.5" /> Closed-Loop Synced
                         </button>
                       ) : (
-                        <span className="text-slate-500 text-[11px] font-semibold">Outbound to Hub</span>
+                        <span className="text-slate-500 text-[11px] font-semibold">
+                          {r.destination_facility === activeFacility?.id ? 'Pending Specialist Review' : 'Outbound to Hub'}
+                        </span>
                       )}
                     </td>
                   </tr>

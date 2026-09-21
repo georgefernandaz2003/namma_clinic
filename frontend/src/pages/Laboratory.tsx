@@ -6,7 +6,7 @@ import { TestTube, CheckCircle2, FileCheck, QrCode, Layers, RefreshCw } from 'lu
 import { useNavigate } from 'react-router-dom';
 
 export const Laboratory: React.FC = () => {
-  const { activeFacility } = useAuth();
+  const { activeFacility, user } = useAuth();
   const navigate = useNavigate();
   const [orders, setOrders] = useState<LabOrder[]>([]);
   const [catalogue, setCatalogue] = useState<any[]>([]);
@@ -283,28 +283,36 @@ export const Laboratory: React.FC = () => {
                       </td>
                       <td className="p-3.5 space-x-2">
                         {o.status === 'ORDERED' && (
-                          <button
-                            onClick={() => handleCollectSample(o)}
-                            disabled={collectingId === o.id}
-                            className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-300 text-white font-bold rounded text-[10px] shadow-xs inline-flex items-center gap-1 transition cursor-pointer"
-                          >
-                            {collectingId === o.id ? (
-                              <>
-                                <RefreshCw className="w-3 h-3 animate-spin" />
-                                <span>Collecting...</span>
-                              </>
-                            ) : (
-                              <span>Collect Sample</span>
-                            )}
-                          </button>
+                          user?.role === 'LAB_TECHNICIAN' ? (
+                            <button
+                              onClick={() => handleCollectSample(o)}
+                              disabled={collectingId === o.id}
+                              className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-300 text-white font-bold rounded text-[10px] shadow-xs inline-flex items-center gap-1 transition cursor-pointer"
+                            >
+                              {collectingId === o.id ? (
+                                <>
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                  <span>Collecting...</span>
+                                </>
+                              ) : (
+                                <span>Collect Sample</span>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-medium italic">Pending Specimen</span>
+                          )
                         )}
                         {o.status === 'SAMPLE_COLLECTED' && (
-                          <button
-                            onClick={() => handleOpenResultModal(o)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] shadow-xs transition cursor-pointer"
-                          >
-                            Enter Result
-                          </button>
+                          user?.role === 'LAB_TECHNICIAN' ? (
+                            <button
+                              onClick={() => handleOpenResultModal(o)}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] shadow-xs transition cursor-pointer"
+                            >
+                              Enter Result
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-medium italic">In Analysis</span>
+                          )
                         )}
                         {o.status === 'VERIFIED' && (
                           <button
