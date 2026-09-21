@@ -73,7 +73,9 @@ class DashboardSummaryView(APIView):
 
         # Overall Totals
         total_patients = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids).count()
-        registered_today = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids, registration_date=target_date).count()
+        total_registered_today = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids, registration_date=target_date).count()
+        new_opd_patients = opd_visits_qs.filter(patient__registration_date=target_date).values('patient').distinct().count()
+        registered_today = new_opd_patients
 
         # Inventory Counts
         inventory_batches = MedicineBatch.objects.filter(facility_id__in=target_fac_ids)
@@ -157,6 +159,8 @@ class DashboardSummaryView(APIView):
             'total_facilities': total_facilities,
             'total_patients': total_patients,
             'registered_today': registered_today,
+            'new_opd_patients': new_opd_patients,
+            'total_registered_today': total_registered_today,
             'todays_opd': todays_opd,
             'emergency_count': emergency_count,
             'opd_stage_flow': {
@@ -195,6 +199,7 @@ class DashboardSummaryView(APIView):
                 'pharmacy_waiting': pharmacy_waiting,
                 'completed': completed_count,
                 'emergency': emergency_count,
+                'new_opd_patients': new_opd_patients,
                 'low_stock': low_stock_count,
                 'expiring_soon': near_expiry_count
             },

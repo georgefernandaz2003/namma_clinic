@@ -62,8 +62,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date })
         </div>
       </div>
 
-      {/* 5 KPI Cards: First Total Patients Today OPD, Second New Patients in OPD, then the rest */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* 4 KPI Cards: 1. Total Patients Today OPD, 2. New Patients in OPD, 3. Triage Waiting, 4. Emergency & Red Flags */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Card 1: Total Patients Today OPD */}
         <div className="bg-white p-4 rounded-xl border border-purple-200 bg-purple-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-purple-800 uppercase flex items-center gap-1.5">
@@ -80,8 +80,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date })
             <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
             New Patients in OPD
           </p>
-          <h3 className="text-xl font-black text-emerald-900 mt-1">{summary?.registered_today || 0}</h3>
-          <p className="text-[10px] text-emerald-700 font-medium mt-0.5">New Patient Registrations</p>
+          <h3 className="text-xl font-black text-emerald-900 mt-1">{summary?.new_opd_patients ?? summary?.registered_today ?? 0}</h3>
+          <p className="text-[10px] text-emerald-700 font-medium mt-0.5">New Patients in OPD List</p>
         </div>
 
         {/* Card 3: Triage Waiting */}
@@ -94,17 +94,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date })
           <p className="text-[10px] text-amber-700 font-medium mt-0.5">Awaiting Screening</p>
         </div>
 
-        {/* Card 4: In Triage */}
-        <div className="bg-white p-4 rounded-xl border border-blue-200 bg-blue-50/30 shadow-xs">
-          <p className="text-[11px] font-bold text-blue-800 uppercase flex items-center gap-1.5">
-            <Stethoscope className="w-3.5 h-3.5 text-blue-600" />
-            In Triage
-          </p>
-          <h3 className="text-xl font-black text-blue-900 mt-1">{kpis.in_triage || 0}</h3>
-          <p className="text-[10px] text-blue-700 font-medium mt-0.5">Being Screened</p>
-        </div>
-
-        {/* Card 5: Emergency & Red Flags */}
+        {/* Card 4: Emergency & Red Flags */}
         <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-rose-800 uppercase flex items-center gap-1.5">
             <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
