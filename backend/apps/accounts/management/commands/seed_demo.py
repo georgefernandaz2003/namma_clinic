@@ -454,11 +454,11 @@ class Command(BaseCommand):
         )
         t_rc_4 = Token.objects.create(token_number=4, visit=v_rc_4, facility=rc_a4, date=today, priority='NORMAL', status='COMPLETED')
 
-        # Today Visit 5 (Token #5) - Laboratory Queue (Diagnostics Test Pending)
+        # Today Visit 5 (Token #5) - Doctor Consultation Queue
         v_rc_5 = Visit.objects.create(
             visit_id=f"VIS-RC-{today.strftime('%Y%m%d')}-005", patient=p_rc_lab, facility=rc_a4,
-            opd_date=today, visit_type='GENERAL_OPD', priority='HIGH', current_queue='LAB',
-            status='LAB_PENDING', chief_complaint='High fever with chills and retro-orbital pain for 3 days - Urgent Dengue NS1 & CBC ordered',
+            opd_date=today, visit_type='GENERAL_OPD', priority='HIGH', current_queue='DOCTOR',
+            status='WAITING_FOR_DOCTOR', chief_complaint='High fever with chills and body ache for 3 days',
             assigned_doctor=u_doc, arrival_time=timezone.now() - datetime.timedelta(minutes=30)
         )
         t_rc_5 = Token.objects.create(token_number=5, visit=v_rc_5, facility=rc_a4, date=today, priority='HIGH', status='WAITING')
@@ -628,37 +628,8 @@ class Command(BaseCommand):
         pr_vc = Prescription.objects.create(consultation=c_vc_1, patient=p_suresh, doctor=u_vh2_doc, facility=vc_a4_1, status='DISPENSED')
         PrescriptionItem.objects.create(prescription=pr_vc, medicine_name='Paracetamol 650 mg Tablet', dosage='1-1-1 After Food', frequency='Three Times Daily', duration_days=3, quantity=9, status='DISPENSED')
 
-        # 12. LAB ORDERS & RESULTS ACROSS ALL FACILITIES
-        # Facility 1 Lab Order
-        lo_dh = LabOrder.objects.create(visit=v_dh_1, consultation=c_dh_1, patient=p_dh_2, doctor=u_dh_doc, facility=hosp_a, test_master=lt_lipid, status='VERIFIED')
-        LabSample.objects.create(lab_order=lo_dh, sample_type='Blood', sample_code='SMP-DH-001', collected_by=u_dh_lab)
-        LabResult.objects.create(lab_order=lo_dh, result_value='245', unit='mg/dL', reference_range='< 200 mg/dL', interpretation_flag='HIGH', verified_by=u_dh_lab, notes='Elevated Total Cholesterol & LDL')
-
-        # Facility 2 Lab Order
-        lo_sdh = LabOrder.objects.create(visit=v_sdh_1, consultation=c_sdh_1, patient=p_anita, doctor=u_sdh_doc, facility=nc_a1, test_master=lt_hb, status='VERIFIED')
-        LabSample.objects.create(lab_order=lo_sdh, sample_type='Blood', sample_code='SMP-SDH-001', collected_by=u_sdh_nurse)
-        LabResult.objects.create(lab_order=lo_sdh, result_value='10.2', unit='g/dL', reference_range='12.0 - 15.5 g/dL', interpretation_flag='LOW', verified_by=u_sdh_doc, notes='Mild Anemia')
-
-        # Facility 3 Lab Orders (Covering All 6 Specimen Pipeline Stages)
-        # Order 1: VERIFIED - Synced EMR (Linked to Visit 1)
-        lo_rc_1 = LabOrder.objects.create(visit=v_rc_1, consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, test_master=lt_hba1c, status='VERIFIED')
-        LabSample.objects.create(lab_order=lo_rc_1, sample_type='Blood / Serum', sample_code='SMP-2026-0045', collected_by=u_lab)
-        LabResult.objects.create(lab_order=lo_rc_1, result_value='8.4', unit='%', reference_range='4.0 - 5.6 %', interpretation_flag='HIGH', verified_by=u_lab, notes='Uncontrolled HbA1c. Dietary counseling and medication adjustment advised.')
-
-        # Order 2: SAMPLE_COLLECTED - Ready to click "Enter Result" (Linked to Visit 1)
-        lo_rc_2 = LabOrder.objects.create(visit=v_rc_1, consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, test_master=lt_fbg, status='SAMPLE_COLLECTED')
-        LabSample.objects.create(lab_order=lo_rc_2, sample_type='Blood / Serum', sample_code='SMP-2026-0046', collected_by=u_lab)
-
-        # Order 3: ORDERED - Linked to Visit 5 (In Laboratory Queue)
-        lo_rc_3 = LabOrder.objects.create(visit=v_rc_5, consultation=c_rc_5, patient=p_rc_lab, doctor=u_doc, facility=rc_a4, test_master=lt_dengue, status='ORDERED')
-
-        # Order 4: ORDERED - Linked to Visit 5 (In Laboratory Queue)
-        lo_rc_4 = LabOrder.objects.create(visit=v_rc_5, consultation=c_rc_5, patient=p_rc_lab, doctor=u_doc, facility=rc_a4, test_master=lt_u_prot, status='ORDERED')
-
-        # Facility 4 Lab Order
-        lo_vc = LabOrder.objects.create(visit=v_vc_1, consultation=c_vc_1, patient=p_suresh, doctor=u_vh2_doc, facility=vc_a4_1, test_master=lt_malaria, status='VERIFIED')
-        LabSample.objects.create(lab_order=lo_vc, sample_type='Blood', sample_code='SMP-VC-001', collected_by=u_vh2_doc)
-        LabResult.objects.create(lab_order=lo_vc, result_value='Negative', unit='Result', reference_range='Negative', interpretation_flag='NORMAL', verified_by=u_vh2_doc, notes='Malaria Pf/Pv antigen negative')
+        # 12. LAB ORDERS & RESULTS (Intentionally kept empty for live clinical usage)
+        # Doctors can order tests on demand from the 10 catalog tests in LabTestMaster
 
         # 13. SAMPLE MEDICAL DOCUMENTS FOR ALL FACILITIES
         PatientDocument.objects.create(
@@ -672,12 +643,6 @@ class Command(BaseCommand):
             document_type='MEDICAL_RECORD', file_name='anc_ultrasound_anita.pdf',
             file_size=512000, mime_type='application/pdf', document_date=today - datetime.timedelta(days=10),
             uploaded_by=u_sdh_doc, description='Single live intrauterine fetus at 24 weeks gestation.'
-        )
-        PatientDocument.objects.create(
-            patient=p_ramesh, facility=rc_a4, title='Blood Sugar & Lipid Panel Lab Report',
-            document_type='LAB_REPORT', file_name='blood_sugar_lipid_panel_ramesh.pdf',
-            file_size=245760, mime_type='application/pdf', document_date=today - datetime.timedelta(days=2),
-            uploaded_by=u_lab, description='Automated Biochemistry Output: Fasting Glucose 210 mg/dL, HbA1c 8.4% HIGH.'
         )
         PatientDocument.objects.create(
             patient=p_ramesh, facility=rc_a4, title='EHR Doctor Prescription Scan',
