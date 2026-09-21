@@ -7,9 +7,8 @@ import {
   ArrowLeft, User, Phone, MapPin, Activity, Clock, 
   FileText, Pill, Share2, Stethoscope, History, Plus,
   ChevronDown, ChevronRight, Filter, RotateCcw, Calendar, UserPlus,
-  Upload, Download, Eye, Trash2, File, FileCheck, Shield,
-  CheckCircle, AlertTriangle, X, Search, Building, FolderOpen,
-  FileSpreadsheet
+  Upload, Download, Eye, Trash2, File,
+  AlertTriangle, X, Search, FolderOpen
 } from 'lucide-react';
 
 export const PatientDetail: React.FC = () => {
@@ -176,7 +175,7 @@ export const PatientDetail: React.FC = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
+    } catch {
       alert('Failed to download document. You may not have required permissions.');
     } finally {
       setDownloadingDocId(null);
@@ -1160,9 +1159,6 @@ export const PatientDetail: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredDocuments.map((doc) => {
-                const isImage = ['image/jpeg', 'image/png', 'image/jpg'].includes(doc.mime_type?.toLowerCase()) ||
-                  ['.jpg', '.jpeg', '.png'].some(ext => doc.file_name?.toLowerCase().endsWith(ext));
-
                 return (
                   <div
                     key={doc.id}

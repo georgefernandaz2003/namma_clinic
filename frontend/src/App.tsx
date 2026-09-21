@@ -18,7 +18,6 @@ import { Referrals } from './pages/Referrals';
 import { FollowUps } from './pages/FollowUps';
 import { NCD } from './pages/NCD';
 import { Surveillance } from './pages/Surveillance';
-import { Teleconsultation } from './pages/Teleconsultation';
 import { Outreach } from './pages/Outreach';
 import { Wellness } from './pages/Wellness';
 import { ARS } from './pages/ARS';
@@ -87,7 +86,6 @@ export const App: React.FC = () => {
           <Route path="/followups" element={<ProtectedRoute><FollowUps /></ProtectedRoute>} />
           <Route path="/ncd" element={<ProtectedRoute><NCD /></ProtectedRoute>} />
           <Route path="/surveillance" element={<ProtectedRoute><Surveillance /></ProtectedRoute>} />
-          <Route path="/teleconsultation" element={<ProtectedRoute><Teleconsultation /></ProtectedRoute>} />
           <Route path="/outreach" element={<ProtectedRoute><Outreach /></ProtectedRoute>} />
           <Route path="/wellness" element={<ProtectedRoute><Wellness /></ProtectedRoute>} />
           <Route path="/ars" element={<ProtectedRoute><ARS /></ProtectedRoute>} />

@@ -28,10 +28,7 @@ import {
   Plus,
   Search,
   CheckCircle2,
-  XCircle,
   Clock,
-  ArrowRightLeft,
-  DollarSign,
   Download,
   Boxes,
   Truck,
@@ -42,11 +39,7 @@ import {
   Filter,
   Send,
   Edit2,
-  Ban,
   Trash2,
-  ChevronRight,
-  Info,
-  RefreshCw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -66,7 +59,6 @@ export const Pharmacy: React.FC = () => {
   const navigate = useNavigate();
 
   const isHospitalAdmin = user?.role === 'HOSPITAL_ADMIN';
-  const isPharmacist = user?.role === 'PHARMACIST' || isHospitalAdmin;
   const isReadOnly =
     user?.role === 'DISTRICT_OFFICER' ||
     user?.role === 'DOCTOR' ||
@@ -74,7 +66,7 @@ export const Pharmacy: React.FC = () => {
     user?.role === 'LAB_TECHNICIAN';
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('DASHBOARD');
-  const [loading, setLoading] = useState<boolean>(false);
+  const [, setLoading] = useState<boolean>(false);
 
   // Data states
   const [kpis, setKpis] = useState<PharmacyDashboardKPIs | null>(null);
@@ -91,7 +83,6 @@ export const Pharmacy: React.FC = () => {
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
   const [prescriptionStatusFilter, setPrescriptionStatusFilter] = useState<string>('ALL');
-  const [batchStatusFilter, setBatchStatusFilter] = useState<string>('ALL');
 
   // Vendor Management States
   const [vendorSearch, setVendorSearch] = useState('');
