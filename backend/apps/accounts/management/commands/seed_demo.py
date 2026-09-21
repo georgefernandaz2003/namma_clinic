@@ -460,6 +460,20 @@ class Command(BaseCommand):
             fever_flag=True, nurse_notes='Fever 100.2F. Rapid malaria & dengue strip ordered.'
         )
 
+        TriageVitals.objects.create(
+            visit=v_dh_2, patient=p_dh_1, nurse=u_dh_nurse,
+            blood_pressure_systolic=138, blood_pressure_diastolic=88, pulse_bpm=76, temperature_f=98.6,
+            spo2_percent=98, respiratory_rate=18, height_cm=160.0, weight_kg=64.0, blood_glucose_mgdl=115,
+            nurse_notes='Hypertension follow-up. Waiting for doctor.'
+        )
+
+        TriageVitals.objects.create(
+            visit=v_vc_2, patient=p_vh2_2, nurse=u_nurse,
+            blood_pressure_systolic=116, blood_pressure_diastolic=74, pulse_bpm=80, temperature_f=98.4,
+            spo2_percent=99, respiratory_rate=16, height_cm=155.0, weight_kg=56.0, blood_glucose_mgdl=90,
+            pregnancy_high_risk_flag=False, nurse_notes='1st Trimester ANC routine triage.'
+        )
+
         # 10. DOCTOR CONSULTATIONS & EMR DIAGNOSES
         c_dh_1 = Consultation.objects.create(
             visit=v_dh_1, patient=p_dh_2, doctor=u_dh_doc, facility=hosp_a,
@@ -504,12 +518,22 @@ class Command(BaseCommand):
         # 11. PRESCRIPTIONS & DISPENSATIONS
         # Facility 1 Prescription
         pr_dh = Prescription.objects.create(consultation=c_dh_1, patient=p_dh_2, doctor=u_dh_doc, facility=hosp_a, status='DISPENSED')
-        PrescriptionItem.objects.create(prescription=pr_dh, medicine=med_tel, medicine_name='Telmisartan 40 mg Tablet', dosage='1-0-0 Morning', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
-        PrescriptionItem.objects.create(prescription=pr_dh, medicine=med_aml, medicine_name='Amlodipine 5 mg Tablet', dosage='0-0-1 Night', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
+        pi_dh_1 = PrescriptionItem.objects.create(prescription=pr_dh, medicine=med_tel, medicine_name='Telmisartan 40 mg Tablet', dosage='1-0-0 Morning', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
+        pi_dh_2 = PrescriptionItem.objects.create(prescription=pr_dh, medicine=med_aml, medicine_name='Amlodipine 5 mg Tablet', dosage='0-0-1 Night', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
+        b_dh_aml = MedicineBatch.objects.filter(facility=hosp_a, medicine=med_aml).first()
+        if b_dh_aml:
+            b_dh_aml.quantity = max(0, b_dh_aml.quantity - 30)
+            b_dh_aml.save()
+            InventoryTransaction.objects.create(facility=hosp_a, medicine=med_aml, batch=b_dh_aml, transaction_type='DISPENSED', quantity=30, reference_id=f"PRESCR-{pr_dh.id}", created_by=u_dist, notes='Dispensed 30 units Amlodipine for Narayana Swamy')
 
         # Facility 2 Prescription
         pr_sdh = Prescription.objects.create(consultation=c_sdh_1, patient=p_anita, doctor=u_sdh_doc, facility=nc_a1, status='DISPENSED')
-        PrescriptionItem.objects.create(prescription=pr_sdh, medicine=med_ifa, medicine_name='Iron & Folic Acid Tablet', dosage='1-0-0 After Food', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
+        pi_sdh = PrescriptionItem.objects.create(prescription=pr_sdh, medicine=med_ifa, medicine_name='Iron & Folic Acid Tablet', dosage='1-0-0 After Food', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
+        b_sdh_ifa = MedicineBatch.objects.filter(facility=nc_a1, medicine=med_ifa).first()
+        if b_sdh_ifa:
+            b_sdh_ifa.quantity = max(0, b_sdh_ifa.quantity - 30)
+            b_sdh_ifa.save()
+            InventoryTransaction.objects.create(facility=nc_a1, medicine=med_ifa, batch=b_sdh_ifa, transaction_type='DISPENSED', quantity=30, reference_id=f"PRESCR-{pr_sdh.id}", created_by=u_dist, notes='Dispensed 30 units IFA for Anita Devi')
 
         # Facility 3 Prescription (Pending Dispensation)
         pr_rc = Prescription.objects.create(consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, status='PENDING')
@@ -518,7 +542,12 @@ class Command(BaseCommand):
 
         # Facility 4 Prescription
         pr_vc = Prescription.objects.create(consultation=c_vc_1, patient=p_suresh, doctor=u_vh2_doc, facility=vc_a4_1, status='DISPENSED')
-        PrescriptionItem.objects.create(prescription=pr_vc, medicine=med_pcm, medicine_name='Paracetamol 650 mg Tablet', dosage='1-1-1 After Food', frequency='Three Times Daily', duration_days=3, quantity=9, status='DISPENSED')
+        pi_vc = PrescriptionItem.objects.create(prescription=pr_vc, medicine=med_pcm, medicine_name='Paracetamol 650 mg Tablet', dosage='1-1-1 After Food', frequency='Three Times Daily', duration_days=3, quantity=9, status='DISPENSED')
+        b_vc_pcm = MedicineBatch.objects.filter(facility=vc_a4_1, medicine=med_pcm).first()
+        if b_vc_pcm:
+            b_vc_pcm.quantity = max(0, b_vc_pcm.quantity - 9)
+            b_vc_pcm.save()
+            InventoryTransaction.objects.create(facility=vc_a4_1, medicine=med_pcm, batch=b_vc_pcm, transaction_type='DISPENSED', quantity=9, reference_id=f"PRESCR-{pr_vc.id}", created_by=u_dist, notes='Dispensed 9 units Paracetamol for Suresh Patil')
 
         # 12. LAB ORDERS & RESULTS ACROSS ALL FACILITIES
         # Facility 1 Lab Order

@@ -16,6 +16,32 @@ class Patient(models.Model):
     registration_date = models.DateField(auto_now_add=True)
     registered_at_facility = models.ForeignKey('facilities.Facility', on_delete=models.SET_NULL, null=True, blank=True, related_name='registered_patients')
 
+    def clean(self):
+        super().clean()
+        if self.registered_at_facility:
+            facility_dist = getattr(self.registered_at_facility, 'district', None)
+            if facility_dist:
+                if not self.district:
+                    self.district = facility_dist
+                elif self.district_id != facility_dist.id:
+                    from django.core.exceptions import ValidationError
+                    raise ValidationError({
+                        'district': f"Patient district ({self.district.name}) must match registration facility district ({facility_dist.name})."
+                    })
+        if self.ward and self.district:
+            ward_dist = getattr(self.ward, 'district', None)
+            if ward_dist and ward_dist.id != self.district_id:
+                from django.core.exceptions import ValidationError
+                raise ValidationError({
+                    'ward': f"Patient ward ({self.ward.name}) does not belong to district ({self.district.name})."
+                })
+
+    def save(self, *args, **kwargs):
+        if self.registered_at_facility and not self.district:
+            self.district = getattr(self.registered_at_facility, 'district', None)
+        self.clean()
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.name} [{self.patient_id}] - {self.mobile}"
 

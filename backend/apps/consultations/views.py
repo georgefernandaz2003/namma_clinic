@@ -2,6 +2,7 @@ from django.utils import timezone
 from rest_framework import serializers, viewsets, permissions, status
 from rest_framework.response import Response
 from apps.consultations.models import Consultation, Prescription, PrescriptionItem
+from apps.visits.models import Visit
 
 class PrescriptionItemSerializer(serializers.ModelSerializer):
     medicine_generic_name = serializers.ReadOnlyField(source='medicine.generic_name')
@@ -20,6 +21,15 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prescription
         fields = '__all__'
+
+    def validate(self, attrs):
+        status_val = attrs.get('status')
+        if status_val == 'DISPENSED' and self.instance:
+            if self.instance.items.filter(status='PENDING').exists():
+                raise serializers.ValidationError({
+                    'status': 'Cannot set prescription header to DISPENSED while items remain PENDING.'
+                })
+        return attrs
 
 class ConsultationSerializer(serializers.ModelSerializer):
     prescription = PrescriptionSerializer(read_only=True)
@@ -50,9 +60,9 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
-        facility_param = self.request.query_params.get('facility')
-        if facility_param:
-            queryset = queryset.filter(facility_id=facility_param)
+        visit_param = self.request.query_params.get('visit')
+        if visit_param:
+            queryset = queryset.filter(visit_id=visit_param)
         return queryset
 
     def create(self, request, *args, **kwargs):
@@ -63,6 +73,13 @@ class ConsultationViewSet(viewsets.ModelViewSet):
 
         if not visit_id:
             return Response({'error': 'Visit is required for consultation.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # FND-09: Ensure visit is not untriaged in triage queue
+        visit_obj = Visit.objects.filter(id=visit_id).first()
+        if visit_obj and (visit_obj.current_queue == 'TRIAGE' or visit_obj.status in ['WAITING_FOR_TRIAGE', 'IN_TRIAGE']):
+            from apps.triage.models import TriageVitals
+            if not TriageVitals.objects.filter(visit_id=visit_id).exists():
+                return Response({'error': 'Cannot record consultation: Patient is still in TRIAGE queue without recorded vitals.'}, status=status.HTTP_400_BAD_REQUEST)
         
         consultation = Consultation.objects.filter(visit_id=visit_id).first()
         is_update = consultation is not None

@@ -30,6 +30,24 @@ class Prescription(models.Model):
     status = models.CharField(max_length=20, default='ACTIVE')
     notes = models.TextField(blank=True)
 
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.status == 'DISPENSED' and self.pk:
+            if self.items.filter(status='PENDING').exists():
+                raise ValidationError({
+                    'status': 'Prescription status cannot be set to DISPENSED while one or more items remain PENDING.'
+                })
+
+    def save(self, *args, **kwargs):
+        if self.status == 'DISPENSED' and self.pk:
+            from django.core.exceptions import ValidationError
+            if self.items.filter(status='PENDING').exists():
+                raise ValidationError({
+                    'status': 'Prescription status cannot be set to DISPENSED while one or more items remain PENDING.'
+                })
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"Prescription #{self.id} for {self.patient.name}"
 

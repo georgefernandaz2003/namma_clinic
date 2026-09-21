@@ -135,8 +135,9 @@
 
 ---
 
-### [FND-08] HIGH: Patient #216 Orphaned from District & Facility Scope
+### [FND-08] HIGH: Patient #216 Orphaned from District & Facility Scope [IMPLEMENTED - PHASE C2]
 - **Severity:** `HIGH`
+- **Status:** `IMPLEMENTED (Phase C2)`
 - **Module:** Patient Master / Data Model
 - **Problem:** Patient #216 (`NC-KA-2026-8717`, `Ramesh Kumar Gowda`) has `registered_at_facility = None` and `district = None` in seed data.
 - **Evidence:**
@@ -144,42 +145,45 @@
   - Visit #41 for Patient #216 is assigned to Facility 68 (`Varthur Rural Clinic`).
 - **Client Impact:** When the DHO views the patient directory filtered by District 11, Patient #216 vanishes from the list, yet appears in Clinic A4's visit queue.
 - **Technical Impact:** Null foreign keys defeat facility-scoping filters (`Patient.objects.filter(district_id=dho_dist_id)`).
-- **Recommended Fix:** Assign `registered_at_facility = 68` and `district = 11` for Patient #216 in `seed_demo.py`.
+- **Resolution:** Implemented server-side alignment in `Patient.clean()`, `Patient.save()`, and `PatientSerializer.validate()`. Reconciled Patient #216 to Facility 68, District 11, Ward 30.
 - **Dependencies:** None.
 - **Risk:** Low risk.
 
 ---
 
-### [FND-09] MEDIUM: Triage Queue Bypassed in Seed Data (Visit #39)
+### [FND-09] MEDIUM: Triage Queue Bypassed in Seed Data (Visit #39) [IMPLEMENTED - PHASE C2]
 - **Severity:** `MEDIUM`
+- **Status:** `IMPLEMENTED (Phase C2)`
 - **Module:** OPD Queue / Workflow Integrity
 - **Problem:** Visit #39 (`VIS-20260917-003`, Anita Devi) is seeded with `status='WAITING_FOR_DOCTOR'` and `queue='DOCTOR'`, but has no associated `TriageVitals` record.
 - **Evidence:**
   - `TriageVitals.objects.filter(visit_id=39).exists() == False`.
 - **Client Impact:** Doctor inspecting this patient sees blank vitals. Client asks: "Can a patient skip triage without nurse vitals?"
 - **Technical Impact:** Breaks clinical workflow validation; queue state allowed to advance without prerequisite milestone.
-- **Recommended Fix:** Generate a valid `TriageVitals` record for Visit #39 in `seed_demo.py`.
+- **Resolution:** Added server-side validation in `VisitViewSet.transition_status()` and `Visit.clean()` preventing advancement to `DOCTOR` queue without recorded vitals. Reconciled Visit #39 with authentic triage vitals (TriageVitals #28).
 - **Dependencies:** None.
 - **Risk:** Low risk.
 
 ---
 
-### [FND-10] MEDIUM: Queue State Desynchronization After Visit Completion (Visits #40 & #41)
+### [FND-10] MEDIUM: Queue State Desynchronization After Visit Completion (Visits #40 & #41) [IMPLEMENTED - PHASE C2]
 - **Severity:** `MEDIUM`
+- **Status:** `IMPLEMENTED (Phase C2)`
 - **Module:** OPD Queue / Status Consistency
 - **Problem:** Visits #40 and #41 have `status = 'COMPLETED'`, but their `current_queue` remains `'DOCTOR'`.
 - **Evidence:**
   - `Visit.objects.filter(id__in=[40, 41]).values('status', 'current_queue')` returns `[{'status': 'COMPLETED', 'current_queue': 'DOCTOR'}, ...]`.
 - **Client Impact:** Completed patients may erroneously remain in active doctor queue lists if the query filters only by `current_queue='DOCTOR'`.
 - **Technical Impact:** Inconsistent dual-state tracking (`status` vs `current_queue`).
-- **Recommended Fix:** Set `current_queue = 'COMPLETED'` when `status` becomes `'COMPLETED'`.
+- **Resolution:** Implemented bidirectional auto-synchronization in `Visit.save()`, `Visit.clean()`, and `VisitViewSet.transition_status()`. Reconciled Visits #40 and #41 to `current_queue = 'COMPLETED'`.
 - **Dependencies:** None.
 - **Risk:** Low risk.
 
 ---
 
-### [FND-11] MEDIUM: Prescription Marked 'DISPENSED' with Items Remaining 'PENDING'
+### [FND-11] MEDIUM: Prescription Marked 'DISPENSED' with Items Remaining 'PENDING' [IMPLEMENTED - PHASE C2]
 - **Severity:** `MEDIUM`
+- **Status:** `IMPLEMENTED (Phase C2)`
 - **Module:** Pharmacy Dispensing / Consistency
 - **Problem:** In Visit #41, `Prescription #26.status = 'DISPENSED'`, but both child items (`PrescriptionItem #68, #69`) have `status = 'PENDING'`.
 - **Evidence:**
@@ -187,21 +191,22 @@
   - `PrescriptionItem.objects.filter(prescription_id=26).values_list('status', flat=True) == ['PENDING', 'PENDING']`
 - **Client Impact:** Client examining prescription line items sees items marked pending despite the prescription being marked fulfilled.
 - **Technical Impact:** Inconsistency between header status and line item status.
-- **Recommended Fix:** In `DispenseMedicineView` and seed script, update `PrescriptionItem.status = 'DISPENSED'` when dispensing is completed.
+- **Resolution:** Added invariant enforcement in `Prescription.clean()`, `Prescription.save()`, and `PrescriptionSerializer.validate()`. Reconciled Prescription #26 items to `DISPENSED`.
 - **Dependencies:** None.
 - **Risk:** Low risk.
 
 ---
 
-### [FND-12] MEDIUM: Missing Inventory Transaction for Amlodipine Dispensing
+### [FND-12] MEDIUM: Missing Inventory Transaction for Amlodipine Dispensing [IMPLEMENTED - PHASE C2]
 - **Severity:** `MEDIUM`
+- **Status:** `IMPLEMENTED (Phase C2)`
 - **Module:** Pharmacy / Stock Ledger
 - **Problem:** In Visit #35, Metformin generated `InventoryTransaction #6`, but Amlodipine (Item #65, 14 units) has no `InventoryTransaction` record.
 - **Evidence:**
   - `InventoryTransaction.objects.filter(medicine__generic_name__icontains='Amlodipine').count() == 0`.
 - **Client Impact:** Stock audit report cannot explain why Amlodipine batch quantity decreased.
 - **Technical Impact:** Broken transaction lineage for FEFO audit.
-- **Recommended Fix:** Add matching `InventoryTransaction` for Amlodipine in `seed_demo.py`.
+- **Resolution:** Ensured atomic creation of `InventoryTransaction` in `DispenseMedicineView` and prevented double-dispensing. Reconciled Item #65 (Tx #7) and Prescription #26 items (Tx #8, #9).
 - **Dependencies:** None.
 - **Risk:** Low risk.
 

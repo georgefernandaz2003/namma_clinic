@@ -279,6 +279,22 @@ class VisitViewSet(viewsets.ModelViewSet):
         if not to_status:
             return Response({'error': 'Parameter to_status is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # FND-09: Role validation for transitions
+        user_role = getattr(request.user, 'role', '')
+        if to_status in ['TRIAGED', 'WAITING_FOR_DOCTOR'] and user_role not in ['NURSE', 'ADMIN', 'SYSTEM_ADMIN', 'DOCTOR']:
+            return Response({'error': f"Role '{user_role}' is not authorized to transition visit to DOCTOR queue."}, status=status.HTTP_403_FORBIDDEN)
+        if to_status == 'IN_CONSULTATION' and user_role not in ['DOCTOR', 'ADMIN', 'SYSTEM_ADMIN']:
+            return Response({'error': f"Role '{user_role}' is not authorized to begin consultation."}, status=status.HTTP_403_FORBIDDEN)
+
+        # FND-09: Prevent transition to DOCTOR queue without recorded triage vitals
+        if to_status in ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION'] or target_queue == 'DOCTOR':
+            from apps.triage.models import TriageVitals
+            if not hasattr(visit, 'triage') and not TriageVitals.objects.filter(visit=visit).exists():
+                return Response(
+                    {'error': 'Cannot advance visit to DOCTOR queue without recorded triage vitals.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         from_status = visit.status
         visit.status = to_status
         visit.current_queue = target_queue
@@ -288,9 +304,10 @@ class VisitViewSet(viewsets.ModelViewSet):
             visit.triage_end_time = now
             visit.current_queue = 'DOCTOR'
             visit.status = 'WAITING_FOR_DOCTOR'
-        elif to_status == 'COMPLETED':
+        elif to_status == 'COMPLETED' or target_queue == 'COMPLETED':
             visit.completed_time = now
             visit.current_queue = 'COMPLETED'
+            visit.status = 'COMPLETED'
         elif to_status == 'WAITING_FOR_PHARMACY':
             visit.consultation_end_time = now
             visit.current_queue = 'PHARMACY'

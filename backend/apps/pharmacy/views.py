@@ -794,6 +794,9 @@ class DispenseMedicineView(APIView):
                 if not p_item:
                     continue
 
+                if p_item.status == 'DISPENSED':
+                    return Response({'error': f"Prescription item '{p_item.medicine_name}' has already been fully dispensed."}, status=status.HTTP_400_BAD_REQUEST)
+
                 # FEFO Batch selection: if batch_id provided, select it; else pick earliest expiry active batch matching p_item.medicine
                 if batch_id and int(batch_id) > 0:
                     batch = MedicineBatch.objects.select_for_update().filter(pk=int(batch_id), facility=prescription.facility).first()

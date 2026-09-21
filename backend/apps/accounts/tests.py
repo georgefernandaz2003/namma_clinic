@@ -1023,3 +1023,422 @@ class PhaseC1RegressionTests(TestCase):
         with self.assertRaises(ValidationError):
             bad_fu.clean()
 
+
+# =============================================================================
+# PHASE C2 REGRESSION SUITE: DATA INTEGRITY & PATIENT JOURNEY CONSISTENCY
+# =============================================================================
+
+class PhaseC2RegressionTests(TestCase):
+    """
+    Controlled regression suite for approved Phase C2 findings:
+    - FND-08: Patient facility/district integrity and DHO visibility
+    - FND-09: Triage requirement before doctor consultation queue
+    - FND-10: Coherent Visit status vs queue state
+    - FND-11: Prescription header vs line item consistency
+    - FND-12: Atomic pharmacy dispensing and inventory transactions
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.state = State.objects.create(name='Karnataka', code='KA')
+        self.district_a = District.objects.create(name='Bengaluru Urban', code='KA-BU', state=self.state)
+        self.district_b = District.objects.create(name='Mysuru District', code='KA-MYS', state=self.state)
+
+        self.zone_a = Zone.objects.create(name='East Zone', district=self.district_a)
+        self.ward_a = Ward.objects.create(name='Varthur Ward', ward_number=149, zone=self.zone_a)
+
+        self.clinic_a = Facility.objects.create(
+            facility_code='FAC-C2-A',
+            facility_name='Varthur Primary Health Clinic', facility_type='PRIMARY_HEALTH_CENTRE',
+            district=self.district_a, state=self.state, zone=self.zone_a, ward=self.ward_a
+        )
+
+        self.zone_b = Zone.objects.create(name='Mysuru Zone', district=self.district_b)
+        self.ward_b = Ward.objects.create(name='KRP Ward', ward_number=1, zone=self.zone_b)
+        self.clinic_b = Facility.objects.create(
+            facility_code='FAC-C2-B',
+            facility_name='Mysuru Clinic', facility_type='PRIMARY_HEALTH_CENTRE',
+            district=self.district_b, state=self.state, zone=self.zone_b, ward=self.ward_b
+        )
+
+        # Users
+        self.dho_a = User.objects.create_user(
+            username='dho_a', role='DISTRICT_OFFICER', assigned_district=self.district_a
+        )
+        self.dho_b = User.objects.create_user(
+            username='dho_b', role='DISTRICT_OFFICER', assigned_district=self.district_b
+        )
+        self.nurse = User.objects.create_user(
+            username='nurse_c2', role='NURSE', assigned_facility=self.clinic_a
+        )
+        self.doctor = User.objects.create_user(
+            username='doctor_c2', role='DOCTOR', assigned_facility=self.clinic_a
+        )
+        self.pharmacist = User.objects.create_user(
+            username='pharm_c2', role='PHARMACIST', assigned_facility=self.clinic_a
+        )
+
+        # Medicine & Batch
+        self.med_aml = MedicineMaster.objects.create(
+            generic_name='Amlodipine Besylate', brand_name='Amlopres', strength='5 mg', dosage_form='Tablet'
+        )
+        self.med_met = MedicineMaster.objects.create(
+            generic_name='Metformin HCl', brand_name='Glycomet', strength='500 mg', dosage_form='Tablet'
+        )
+        self.batch_aml = MedicineBatch.objects.create(
+            facility=self.clinic_a, medicine=self.med_aml, batch_number='AML-C2-01',
+            quantity=50, unit_cost=1.20, expiry_date=datetime.date.today() + datetime.timedelta(days=90), status='ACTIVE'
+        )
+        self.batch_met = MedicineBatch.objects.create(
+            facility=self.clinic_a, medicine=self.med_met, batch_number='MET-C2-01',
+            quantity=100, unit_cost=0.80, expiry_date=datetime.date.today() + datetime.timedelta(days=120), status='ACTIVE'
+        )
+
+    # -------------------------------------------------------------------------
+    # FND-08: Patient Facility / District Integrity
+    # -------------------------------------------------------------------------
+
+    def test_fnd08_patient_facility_populates_district_and_dho_visibility(self):
+        """Registering a patient with facility auto-populates district and is visible to DHO."""
+        self.client.force_authenticate(user=self.nurse)
+        res = self.client.post('/api/patients/', {
+            'name': 'Gowramma Test',
+            'age': 45,
+            'gender': 'FEMALE',
+            'mobile': '9845112233',
+            'address': 'Varthur Village',
+            'registered_at_facility': self.clinic_a.id
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data['district'], self.district_a.id)
+
+        # DHO A can see this patient
+        self.client.force_authenticate(user=self.dho_a)
+        res_dho = self.client.get('/api/patients/')
+        self.assertEqual(res_dho.status_code, status.HTTP_200_OK)
+        results = res_dho.data if isinstance(res_dho.data, list) else res_dho.data.get('results', [])
+        p_ids = [p['id'] for p in results]
+        self.assertIn(res.data['id'], p_ids)
+
+    def test_fnd08_patient_facility_district_mismatch_rejected(self):
+        """Attempting to set patient district different from facility district is rejected."""
+        self.client.force_authenticate(user=self.nurse)
+        # Serializer level
+        res = self.client.post('/api/patients/', {
+            'name': 'Mismatch Test',
+            'age': 30,
+            'gender': 'MALE',
+            'mobile': '9845999888',
+            'address': 'Test',
+            'registered_at_facility': self.clinic_a.id,
+            'district': self.district_b.id  # Mismatch! Clinic A is in District A
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('district', str(res.data))
+
+        # Model clean level
+        from django.core.exceptions import ValidationError
+        bad_p = Patient(
+            patient_id='PAT-ERR-001', name='Bad Mismatch', age=25, gender='MALE',
+            mobile='9888000111', address='Bad Addr', registered_at_facility=self.clinic_a,
+            district=self.district_b
+        )
+        with self.assertRaises(ValidationError):
+            bad_p.clean()
+
+    def test_fnd08_no_cross_district_leakage(self):
+        """DHO of District A cannot see Patient registered in District B."""
+        patient_b = Patient.objects.create(
+            patient_id='PAT-B-001', name='Mysuru Citizen', age=40, gender='MALE',
+            mobile='9777112233', address='Mysuru Ward 1', registered_at_facility=self.clinic_b,
+            district=self.district_b
+        )
+        self.client.force_authenticate(user=self.dho_a)
+        res = self.client.get('/api/patients/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        results = res.data if isinstance(res.data, list) else res.data.get('results', [])
+        p_ids = [p['id'] for p in results]
+        self.assertNotIn(patient_b.id, p_ids)
+
+    # -------------------------------------------------------------------------
+    # FND-09: Triage before Doctor Consultation
+    # -------------------------------------------------------------------------
+
+    def test_fnd09_untriaged_visit_cannot_advance_to_doctor_queue(self):
+        """Untriaged visit cannot be advanced to DOCTOR queue via transition_status."""
+        patient = Patient.objects.create(
+            patient_id='PAT-C2-T01', name='Triage Test Patient', age=32, gender='FEMALE',
+            mobile='9666112233', address='Varthur Colony', registered_at_facility=self.clinic_a,
+            district=self.district_a
+        )
+        visit = Visit.objects.create(
+            visit_id='VIS-C2-T01', patient=patient, facility=self.clinic_a,
+            opd_date=datetime.date.today(), current_queue='TRIAGE', status='WAITING_FOR_TRIAGE'
+        )
+
+        self.client.force_authenticate(user=self.nurse)
+        # Attempt advancing without triage vitals
+        res = self.client.post(f'/api/visits/{visit.id}/transition-status/', {
+            'to_status': 'WAITING_FOR_DOCTOR',
+            'queue': 'DOCTOR'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('triage', str(res.data['error']).lower())
+
+    def test_fnd09_triaged_visit_can_advance_to_doctor_queue(self):
+        """Visit with recorded triage vitals can advance to DOCTOR queue."""
+        patient = Patient.objects.create(
+            patient_id='PAT-C2-T02', name='Triaged Patient', age=28, gender='FEMALE',
+            mobile='9666112244', address='Varthur Colony', registered_at_facility=self.clinic_a,
+            district=self.district_a
+        )
+        visit = Visit.objects.create(
+            visit_id='VIS-C2-T02', patient=patient, facility=self.clinic_a,
+            opd_date=datetime.date.today(), current_queue='TRIAGE', status='IN_TRIAGE'
+        )
+        TriageVitals.objects.create(
+            visit=visit, patient=patient, nurse=self.nurse,
+            blood_pressure_systolic=120, blood_pressure_diastolic=80, pulse_bpm=72
+        )
+
+        self.client.force_authenticate(user=self.nurse)
+        res = self.client.post(f'/api/visits/{visit.id}/transition-status/', {
+            'to_status': 'WAITING_FOR_DOCTOR',
+            'queue': 'DOCTOR'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        visit.refresh_from_db()
+        self.assertEqual(visit.current_queue, 'DOCTOR')
+        self.assertEqual(visit.status, 'WAITING_FOR_DOCTOR')
+
+    def test_fnd09_unauthorized_role_cannot_transition_to_doctor_queue(self):
+        """Pharmacist or unauthorized role cannot transition visit to DOCTOR queue."""
+        patient = Patient.objects.create(
+            patient_id='PAT-C2-T03', name='Auth Patient', age=29, gender='MALE',
+            mobile='9666112255', address='Varthur Colony', registered_at_facility=self.clinic_a,
+            district=self.district_a
+        )
+        visit = Visit.objects.create(
+            visit_id='VIS-C2-T03', patient=patient, facility=self.clinic_a,
+            opd_date=datetime.date.today(), current_queue='TRIAGE', status='WAITING_FOR_TRIAGE'
+        )
+
+        self.client.force_authenticate(user=self.pharmacist)
+        res = self.client.post(f'/api/visits/{visit.id}/transition-status/', {
+            'to_status': 'WAITING_FOR_DOCTOR',
+            'queue': 'DOCTOR'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    # -------------------------------------------------------------------------
+    # FND-10: Visit Status vs Queue State
+    # -------------------------------------------------------------------------
+
+    def test_fnd10_completed_visit_queue_synchronized(self):
+        """A completed visit must have its queue synchronized to COMPLETED."""
+        patient = Patient.objects.create(
+            patient_id='PAT-C2-Q01', name='Queue Patient', age=50, gender='MALE',
+            mobile='9555112233', address='Varthur Colony', registered_at_facility=self.clinic_a,
+            district=self.district_a
+        )
+        visit = Visit.objects.create(
+            visit_id='VIS-C2-Q01', patient=patient, facility=self.clinic_a,
+            opd_date=datetime.date.today(), current_queue='TRIAGE', status='WAITING_FOR_TRIAGE'
+        )
+
+        # 1. API transition to COMPLETED sets queue to COMPLETED
+        self.client.force_authenticate(user=self.nurse)
+        res = self.client.post(f'/api/visits/{visit.id}/transition-status/', {
+            'to_status': 'COMPLETED'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, 'COMPLETED')
+        self.assertEqual(visit.current_queue, 'COMPLETED')
+
+        # 2. Model level: status=COMPLETED cannot coexist with queue=DOCTOR in clean()
+        from django.core.exceptions import ValidationError
+        bad_visit = Visit(
+            visit_id='VIS-C2-BAD', patient=patient, facility=self.clinic_a,
+            opd_date=datetime.date.today(), current_queue='DOCTOR', status='COMPLETED'
+        )
+        with self.assertRaises(ValidationError):
+            bad_visit.clean()
+
+    # -------------------------------------------------------------------------
+    # FND-11: Prescription Header vs Item Status
+    # -------------------------------------------------------------------------
+
+    def test_fnd11_prescription_header_cannot_be_dispensed_with_pending_items(self):
+        """Prescription status cannot be set to DISPENSED while items remain PENDING."""
+        patient = Patient.objects.create(
+            patient_id='PAT-C2-RX01', name='Rx Patient', age=42, gender='FEMALE',
+            mobile='9444112233', address='Varthur Colony', registered_at_facility=self.clinic_a,
+            district=self.district_a
+        )
+        visit = Visit.objects.create(
+            visit_id='VIS-C2-RX01', patient=patient, facility=self.clinic_a,
+            opd_date=datetime.date.today(), current_queue='DOCTOR', status='IN_CONSULTATION'
+        )
+        consult = Consultation.objects.create(
+            visit=visit, patient=patient, doctor=self.doctor, facility=self.clinic_a,
+            chief_complaint='Hypertension'
+        )
+        rx = Prescription.objects.create(
+            consultation=consult, patient=patient, doctor=self.doctor, facility=self.clinic_a,
+            status='ACTIVE'
+        )
+        PrescriptionItem.objects.create(
+            prescription=rx, medicine=self.med_aml, medicine_name='Amlodipine 5mg',
+            quantity=14, status='PENDING'
+        )
+
+        # 1. Direct model save check
+        from django.core.exceptions import ValidationError
+        rx.status = 'DISPENSED'
+        with self.assertRaises(ValidationError):
+            rx.clean()
+
+        # 2. Serializer validation check
+        from apps.consultations.views import PrescriptionSerializer
+        serializer = PrescriptionSerializer(instance=rx, data={'status': 'DISPENSED'}, partial=True)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('status', serializer.errors)
+
+    def test_fnd11_prescription_partially_dispensed_when_some_items_remain(self):
+        """When some items are dispensed and others remain pending, header is PARTIALLY_DISPENSED."""
+        patient = Patient.objects.create(
+            patient_id='PAT-C2-RX02', name='Partial Rx Patient', age=44, gender='MALE',
+            mobile='9444112244', address='Varthur Colony', registered_at_facility=self.clinic_a,
+            district=self.district_a
+        )
+        visit = Visit.objects.create(
+            visit_id='VIS-C2-RX02', patient=patient, facility=self.clinic_a,
+            opd_date=datetime.date.today(), current_queue='PHARMACY', status='WAITING_FOR_PHARMACY'
+        )
+        consult = Consultation.objects.create(
+            visit=visit, patient=patient, doctor=self.doctor, facility=self.clinic_a,
+            chief_complaint='Diabetes and Hypertension'
+        )
+        rx = Prescription.objects.create(
+            consultation=consult, patient=patient, doctor=self.doctor, facility=self.clinic_a,
+            status='ACTIVE'
+        )
+        it1 = PrescriptionItem.objects.create(
+            prescription=rx, medicine=self.med_aml, medicine_name='Amlodipine 5mg',
+            quantity=14, status='PENDING'
+        )
+        it2 = PrescriptionItem.objects.create(
+            prescription=rx, medicine=self.med_met, medicine_name='Metformin 500mg',
+            quantity=28, status='PENDING'
+        )
+
+        self.client.force_authenticate(user=self.pharmacist)
+        # Dispense only item 1
+        res = self.client.post('/api/pharmacy/dispense/', {
+            'prescription_id': rx.id,
+            'items': [{'item_id': it1.id, 'batch_id': self.batch_aml.id, 'qty': 14}]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        rx.refresh_from_db()
+        self.assertEqual(rx.status, 'PARTIALLY_DISPENSED')
+        it1.refresh_from_db()
+        self.assertEqual(it1.status, 'DISPENSED')
+        it2.refresh_from_db()
+        self.assertEqual(it2.status, 'PENDING')
+
+    # -------------------------------------------------------------------------
+    # FND-12: Inventory Transaction Consistency
+    # -------------------------------------------------------------------------
+
+    def test_fnd12_dispensing_creates_authoritative_inventory_transaction(self):
+        """Dispensing decrements batch stock and creates InventoryTransaction atomically."""
+        patient = Patient.objects.create(
+            patient_id='PAT-C2-INV01', name='Inventory Patient', age=35, gender='FEMALE',
+            mobile='9333112233', address='Varthur Colony', registered_at_facility=self.clinic_a,
+            district=self.district_a
+        )
+        visit = Visit.objects.create(
+            visit_id='VIS-C2-INV01', patient=patient, facility=self.clinic_a,
+            opd_date=datetime.date.today(), current_queue='PHARMACY', status='WAITING_FOR_PHARMACY'
+        )
+        consult = Consultation.objects.create(
+            visit=visit, patient=patient, doctor=self.doctor, facility=self.clinic_a,
+            chief_complaint='Hypertension'
+        )
+        rx = Prescription.objects.create(
+            consultation=consult, patient=patient, doctor=self.doctor, facility=self.clinic_a,
+            status='ACTIVE'
+        )
+        it = PrescriptionItem.objects.create(
+            prescription=rx, medicine=self.med_aml, medicine_name='Amlodipine 5mg',
+            quantity=10, status='PENDING'
+        )
+
+        initial_stock = self.batch_aml.quantity
+        self.client.force_authenticate(user=self.pharmacist)
+        res = self.client.post('/api/pharmacy/dispense/', {
+            'prescription_id': rx.id,
+            'items': [{'item_id': it.id, 'batch_id': self.batch_aml.id, 'qty': 10}]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.batch_aml.refresh_from_db()
+        self.assertEqual(self.batch_aml.quantity, initial_stock - 10)
+
+        tx = InventoryTransaction.objects.filter(reference_id=f"PRESCR-{rx.id}").first()
+        self.assertIsNotNone(tx)
+        self.assertEqual(tx.facility, self.clinic_a)
+        self.assertEqual(tx.medicine, self.med_aml)
+        self.assertEqual(tx.batch, self.batch_aml)
+        self.assertEqual(tx.transaction_type, 'DISPENSED')
+        self.assertEqual(tx.quantity, 10)
+
+    def test_fnd12_cannot_double_dispense_item(self):
+        """Attempting to dispense an already dispensed item is rejected and does not double decrement."""
+        patient = Patient.objects.create(
+            patient_id='PAT-C2-INV02', name='Double Dispense Patient', age=37, gender='MALE',
+            mobile='9333112244', address='Varthur Colony', registered_at_facility=self.clinic_a,
+            district=self.district_a
+        )
+        visit = Visit.objects.create(
+            visit_id='VIS-C2-INV02', patient=patient, facility=self.clinic_a,
+            opd_date=datetime.date.today(), current_queue='PHARMACY', status='WAITING_FOR_PHARMACY'
+        )
+        consult = Consultation.objects.create(
+            visit=visit, patient=patient, doctor=self.doctor, facility=self.clinic_a,
+            chief_complaint='Hypertension'
+        )
+        rx = Prescription.objects.create(
+            consultation=consult, patient=patient, doctor=self.doctor, facility=self.clinic_a,
+            status='ACTIVE'
+        )
+        it = PrescriptionItem.objects.create(
+            prescription=rx, medicine=self.med_aml, medicine_name='Amlodipine 5mg',
+            quantity=10, status='PENDING'
+        )
+
+        self.client.force_authenticate(user=self.pharmacist)
+        # 1. First dispensation succeeds
+        res1 = self.client.post('/api/pharmacy/dispense/', {
+            'prescription_id': rx.id,
+            'items': [{'item_id': it.id, 'batch_id': self.batch_aml.id, 'qty': 10}]
+        }, format='json')
+        self.assertEqual(res1.status_code, status.HTTP_200_OK)
+
+        self.batch_aml.refresh_from_db()
+        stock_after_first = self.batch_aml.quantity
+
+        # 2. Second dispensation attempt must be rejected
+        res2 = self.client.post('/api/pharmacy/dispense/', {
+            'prescription_id': rx.id,
+            'items': [{'item_id': it.id, 'batch_id': self.batch_aml.id, 'qty': 10}]
+        }, format='json')
+        self.assertEqual(res2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('already been fully dispensed', str(res2.data['error']))
+
+        self.batch_aml.refresh_from_db()
+        self.assertEqual(self.batch_aml.quantity, stock_after_first, "Stock must NOT be decremented again!")
+
+
