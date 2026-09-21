@@ -57,6 +57,9 @@ class Command(BaseCommand):
         ReferralResponse.objects.all().delete()
         Referral.objects.all().delete()
         InventoryTransaction.objects.all().delete()
+        PurchaseOrderItem.objects.all().delete()
+        PurchaseOrder.objects.all().delete()
+        Vendor.objects.all().delete()
         MedicineBatch.objects.all().delete()
         MedicineMaster.objects.all().delete()
         LabResult.objects.all().delete()
@@ -518,8 +521,13 @@ class Command(BaseCommand):
         # 11. PRESCRIPTIONS & DISPENSATIONS
         # Facility 1 Prescription
         pr_dh = Prescription.objects.create(consultation=c_dh_1, patient=p_dh_2, doctor=u_dh_doc, facility=hosp_a, status='DISPENSED')
-        pi_dh_1 = PrescriptionItem.objects.create(prescription=pr_dh, medicine=med_tel, medicine_name='Telmisartan 40 mg Tablet', dosage='1-0-0 Morning', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
+        pi_dh_1 = PrescriptionItem.objects.create(prescription=pr_dh, medicine=med_met, medicine_name='Metformin 500 mg Tablet', dosage='1-0-0 Morning', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
         pi_dh_2 = PrescriptionItem.objects.create(prescription=pr_dh, medicine=med_aml, medicine_name='Amlodipine 5 mg Tablet', dosage='0-0-1 Night', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
+        b_dh_met = MedicineBatch.objects.filter(facility=hosp_a, medicine=med_met).first()
+        if b_dh_met:
+            b_dh_met.quantity = max(0, b_dh_met.quantity - 30)
+            b_dh_met.save()
+            InventoryTransaction.objects.create(facility=hosp_a, medicine=med_met, batch=b_dh_met, transaction_type='DISPENSED', quantity=30, reference_id=f"PRESCR-{pr_dh.id}", created_by=u_dist, notes='Dispensed 30 units Metformin for Narayana Swamy')
         b_dh_aml = MedicineBatch.objects.filter(facility=hosp_a, medicine=med_aml).first()
         if b_dh_aml:
             b_dh_aml.quantity = max(0, b_dh_aml.quantity - 30)
@@ -749,6 +757,38 @@ class Command(BaseCommand):
         )
         FacilityBedCapacity.objects.create(facility=vc_a4_1, bed_category='GENERAL_OBSERVATION', total_beds=4, occupied_beds=1, cleaning_in_progress=1, under_maintenance=0, notes='Satellite observation cots.')
         FacilityBedAllocation.objects.create(facility=vc_a4_1, bed_number='BED-COT-01', bed_category='GENERAL_OBSERVATION', patient=p_suresh, patient_name='Suresh Patil (65/M)', attending_doctor='Dr. Suresh V.', status='OCCUPIED')
+
+        # 20b. PATIENT CLINICAL DOCUMENTS (DEMO)
+        PatientDocument.objects.get_or_create(
+            patient=p_ramesh,
+            title='Demo Patient Document - Discharge Summary',
+            defaults={
+                'facility': rc_a4,
+                'document_type': 'DISCHARGE_SUMMARY',
+                'file_name': 'demo_discharge_summary.pdf',
+                'file_size': 245760,
+                'mime_type': 'application/pdf',
+                'document_date': today - datetime.timedelta(days=5),
+                'uploaded_by': u_doc,
+                'description': 'Sample demonstration discharge summary document for clinical UI preview.',
+                'status': 'ACTIVE'
+            }
+        )
+        PatientDocument.objects.get_or_create(
+            patient=p_ramesh,
+            title='Demo Patient Document - Insurance Card',
+            defaults={
+                'facility': rc_a4,
+                'document_type': 'OTHER',
+                'file_name': 'demo_insurance_card.pdf',
+                'file_size': 184320,
+                'mime_type': 'application/pdf',
+                'document_date': today - datetime.timedelta(days=30),
+                'uploaded_by': u_doc,
+                'description': 'Sample demonstration insurance verification card for coverage preview.',
+                'status': 'ACTIVE'
+            }
+        )
 
         # 21. DEMO ALERTS FOR ALL FACILITIES
         for fac in facilities_list:

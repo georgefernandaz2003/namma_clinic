@@ -18,7 +18,7 @@ ROLE_PERMISSIONS = {
         'ncd.view', 'surveillance.view', 'ars.view', 'quality.view', 'integrations.view'
     },
     'DOCTOR': {
-        'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
+        'patients.view', 'patients.update', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
         'triage.view', 'triage.create', 'triage.update',
         'diagnosis.view', 'diagnosis.create', 'diagnosis.update', 'prescription.view', 'prescription.create', 'prescription.update',
         'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update',

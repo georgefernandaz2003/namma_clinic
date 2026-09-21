@@ -89,6 +89,14 @@ class ReferralViewSet(viewsets.ModelViewSet):
         return queryset.order_by('-id')
 
     def create(self, request, *args, **kwargs):
+        urgency = request.data.get('urgency', 'ROUTINE')
+        valid_urgencies = [c[0] for c in Referral.URGENCY_CHOICES]
+        if urgency not in valid_urgencies:
+            return Response(
+                {'urgency': [f"'{urgency}' is not a valid choice. Must be one of: {', '.join(valid_urgencies)}"]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         count = Referral.objects.count() + 1
         ref_id = f"REF-{datetime.date.today().strftime('%Y%m%d')}-{count:04d}"
         
@@ -103,7 +111,7 @@ class ReferralViewSet(viewsets.ModelViewSet):
             reason=request.data.get('reason', 'Specialist Consultation'),
             clinical_summary=request.data.get('clinical_summary', ''),
             required_service=request.data.get('required_service', 'Specialist Evaluation'),
-            urgency=request.data.get('urgency', 'ROUTINE'),
+            urgency=urgency,
             status='CREATED'
         )
 

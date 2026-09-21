@@ -6,11 +6,11 @@ from rest_framework import status
 
 from apps.accounts.models import User
 from apps.facilities.models import Facility
-from apps.patients.models import Patient
+from apps.patients.models import Patient, PatientDocument
 from apps.visits.models import Visit, Token
 from apps.triage.models import TriageVitals
 from apps.consultations.models import Consultation, Prescription, PrescriptionItem
-from apps.pharmacy.models import MedicineMaster, MedicineBatch, InventoryTransaction
+from apps.pharmacy.models import MedicineMaster, MedicineBatch, InventoryTransaction, Vendor, PurchaseOrder, PurchaseOrderItem
 from apps.referrals.models import Referral, ReferralResponse, FollowUp
 from apps.ncd.models import NCDRecord
 from apps.surveillance.models import DiseaseCase
@@ -309,7 +309,7 @@ class PhaseABRegressionTests(TestCase):
             'reason': 'Specialist cardiology evaluation',
             'clinical_summary': 'Hypertension with chest pain',
             'required_service': 'Cardiology Specialist Consult',
-            'urgency': 'HIGH'
+            'urgency': 'URGENT'
         })
 
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
@@ -1440,5 +1440,214 @@ class PhaseC2RegressionTests(TestCase):
 
         self.batch_aml.refresh_from_db()
         self.assertEqual(self.batch_aml.quantity, stock_after_first, "Stock must NOT be decremented again!")
+
+
+class PhaseC3RegressionTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.state = State.objects.create(name='Karnataka', code='KA')
+        self.district_a = District.objects.create(name='Bengaluru Urban', code='BLR-C3', state=self.state)
+        self.district_b = District.objects.create(name='Mysuru District', code='MYS-C3', state=self.state)
+
+        self.clinic_a = Facility.objects.create(
+            facility_name='Clinic A', facility_code='NC-A-C3',
+            facility_type='URBAN_PHC', state=self.state, district=self.district_a
+        )
+        self.clinic_b = Facility.objects.create(
+            facility_name='Clinic B', facility_code='NC-B-C3',
+            facility_type='URBAN_PHC', state=self.state, district=self.district_b
+        )
+
+        self.dho = User.objects.create_user(
+            username='dho_c3', password='password', role='DISTRICT_OFFICER',
+            assigned_district=self.district_a
+        )
+        self.doctor = User.objects.create_user(
+            username='doc_c3', password='password', role='DOCTOR',
+            assigned_facility=self.clinic_a
+        )
+        self.nurse = User.objects.create_user(
+            username='nurse_c3', password='password', role='NURSE',
+            assigned_facility=self.clinic_a
+        )
+        self.pharmacist = User.objects.create_user(
+            username='pharm_c3', password='password', role='PHARMACIST',
+            assigned_facility=self.clinic_a
+        )
+
+        self.patient = Patient.objects.create(
+            patient_id='PAT-C3-001', name='C3 Test Patient', age=35, gender='FEMALE',
+            mobile='9876543210', address='Koramangala Ward', registered_at_facility=self.clinic_a,
+            district=self.district_a, vulnerability_information='Slum Resident BPL'
+        )
+        self.visit = Visit.objects.create(
+            visit_id='VIS-C3-001', patient=self.patient, facility=self.clinic_a,
+            opd_date=datetime.date.today(), current_queue='DOCTOR', status='WAITING_FOR_DOCTOR',
+            chief_complaint='Severe fever and headache'
+        )
+        self.triage = TriageVitals.objects.create(
+            visit=self.visit, patient=self.patient, nurse=self.nurse,
+            blood_pressure_systolic=120, blood_pressure_diastolic=80, pulse_bpm=76, temperature_f=101.2
+        )
+        self.med_pcm = MedicineMaster.objects.create(
+            generic_name='Paracetamol', strength='650 mg', dosage_form='Tablet', category='Analgesic'
+        )
+        self.batch_pcm = MedicineBatch.objects.create(
+            facility=self.clinic_a, medicine=self.med_pcm, batch_number='BAT-C3-PCM',
+            expiry_date=datetime.date.today() + datetime.timedelta(days=180), quantity=500
+        )
+
+    def test_fnd16_referral_urgency_choices(self):
+        """FND-16: Referral urgency choices must accept ROUTINE, URGENT, EMERGENCY, and reject invalid choices (e.g. HIGH)."""
+        self.client.force_authenticate(user=self.doctor)
+
+        # 1. Valid urgency 'URGENT' must succeed
+        res_urgent = self.client.post('/api/referrals/', {
+            'patient': self.patient.id,
+            'visit': self.visit.id,
+            'source_facility': self.clinic_a.id,
+            'destination_facility': self.clinic_a.id,
+            'reason': 'Specialist evaluation',
+            'urgency': 'URGENT'
+        }, format='json')
+        self.assertEqual(res_urgent.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_urgent.data['urgency'], 'URGENT')
+
+        # 2. Valid urgency 'ROUTINE' and 'EMERGENCY' must succeed
+        res_routine = self.client.post('/api/referrals/', {
+            'patient': self.patient.id,
+            'visit': self.visit.id,
+            'source_facility': self.clinic_a.id,
+            'destination_facility': self.clinic_a.id,
+            'reason': 'Routine review',
+            'urgency': 'ROUTINE'
+        }, format='json')
+        self.assertEqual(res_routine.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_routine.data['urgency'], 'ROUTINE')
+
+        # 3. Invalid urgency 'HIGH' must be rejected with HTTP 400
+        res_high = self.client.post('/api/referrals/', {
+            'patient': self.patient.id,
+            'visit': self.visit.id,
+            'source_facility': self.clinic_a.id,
+            'destination_facility': self.clinic_a.id,
+            'reason': 'High priority referral',
+            'urgency': 'HIGH'
+        }, format='json')
+        self.assertEqual(res_high.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('urgency', res_high.data)
+
+    def test_fnd13_consultation_dynamic_fields(self):
+        """FND-13: Consultation creation must persist dynamic, patient-specific clinical data without fabricated defaults."""
+        self.client.force_authenticate(user=self.doctor)
+        res = self.client.post('/api/consultations/', {
+            'visit': self.visit.id,
+            'patient': self.patient.id,
+            'facility': self.clinic_a.id,
+            'chief_complaint': 'Acute fever for 2 days',
+            'clinical_history': 'No previous drug allergies. Non-diabetic.',
+            'clinical_assessment': 'Febrile, alert. Pharyngeal congestion noted.',
+            'diagnosis_code': 'J06.9',
+            'diagnosis_name': 'Acute Upper Respiratory Infection',
+            'clinical_notes': 'Advised rest, oral hydration, and review if fever persists > 48h.',
+            'prescription_items': [{
+                'medicine_id': self.med_pcm.id,
+                'medicine_name': 'Paracetamol 650 mg Tablet',
+                'dosage': '1-1-1 After Food',
+                'quantity': 10
+            }]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+
+        consult = Consultation.objects.get(visit=self.visit)
+        self.assertEqual(consult.diagnosis_name, 'Acute Upper Respiratory Infection')
+        self.assertEqual(consult.clinical_history, 'No previous drug allergies. Non-diabetic.')
+        self.assertEqual(consult.prescription.items.count(), 1)
+
+    def test_fnd17_followup_status_patch(self):
+        """FND-17: FollowUp status can be updated to COMPLETED via PATCH /api/followups/{id}/."""
+        fu = FollowUp.objects.create(
+            patient=self.patient, facility=self.clinic_a, visit=self.visit,
+            category='ROUTINE', due_date=datetime.date.today(), status='PENDING',
+            notes='Check recovery from viral fever.'
+        )
+        # 1. Unauthorized role (PHARMACIST) must receive 403
+        self.client.force_authenticate(user=self.pharmacist)
+        res_pharm = self.client.patch(f'/api/followups/{fu.id}/', {'status': 'COMPLETED'}, format='json')
+        self.assertEqual(res_pharm.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 2. DHO (read-only oversight) must receive 403
+        self.client.force_authenticate(user=self.dho)
+        res_dho = self.client.patch(f'/api/followups/{fu.id}/', {'status': 'COMPLETED'}, format='json')
+        self.assertEqual(res_dho.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 3. Authorized role (DOCTOR) succeeds
+        self.client.force_authenticate(user=self.doctor)
+        res = self.client.patch(f'/api/followups/{fu.id}/', {'status': 'COMPLETED'}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        fu.refresh_from_db()
+        self.assertEqual(fu.status, 'COMPLETED')
+
+    def test_fnd19_dho_infrastructure_access(self):
+        """FND-19: DHO can access facility infrastructure data within their authorized district."""
+        from apps.facilities.models import FacilityOxygenSupply
+        FacilityOxygenSupply.objects.create(
+            facility=self.clinic_a, oxygen_source='CYLINDERS', total_cylinders=6,
+            active_cylinders=4, status='ADEQUATE'
+        )
+        self.client.force_authenticate(user=self.dho)
+        res = self.client.get('/api/facilities-infra/oxygen-supplies/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        results = res.data.get('results', res.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['facility'], self.clinic_a.id)
+
+    def test_fnd20_patient_vulnerability_categories(self):
+        """FND-20: Patient registration accepts and persists specific vulnerability categories."""
+        self.client.force_authenticate(user=self.nurse)
+        categories = [
+            'General Population',
+            'Slum Resident / Low Income Group',
+            'Urban Slum Resident BPL',
+            'Senior Citizen / Diabetic',
+            'Senior Citizen / Cardiac History',
+            'High Risk Pregnancy ANC',
+            'Slum Household BPL'
+        ]
+        for idx, cat in enumerate(categories):
+            res = self.client.post('/api/patients/', {
+                'name': f'Vulnerable Citizen {idx}',
+                'age': 40 + idx,
+                'gender': 'MALE',
+                'mobile': f'988877766{idx}',
+                'address': f'Ward Camp Site {idx}',
+                'vulnerability_information': cat,
+                'registered_at_facility': self.clinic_a.id
+            }, format='json')
+            self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+            self.assertEqual(res.data['vulnerability_information'], cat)
+
+    def test_fnd15_vendors_and_purchase_orders_access(self):
+        """FND-15: Vendors and Purchase Orders endpoints return authoritative data scoped to facility."""
+        vendor = Vendor.objects.create(
+            vendor_name='Test Vendor KSDLWC', contact_person='Shri R. Anjanappa',
+            phone='+91-80-22221111', facility=self.clinic_a, created_by=self.pharmacist
+        )
+        po = PurchaseOrder.objects.create(
+            po_number='PO-TEST-001', vendor=vendor, facility=self.clinic_a,
+            status='RECEIVED', total_amount=1500.00, created_by=self.pharmacist
+        )
+        PurchaseOrderItem.objects.create(
+            purchase_order=po, medicine=self.med_pcm, ordered_quantity=1000,
+            received_quantity=1000, unit_price=1.50, total_price=1500.00
+        )
+        self.client.force_authenticate(user=self.pharmacist)
+        res_v = self.client.get('/api/pharmacy/vendors/')
+        self.assertEqual(res_v.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(res_v.data.get('results', res_v.data)), 1)
+
+        res_po = self.client.get('/api/pharmacy/purchase-orders/')
+        self.assertEqual(res_po.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(res_po.data.get('results', res_po.data)), 1)
 
 

@@ -17,24 +17,21 @@ export const Consultation: React.FC = () => {
 
   // Form states
   const [chiefComplaint, setChiefComplaint] = useState('');
-  const [history] = useState('Known history of hypertension, poor compliance.');
-  const [assessment, setAssessment] = useState('High BP 148/96 mmHg with elevated blood glucose.');
-  const [diagCode] = useState('E11.9 / I10');
-  const [diagName, setDiagName] = useState('Type 2 Diabetes Mellitus with Essential Hypertension');
-  const [notes] = useState('Advised low salt diet, lifestyle modifications, and regular monitoring.');
+  const [history, setHistory] = useState('');
+  const [assessment, setAssessment] = useState('');
+  const [diagCode, setDiagCode] = useState('');
+  const [diagName, setDiagName] = useState('');
+  const [notes, setNotes] = useState('');
 
-  // Prescription items
-  const [prescriptions, setPrescriptions] = useState<Array<{ medicine_id?: number | null; medicine_name: string; dosage: string; quantity: number }>>([
-    { medicine_id: 26, medicine_name: 'Metformin HCl 500 mg Tablet', dosage: '1-0-1 After Food', quantity: 28 },
-    { medicine_id: 27, medicine_name: 'Amlodipine Besylate 5 mg Tablet', dosage: '1-0-0 Morning', quantity: 14 }
-  ]);
+  // Prescription items (empty initially, doctor adds as needed)
+  const [prescriptions, setPrescriptions] = useState<Array<{ medicine_id?: number | null; medicine_name: string; dosage: string; quantity: number }>>([]);
   const [availableMedicines, setAvailableMedicines] = useState<any[]>([]);
 
   // Referral creation state
-  const [createReferral, setCreateReferral] = useState(true);
+  const [createReferral, setCreateReferral] = useState(false);
   const [destFacilityId, setDestFacilityId] = useState<number | ''>('');
-  const [refReason, setRefReason] = useState('Specialist evaluation for uncontrolled hypertension');
-  const [refUrgency, setRefUrgency] = useState<'ROUTINE' | 'URGENT' | 'EMERGENCY'>('HIGH' as any);
+  const [refReason, setRefReason] = useState('');
+  const [refUrgency, setRefUrgency] = useState<'ROUTINE' | 'URGENT' | 'EMERGENCY'>('URGENT');
 
   // Diagnostic Tests (14 Essential Tests) State
   const [availableTests, setAvailableTests] = useState<any[]>([]);
@@ -101,14 +98,41 @@ export const Consultation: React.FC = () => {
 
   const selectVisit = async (v: Visit) => {
     setSelectedVisit(v);
-    setChiefComplaint(v.chief_complaint || 'Dizziness and fatigue');
+    setChiefComplaint(v.chief_complaint || '');
+    setHistory('');
+    setAssessment('');
+    setDiagCode('');
+    setDiagName('');
+    setNotes('');
+    setPrescriptions([]);
+    setRefReason(v.chief_complaint ? `Specialist evaluation for ${v.chief_complaint}` : 'Specialist evaluation');
+    setRefUrgency('URGENT');
+
     try {
       const trRes = await api.get(`triage/?visit=${v.id}`);
       const trList = trRes.data.results || trRes.data || [];
-      if (trList.length > 0) setVitals(trList[0]);
-      else setVitals(null);
+      if (trList.length > 0) {
+        setVitals(trList[0]);
+      } else {
+        setVitals(null);
+      }
     } catch (e) {
       setVitals(null);
+    }
+
+    try {
+      const conRes = await api.get(`consultations/?visit=${v.id}`);
+      const conList = conRes.data.results || conRes.data || [];
+      if (conList.length > 0) {
+        const con = conList[0];
+        if (con.clinical_history) setHistory(con.clinical_history);
+        if (con.clinical_assessment) setAssessment(con.clinical_assessment);
+        if (con.diagnosis_code) setDiagCode(con.diagnosis_code);
+        if (con.diagnosis_name) setDiagName(con.diagnosis_name);
+        if (con.clinical_notes) setNotes(con.clinical_notes);
+      }
+    } catch (e) {
+      // ignore
     }
   };
 
@@ -353,38 +377,78 @@ export const Consultation: React.FC = () => {
                 )}
               </div>
 
-              {/* Chief Complaint & Assessment */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Chief Complaint *</label>
-                  <input
-                    type="text"
-                    value={chiefComplaint}
-                    onChange={(e) => setChiefComplaint(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
-                    required
-                  />
+              {/* Chief Complaint, Diagnosis, History, Assessment, and Notes */}
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">Chief Complaint *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Fever, cough, general malaise"
+                      value={chiefComplaint}
+                      onChange={(e) => setChiefComplaint(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">ICD-10 Code</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. J06.9"
+                        value={diagCode}
+                        onChange={(e) => setDiagCode(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600 font-mono text-xs"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-slate-700 font-bold mb-1">Diagnosis Name *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Acute Upper Respiratory Infection"
+                        value={diagName}
+                        onChange={(e) => setDiagName(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
+                        required
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">ICD-10 Diagnosis Code & Name *</label>
-                  <input
-                    type="text"
-                    value={diagName}
-                    onChange={(e) => setDiagName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
-                    required
-                  />
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Clinical Assessment & Examination</label>
-                <textarea
-                  value={assessment}
-                  onChange={(e) => setAssessment(e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">Patient Clinical / Medical History</label>
+                    <textarea
+                      value={history}
+                      onChange={(e) => setHistory(e.target.value)}
+                      rows={2}
+                      placeholder="Past illnesses, known allergies, chronic conditions..."
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">Clinical Assessment & Examination</label>
+                    <textarea
+                      value={assessment}
+                      onChange={(e) => setAssessment(e.target.value)}
+                      rows={2}
+                      placeholder="Clinical findings, systemic examination..."
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Treatment Plan & Clinical Advice</label>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Diet, lifestyle advice, precautions, follow-up directions..."
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600 text-xs"
+                  />
+                </div>
               </div>
 
               {/* Prescription Section */}

@@ -19,7 +19,7 @@ export const Patients: React.FC = () => {
   const [mobile, setMobile] = useState('');
   const [address, setAddress] = useState('');
   const [abhaId, setAbhaId] = useState('');
-  const [vulnerability] = useState('Slum Resident BPL');
+  const [vulnerability, setVulnerability] = useState('Slum Resident / Low Income Group');
 
   // Token Modal State
   const [showTokenModal, setShowTokenModal] = useState(false);
@@ -70,6 +70,7 @@ export const Patients: React.FC = () => {
       setMobile('');
       setAddress('');
       setAbhaId('');
+      setVulnerability('Slum Resident / Low Income Group');
       loadPatients();
     } catch (e: any) {
       let msg = 'Failed to register patient.';
@@ -302,6 +303,23 @@ export const Patients: React.FC = () => {
                   onChange={(e) => setAddress(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
                 />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Vulnerability Category (Application Classification) *</label>
+                <select
+                  value={vulnerability}
+                  onChange={(e) => setVulnerability(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
+                >
+                  <option value="General Population">General Population</option>
+                  <option value="Slum Resident / Low Income Group">Slum Resident / Low Income Group</option>
+                  <option value="Urban Slum Resident BPL">Urban Slum Resident BPL</option>
+                  <option value="Senior Citizen / Diabetic">Senior Citizen / Diabetic</option>
+                  <option value="Senior Citizen / Cardiac History">Senior Citizen / Cardiac History</option>
+                  <option value="High Risk Pregnancy ANC">High Risk Pregnancy ANC</option>
+                  <option value="Slum Household BPL">Slum Household BPL</option>
+                </select>
               </div>
 
               <div className="pt-2 flex justify-end gap-2">

@@ -56,7 +56,7 @@ export const getHumanRoleLabel = (role: Role | string | undefined): string => {
 
 export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
   DISTRICT_OFFICER: [
-    '/', '/network', '/facilities', '/patients', '/queue', '/ncd', '/surveillance', '/referrals', '/pharmacy', '/reports', '/alerts', '/compliance', '/audit', '/ars', '/quality', '/integrations'
+    '/', '/network', '/facilities', '/patients', '/queue', '/ncd', '/surveillance', '/referrals', '/pharmacy', '/infrastructure', '/reports', '/alerts', '/compliance', '/audit', '/ars', '/quality', '/integrations'
   ],
   HOSPITAL_ADMIN: [
     '/', '/patients', '/queue', '/facilities', '/pharmacy', '/referrals', '/followups', '/infrastructure', '/reports', '/alerts', '/ars', '/quality', '/integrations'

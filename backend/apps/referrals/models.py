@@ -12,11 +12,13 @@ class Referral(models.Model):
     reason = models.TextField()
     clinical_summary = models.TextField()
     required_service = models.CharField(max_length=100, default='Specialist Evaluation')
-    urgency = models.CharField(max_length=20, choices=[
+    URGENCY_CHOICES = [
         ('ROUTINE', 'Routine Referral'),
         ('URGENT', 'Urgent Evaluation'),
         ('EMERGENCY', 'Emergency Referral')
-    ], default='ROUTINE')
+    ]
+
+    urgency = models.CharField(max_length=20, choices=URGENCY_CHOICES, default='ROUTINE')
     
     referral_date = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=30, choices=[
