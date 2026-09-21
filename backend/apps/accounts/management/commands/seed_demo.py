@@ -344,6 +344,12 @@ class Command(BaseCommand):
             mobile='9876112233', address='Varthur Lake BPL Slum Line 4', ward=ward_rural, district=dist_central,
             ABHA_ID_DEMO='91-4455-6677-8899', vulnerability_information='Diabetic Elderly', registered_at_facility=rc_a4
         )
+        p_rc_lab = Patient.objects.create(
+            patient_id='NC-20260901-303', name='Ananya Rao', date_of_birth=datetime.date(1998, 3, 14), age=28, gender='FEMALE',
+            mobile='9876334455', address='Varthur Main Slum settlement, Ward 88', ward=ward_rural, district=dist_central,
+            ABHA_ID_DEMO='91-5544-3322-1100', vulnerability_information='Acute Febrile Illness / Slum BPL',
+            registered_at_facility=rc_a4
+        )
 
         # Facility 4: Gunjur Village Satellite Clinic Patients
         p_suresh = Patient.objects.create(
@@ -448,6 +454,15 @@ class Command(BaseCommand):
         )
         t_rc_4 = Token.objects.create(token_number=4, visit=v_rc_4, facility=rc_a4, date=today, priority='NORMAL', status='COMPLETED')
 
+        # Today Visit 5 (Token #5) - Laboratory Queue (Diagnostics Test Pending)
+        v_rc_5 = Visit.objects.create(
+            visit_id=f"VIS-RC-{today.strftime('%Y%m%d')}-005", patient=p_rc_lab, facility=rc_a4,
+            opd_date=today, visit_type='GENERAL_OPD', priority='HIGH', current_queue='LAB',
+            status='LAB_PENDING', chief_complaint='High fever with chills and retro-orbital pain for 3 days - Urgent Dengue NS1 & CBC ordered',
+            assigned_doctor=u_doc, arrival_time=timezone.now() - datetime.timedelta(minutes=30)
+        )
+        t_rc_5 = Token.objects.create(token_number=5, visit=v_rc_5, facility=rc_a4, date=today, priority='HIGH', status='WAITING')
+
         # --- FACILITY 4: Gunjur Village Satellite Clinic ---
         # Today Visit 1 (Token #1) - Completed
         v_vc_1 = Visit.objects.create(
@@ -517,6 +532,13 @@ class Command(BaseCommand):
         )
 
         TriageVitals.objects.create(
+            visit=v_rc_5, patient=p_rc_lab, nurse=u_nurse,
+            blood_pressure_systolic=112, blood_pressure_diastolic=76, pulse_bpm=102, temperature_f=101.6,
+            spo2_percent=98, respiratory_rate=20, height_cm=160.0, weight_kg=54.0, blood_glucose_mgdl=104,
+            fever_flag=True, nurse_notes='High grade fever 101.6 F with body aches. Fast-tracked for doctor consultation.'
+        )
+
+        TriageVitals.objects.create(
             visit=v_vc_1, patient=p_suresh, nurse=u_nurse,
             blood_pressure_systolic=132, blood_pressure_diastolic=84, pulse_bpm=78, temperature_f=100.2,
             spo2_percent=97, respiratory_rate=18, height_cm=162.0, weight_kg=68.0, blood_glucose_mgdl=130,
@@ -564,6 +586,16 @@ class Command(BaseCommand):
             follow_up_date=today + datetime.timedelta(days=7), clinical_notes='Patient advised regarding allergen avoidance.'
         )
 
+        c_rc_5 = Consultation.objects.create(
+            visit=v_rc_5, patient=p_rc_lab, doctor=u_doc, facility=rc_a4,
+            chief_complaint='Acute high fever with severe chills, headache and arthralgia for 3 days',
+            clinical_history='No previous chronic conditions. Acute onset high fever 3 days ago.',
+            clinical_assessment='Febrile 101.6 F, flushed facies, mild dehydration. High clinical suspicion of Dengue / Viral fever.',
+            diagnosis_code='A90', diagnosis_name='Dengue Fever (Classic Dengue)',
+            treatment_plan='Stat Dengue NS1 Rapid Test and Urine Albumin/Protein. Paracetamol 650mg SOS. Maintain hydration. Review immediately with lab results.',
+            follow_up_date=today + datetime.timedelta(days=2), clinical_notes='Urgent laboratory diagnostic workup ordered. Patient directed to Laboratory.'
+        )
+
         c_vc_1 = Consultation.objects.create(
             visit=v_vc_1, patient=p_suresh, doctor=u_vh2_doc, facility=vc_a4_1,
             chief_complaint='Acute fever and body ache',
@@ -598,33 +630,33 @@ class Command(BaseCommand):
 
         # 12. LAB ORDERS & RESULTS ACROSS ALL FACILITIES
         # Facility 1 Lab Order
-        lo_dh = LabOrder.objects.create(consultation=c_dh_1, patient=p_dh_2, doctor=u_dh_doc, facility=hosp_a, test_master=lt_lipid, status='VERIFIED')
+        lo_dh = LabOrder.objects.create(visit=v_dh_1, consultation=c_dh_1, patient=p_dh_2, doctor=u_dh_doc, facility=hosp_a, test_master=lt_lipid, status='VERIFIED')
         LabSample.objects.create(lab_order=lo_dh, sample_type='Blood', sample_code='SMP-DH-001', collected_by=u_dh_lab)
         LabResult.objects.create(lab_order=lo_dh, result_value='245', unit='mg/dL', reference_range='< 200 mg/dL', interpretation_flag='HIGH', verified_by=u_dh_lab, notes='Elevated Total Cholesterol & LDL')
 
         # Facility 2 Lab Order
-        lo_sdh = LabOrder.objects.create(consultation=c_sdh_1, patient=p_anita, doctor=u_sdh_doc, facility=nc_a1, test_master=lt_hb, status='VERIFIED')
+        lo_sdh = LabOrder.objects.create(visit=v_sdh_1, consultation=c_sdh_1, patient=p_anita, doctor=u_sdh_doc, facility=nc_a1, test_master=lt_hb, status='VERIFIED')
         LabSample.objects.create(lab_order=lo_sdh, sample_type='Blood', sample_code='SMP-SDH-001', collected_by=u_sdh_nurse)
         LabResult.objects.create(lab_order=lo_sdh, result_value='10.2', unit='g/dL', reference_range='12.0 - 15.5 g/dL', interpretation_flag='LOW', verified_by=u_sdh_doc, notes='Mild Anemia')
 
         # Facility 3 Lab Orders (Covering All 6 Specimen Pipeline Stages)
-        # Order 1: VERIFIED - Synced EMR
-        lo_rc_1 = LabOrder.objects.create(consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, test_master=lt_hba1c, status='VERIFIED')
+        # Order 1: VERIFIED - Synced EMR (Linked to Visit 1)
+        lo_rc_1 = LabOrder.objects.create(visit=v_rc_1, consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, test_master=lt_hba1c, status='VERIFIED')
         LabSample.objects.create(lab_order=lo_rc_1, sample_type='Blood / Serum', sample_code='SMP-2026-0045', collected_by=u_lab)
         LabResult.objects.create(lab_order=lo_rc_1, result_value='8.4', unit='%', reference_range='4.0 - 5.6 %', interpretation_flag='HIGH', verified_by=u_lab, notes='Uncontrolled HbA1c. Dietary counseling and medication adjustment advised.')
 
-        # Order 2: SAMPLE_COLLECTED - Ready to click "Enter Result"
-        lo_rc_2 = LabOrder.objects.create(consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, test_master=lt_fbg, status='SAMPLE_COLLECTED')
+        # Order 2: SAMPLE_COLLECTED - Ready to click "Enter Result" (Linked to Visit 1)
+        lo_rc_2 = LabOrder.objects.create(visit=v_rc_1, consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, test_master=lt_fbg, status='SAMPLE_COLLECTED')
         LabSample.objects.create(lab_order=lo_rc_2, sample_type='Blood / Serum', sample_code='SMP-2026-0046', collected_by=u_lab)
 
-        # Order 3: ORDERED - Ready to click "Collect Sample"
-        lo_rc_3 = LabOrder.objects.create(patient=p_vh1_2, doctor=u_doc, facility=rc_a4, test_master=lt_u_prot, status='ORDERED')
+        # Order 3: ORDERED - Linked to Visit 5 (In Laboratory Queue)
+        lo_rc_3 = LabOrder.objects.create(visit=v_rc_5, consultation=c_rc_5, patient=p_rc_lab, doctor=u_doc, facility=rc_a4, test_master=lt_dengue, status='ORDERED')
 
-        # Order 4: ORDERED - Ready to click "Collect Sample"
-        lo_rc_4 = LabOrder.objects.create(patient=p_suresh, doctor=u_doc, facility=rc_a4, test_master=lt_dengue, status='ORDERED')
+        # Order 4: ORDERED - Linked to Visit 5 (In Laboratory Queue)
+        lo_rc_4 = LabOrder.objects.create(visit=v_rc_5, consultation=c_rc_5, patient=p_rc_lab, doctor=u_doc, facility=rc_a4, test_master=lt_u_prot, status='ORDERED')
 
         # Facility 4 Lab Order
-        lo_vc = LabOrder.objects.create(consultation=c_vc_1, patient=p_suresh, doctor=u_vh2_doc, facility=vc_a4_1, test_master=lt_malaria, status='VERIFIED')
+        lo_vc = LabOrder.objects.create(visit=v_vc_1, consultation=c_vc_1, patient=p_suresh, doctor=u_vh2_doc, facility=vc_a4_1, test_master=lt_malaria, status='VERIFIED')
         LabSample.objects.create(lab_order=lo_vc, sample_type='Blood', sample_code='SMP-VC-001', collected_by=u_vh2_doc)
         LabResult.objects.create(lab_order=lo_vc, result_value='Negative', unit='Result', reference_range='Negative', interpretation_flag='NORMAL', verified_by=u_vh2_doc, notes='Malaria Pf/Pv antigen negative')
 

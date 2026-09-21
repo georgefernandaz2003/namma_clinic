@@ -26,6 +26,8 @@ class LabOrderSerializer(serializers.ModelSerializer):
     patient_name = serializers.ReadOnlyField(source='patient.name')
     patient_mobile = serializers.ReadOnlyField(source='patient.mobile')
     facility_name = serializers.ReadOnlyField(source='facility.facility_name')
+    token_number = serializers.ReadOnlyField(source='visit.token.token_number')
+    visit_code = serializers.ReadOnlyField(source='visit.visit_id')
     sample = LabSampleSerializer(read_only=True)
     sample_details = LabSampleSerializer(source='sample', read_only=True)
     result = LabResultSerializer(read_only=True)
@@ -41,6 +43,7 @@ class LabTestMasterViewSet(viewsets.ModelViewSet):
 
 from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
 from apps.audit.models import AuditLog
+import datetime
 
 class LabOrderViewSet(viewsets.ModelViewSet):
     serializer_class = LabOrderSerializer
@@ -59,14 +62,46 @@ class LabOrderViewSet(viewsets.ModelViewSet):
 
 
     def get_queryset(self):
-        queryset = LabOrder.objects.all().select_related('test_master', 'patient', 'facility', 'doctor').order_by('-order_date', '-id')
+        queryset = LabOrder.objects.all().select_related('test_master', 'patient', 'facility', 'doctor', 'visit', 'visit__token').order_by('-order_date', '-id')
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
         facility_param = self.request.query_params.get('facility')
         if facility_param:
             queryset = queryset.filter(facility_id=facility_param)
+
+        # Date filtering (supports YYYY-MM-DD or 'all')
+        req_date = self.request.query_params.get('date', None)
+        if req_date and req_date != 'all':
+            try:
+                target_date = datetime.datetime.strptime(req_date, '%Y-%m-%d').date()
+                queryset = queryset.filter(order_date__date=target_date)
+            except ValueError:
+                pass
+
         return queryset
+
+    def perform_create(self, serializer):
+        doctor = serializer.validated_data.get('doctor') or self.request.user
+        order = serializer.save(doctor=doctor)
+
+        # Connect with active OPD Visit and synchronize queue status
+        from apps.visits.models import Visit
+        target_visit = order.visit
+        if not target_visit and order.patient and order.facility:
+            target_visit = Visit.objects.filter(
+                patient=order.patient,
+                facility=order.facility,
+                opd_date=order.order_date.date() if order.order_date else datetime.date.today()
+            ).exclude(status='COMPLETED').first()
+            if target_visit:
+                order.visit = target_visit
+                order.save(update_fields=['visit'])
+
+        if target_visit and target_visit.status != 'COMPLETED':
+            target_visit.current_queue = 'LAB'
+            target_visit.status = 'LAB_PENDING'
+            target_visit.save(update_fields=['current_queue', 'status'])
 
     @action(detail=True, methods=['post'], url_path='collect-sample')
     def collect_sample(self, request, pk=None):
@@ -91,7 +126,13 @@ class LabOrderViewSet(viewsets.ModelViewSet):
             sample.save()
 
         order.status = 'SAMPLE_COLLECTED'
-        order.save()
+        order.save(update_fields=['status'])
+
+        # Update visit queue status to in-progress
+        if order.visit and order.visit.status != 'COMPLETED':
+            order.visit.current_queue = 'LAB'
+            order.visit.status = 'LAB_IN_PROGRESS'
+            order.visit.save(update_fields=['current_queue', 'status'])
 
         AuditLog.objects.create(
             user=request.user,
@@ -131,7 +172,21 @@ class LabOrderViewSet(viewsets.ModelViewSet):
             result.save()
 
         order.status = 'VERIFIED'
-        order.save()
+        order.save(update_fields=['status'])
+
+        # Check if all lab orders for this patient/visit are verified
+        if order.visit and order.visit.status != 'COMPLETED':
+            pending_orders = LabOrder.objects.filter(visit=order.visit).exclude(status='VERIFIED').count()
+            if pending_orders == 0:
+                from apps.consultations.models import Prescription
+                has_pending_rx = Prescription.objects.filter(patient=order.patient, facility=order.facility, status='PENDING').exists()
+                if has_pending_rx:
+                    order.visit.current_queue = 'PHARMACY'
+                    order.visit.status = 'WAITING_FOR_PHARMACY'
+                else:
+                    order.visit.current_queue = 'DOCTOR'
+                    order.visit.status = 'WAITING_FOR_DOCTOR'
+                order.visit.save(update_fields=['current_queue', 'status'])
 
         AuditLog.objects.create(
             user=request.user,

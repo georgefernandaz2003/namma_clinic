@@ -11,6 +11,7 @@ class LabTestMaster(models.Model):
         return f"{self.name} ({self.code})"
 
 class LabOrder(models.Model):
+    visit = models.ForeignKey('visits.Visit', on_delete=models.SET_NULL, null=True, blank=True, related_name='lab_orders')
     consultation = models.ForeignKey('consultations.Consultation', on_delete=models.SET_NULL, null=True, blank=True, related_name='lab_orders')
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='lab_orders')
     doctor = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)

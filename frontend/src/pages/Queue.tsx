@@ -3,9 +3,8 @@ import api from '../services/api';
 import type { Visit, Patient } from '../types';
 import { useAuth } from '../context/AuthContext';
 import {
-  Clock, ArrowRight, Plus, X, Calendar, ChevronLeft, ChevronRight,
-  RotateCcw, ShieldAlert, UserCheck, AlertTriangle, CheckCircle,
-  FileText, TestTube, Pill, Lock, History, Eye, Play
+  Clock, ArrowRight, Plus, X, ChevronLeft, ChevronRight,
+  ShieldAlert, CheckCircle, Lock, History, Eye, Play
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -19,6 +18,7 @@ export const Queue: React.FC = () => {
   // State
   const [selectedDate, setSelectedDate] = useState<string>(getTodayStr());
   const [activeTab, setActiveTab] = useState<string>('ALL');
+  const [allVisits, setAllVisits] = useState<Visit[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [historySummary, setHistorySummary] = useState<any[]>([]);
@@ -36,14 +36,22 @@ export const Queue: React.FC = () => {
 
   const isToday = selectedDate === getTodayStr();
   const isPast = selectedDate < getTodayStr();
-  const isFuture = selectedDate > getTodayStr();
 
   const loadQueue = async () => {
     if (!activeFacility) return;
     try {
-      const queueParam = activeTab !== 'ALL' ? `&queue=${activeTab}` : '';
-      const res = await api.get(`visits/?facility=${activeFacility.id}&date=${selectedDate}${queueParam}`);
-      setVisits(res.data.results || res.data || []);
+      // Always fetch all visits for the selected date to maintain accurate top KPI counters
+      const allRes = await api.get(`visits/?facility=${activeFacility.id}&date=${selectedDate}`);
+      const fullList: Visit[] = allRes.data.results || allRes.data || [];
+      setAllVisits(fullList);
+
+      // Populate table with filtered list
+      if (activeTab === 'ALL') {
+        setVisits(fullList);
+      } else {
+        const queueRes = await api.get(`visits/?facility=${activeFacility.id}&date=${selectedDate}&queue=${activeTab}`);
+        setVisits(queueRes.data.results || queueRes.data || []);
+      }
     } catch (e) {
       console.error('Failed to load date-based OPD queue', e);
     }
@@ -166,14 +174,14 @@ export const Queue: React.FC = () => {
     }
   };
 
-  // Dynamic KPI Calculations based on selectedDate
-  const totalOpdCount = visits.length;
-  const waitingTriageCount = visits.filter(v => v.status === 'WAITING_FOR_TRIAGE' || (v.current_queue === 'TRIAGE' && v.status !== 'COMPLETED')).length;
-  const waitingDoctorCount = visits.filter(v => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED').length;
-  const inConsultationCount = visits.filter(v => v.status === 'IN_CONSULTATION').length;
-  const labPendingCount = visits.filter(v => v.current_queue === 'LAB' || v.status.includes('LAB')).length;
-  const waitingPharmacyCount = visits.filter(v => v.current_queue === 'PHARMACY' || v.status.includes('PHARMACY')).length;
-  const completedCount = visits.filter(v => v.status === 'COMPLETED').length;
+  // Dynamic KPI Calculations based on allVisits for selectedDate
+  const totalOpdCount = allVisits.length;
+  const waitingTriageCount = allVisits.filter(v => v.status === 'WAITING_FOR_TRIAGE' || (v.current_queue === 'TRIAGE' && v.status !== 'COMPLETED')).length;
+  const waitingDoctorCount = allVisits.filter(v => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED').length;
+  const inConsultationCount = allVisits.filter(v => v.status === 'IN_CONSULTATION').length;
+  const labPendingCount = allVisits.filter(v => v.current_queue === 'LAB' || v.status.includes('LAB')).length;
+  const waitingPharmacyCount = allVisits.filter(v => v.current_queue === 'PHARMACY' || v.status.includes('PHARMACY')).length;
+  const completedCount = allVisits.filter(v => v.status === 'COMPLETED').length;
 
   // Format Date for Header
   const formattedDate = new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-IN', {
@@ -384,23 +392,28 @@ export const Queue: React.FC = () => {
         {/* Role-Based Queue Filter Tabs */}
         <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
           {[
-            { id: 'ALL', label: 'All Queue' },
-            { id: 'TRIAGE', label: 'Nurse Triage' },
-            { id: 'DOCTOR', label: 'Doctor Consult' },
-            { id: 'LAB', label: 'Laboratory' },
-            { id: 'PHARMACY', label: 'Pharmacy' },
-            { id: 'COMPLETED', label: 'Completed' }
+            { id: 'ALL', label: 'All Queue', count: allVisits.length },
+            { id: 'TRIAGE', label: 'Nurse Triage', count: waitingTriageCount },
+            { id: 'DOCTOR', label: 'Doctor Consult', count: waitingDoctorCount + inConsultationCount },
+            { id: 'LAB', label: 'Laboratory', count: labPendingCount },
+            { id: 'PHARMACY', label: 'Pharmacy', count: waitingPharmacyCount },
+            { id: 'COMPLETED', label: 'Completed', count: completedCount }
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-2 rounded-xl transition ${
+              className={`px-3 py-2 rounded-xl transition flex items-center gap-1.5 ${
                 activeTab === tab.id
                   ? 'bg-slate-900 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
               }`}
             >
-              {tab.label}
+              <span>{tab.label}</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                activeTab === tab.id ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {tab.count}
+              </span>
             </button>
           ))}
         </div>
@@ -491,7 +504,13 @@ export const Queue: React.FC = () => {
                       </td>
 
                       <td className="p-3.5">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          v.current_queue === 'LAB' ? 'bg-purple-100 text-purple-800 border-purple-300' :
+                          v.current_queue === 'PHARMACY' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                          v.current_queue === 'DOCTOR' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                          v.current_queue === 'TRIAGE' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                          'bg-slate-100 text-slate-800 border-slate-300'
+                        }`}>
                           {v.current_queue || 'TRIAGE'}
                         </span>
                       </td>
@@ -499,7 +518,10 @@ export const Queue: React.FC = () => {
                       <td className="p-3.5">
                         <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${
                           v.status === 'COMPLETED' ? 'bg-teal-100 text-teal-800 border-teal-300' :
+                          v.status.includes('LAB') ? 'bg-purple-100 text-purple-800 border-purple-300' :
+                          v.status.includes('PHARMACY') ? 'bg-amber-100 text-amber-800 border-amber-300' :
                           v.status.includes('IN_') ? 'bg-indigo-100 text-indigo-800 border-indigo-300' :
+                          v.status.includes('WAITING') ? 'bg-amber-50 text-amber-800 border-amber-300' :
                           'bg-slate-100 text-slate-700 border-slate-300'
                         }`}>
                           {v.status.replace(/_/g, ' ')}
@@ -531,12 +553,12 @@ export const Queue: React.FC = () => {
                               </button>
                             )}
 
-                            {v.status.includes('LAB') && (
+                            {(v.current_queue === 'LAB' || v.status.includes('LAB')) && (
                               <button
-                                onClick={() => navigate('/lab')}
+                                onClick={() => navigate('/lab', { state: { selectedDate } })}
                                 className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
                               >
-                                <span>Lab</span> <ArrowRight className="w-3 h-3" />
+                                <span>Lab Order</span> <ArrowRight className="w-3 h-3" />
                               </button>
                             )}
 

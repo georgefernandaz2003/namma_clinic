@@ -153,7 +153,7 @@ export const Consultation: React.FC = () => {
 
     try {
       // 1. Save Consultation & Prescription
-      await api.post('consultations/', {
+      const consultRes = await api.post('consultations/', {
         visit: selectedVisit.id,
         patient: selectedVisit.patient,
         facility: activeFacility.id,
@@ -183,6 +183,8 @@ export const Consultation: React.FC = () => {
       for (const testId of selectedTestIds) {
         try {
           await api.post('lab/orders/', {
+            visit: selectedVisit.id,
+            consultation: consultRes.data?.id,
             patient: selectedVisit.patient,
             facility: activeFacility.id,
             test_master: testId

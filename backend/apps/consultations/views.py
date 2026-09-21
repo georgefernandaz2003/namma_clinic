@@ -110,7 +110,16 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         # Update visit status & queue
         visit = consultation.visit
         if visit:
-            if prescription_items:
+            from apps.laboratory.models import LabOrder
+            from django.db.models import Q
+            has_pending_lab = LabOrder.objects.filter(
+                Q(consultation=consultation) | Q(visit=visit) | Q(patient=consultation.patient, facility=consultation.facility, status__in=['ORDERED', 'SAMPLE_COLLECTED'])
+            ).exists()
+
+            if has_pending_lab:
+                visit.current_queue = 'LAB'
+                visit.status = 'LAB_PENDING'
+            elif prescription_items:
                 visit.current_queue = 'PHARMACY'
                 visit.status = 'WAITING_FOR_PHARMACY'
             else:
