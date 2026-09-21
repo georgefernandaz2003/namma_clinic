@@ -60,6 +60,10 @@ class VisitViewSet(viewsets.ModelViewSet):
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
 
+        req_fac = self.request.query_params.get('facility', None)
+        if req_fac:
+            queryset = queryset.filter(facility_id=req_fac)
+
         # Date filtering (default to today YYYY-MM-DD if not explicitly set to 'all')
         req_date = self.request.query_params.get('date', None)
         if req_date and req_date != 'all':
@@ -73,11 +77,15 @@ class VisitViewSet(viewsets.ModelViewSet):
 
         # Queue filter (triage, doctor, lab, pharmacy, completed)
         req_queue = self.request.query_params.get('queue', None)
+        req_status = self.request.query_params.get('status', None)
+
         if req_queue and req_queue != 'ALL':
-            queryset = queryset.filter(current_queue=req_queue.upper())
+            req_queue_upper = req_queue.upper()
+            queryset = queryset.filter(current_queue=req_queue_upper)
+            if req_queue_upper != 'COMPLETED' and not req_status:
+                queryset = queryset.exclude(status='COMPLETED')
 
         # Status filter
-        req_status = self.request.query_params.get('status', None)
         if req_status:
             req_status_upper = req_status.upper()
             if req_status_upper == 'WAITING':

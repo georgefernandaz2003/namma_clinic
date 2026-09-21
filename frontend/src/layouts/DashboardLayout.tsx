@@ -176,14 +176,14 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             <div className="truncate">
               <p className="text-xs font-bold text-slate-900 truncate">{user?.full_name || 'Demo User'}</p>
               <p className="text-[10px] text-emerald-700 font-extrabold truncate">
-                {user?.role_display} • {user?.role === 'DISTRICT_OFFICER' ? 'District Scope' : (user?.facility_name || 'Facility Scope')}
+                {user?.role_display || (user?.role ? user.role.replace(/_/g, ' ') : 'User')} • {user?.role === 'DISTRICT_OFFICER' ? 'District Scope' : (user?.facility_name || activeFacility?.facility_name || 'Facility Scope')}
               </p>
             </div>
           </div>
           <button
             onClick={logout}
             title="Logout"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-200 transition"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-200 transition cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
           </button>
@@ -195,22 +195,33 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Header */}
         <header className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between z-10 shadow-xs">
-          {/* Demo Mode Banner */}
+          {/* Demo Mode Banner & User Role Identity */}
           <div className="flex items-center gap-3">
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-widest">
-              DEMO MODE
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 uppercase tracking-widest flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              {user?.role_display || 'Namma Clinic Operational Console'}
             </span>
             <p className="text-xs text-slate-600 font-medium hidden sm:block">
-              Fictional Data Demonstration • ULB Namma Clinic & K Mati Operations Network
+              {activeFacility?.facility_name || user?.facility_name || 'BBMP District Health Network'}
             </p>
           </div>
 
-          {/* Action Buttons */}
+          {/* Action & Notification Buttons */}
           <div className="flex items-center gap-3">
+            <Link
+              to="/alerts"
+              className="relative p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition"
+              title="Alert Notifications"
+            >
+              <Bell className="w-4 h-4" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full animate-ping" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full" />
+            </Link>
+
             <button
               onClick={handleResetDemo}
               disabled={resetting}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition cursor-pointer"
             >
               <RotateCcw className={`w-3.5 h-3.5 text-amber-600 ${resetting ? 'animate-spin' : ''}`} />
               <span>{resetting ? 'Resetting...' : 'Reset Demo'}</span>

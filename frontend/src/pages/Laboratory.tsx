@@ -12,8 +12,12 @@ export const Laboratory: React.FC = () => {
   const [catalogue, setCatalogue] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<LabOrder | null>(null);
   const [resultVal, setResultVal] = useState('8.4');
+  const [resultUnit, setResultUnit] = useState('');
+  const [refRange, setRefRange] = useState('');
   const [interpFlag, setInterpFlag] = useState<'NORMAL' | 'HIGH' | 'LOW' | 'CRITICAL'>('HIGH');
   const [notes, setNotes] = useState('Fasting plasma glucose elevated. Verified by Lab Tech.');
+  const [collectingId, setCollectingId] = useState<number | null>(null);
+  const [savingResult, setSavingResult] = useState(false);
 
   const loadData = async () => {
     if (!activeFacility) return;
@@ -39,17 +43,68 @@ export const Laboratory: React.FC = () => {
     loadCatalogue();
   }, [activeFacility]);
 
-  const handleCollectSample = async (orderId: number) => {
+  const handleOpenResultModal = (order: LabOrder) => {
+    setSelectedOrder(order);
+    const foundTest = catalogue.find(t => t.id === order.test_master || t.code === order.test_code || t.name === order.test_name);
+    if (foundTest) {
+      setResultUnit(foundTest.unit || '');
+      setRefRange(foundTest.reference_range || '');
+      const testNameLower = (order.test_name || '').toLowerCase();
+      if (testNameLower.includes('urine') || testNameLower.includes('albumin')) {
+        setResultVal('Negative (Normal)');
+        setInterpFlag('NORMAL');
+        setNotes('Urine specimen analysis negative for protein. Within normal parameters.');
+      } else if (testNameLower.includes('glucose') || testNameLower.includes('fbg') || testNameLower.includes('rbg')) {
+        setResultVal('95');
+        setInterpFlag('NORMAL');
+        setNotes('Blood glucose within normal reference limits.');
+      } else if (testNameLower.includes('hemoglobin') || testNameLower.includes('hb')) {
+        setResultVal('13.8');
+        setInterpFlag('NORMAL');
+        setNotes('Hemoglobin levels within normal physiological range.');
+      } else {
+        setResultVal(foundTest.reference_range?.split('-')[0]?.trim() || 'Normal');
+        setInterpFlag('NORMAL');
+        setNotes('Specimen analyzed and verified by Laboratory Technician.');
+      }
+    } else {
+      setResultUnit('mg/dL');
+      setRefRange('Normal');
+      setResultVal('Normal');
+      setInterpFlag('NORMAL');
+      setNotes('Verified by Lab Tech.');
+    }
+  };
+
+  const handleCollectSample = async (order: LabOrder) => {
+    setCollectingId(order.id);
     try {
+      let sampleType = 'Blood / Serum';
+      const nameLower = (order.test_name || '').toLowerCase();
+      if (nameLower.includes('urine')) {
+        sampleType = 'Urine Specimen';
+      } else if (nameLower.includes('sputum')) {
+        sampleType = 'Sputum Specimen';
+      } else if (nameLower.includes('stool')) {
+        sampleType = 'Stool Specimen';
+      } else if (nameLower.includes('swab')) {
+        sampleType = 'Swab Specimen';
+      }
+
       const barcode = `SMP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-      await api.post(`lab/orders/${orderId}/collect-sample/`, {
-        sample_type: 'Blood / Serum',
+      const res = await api.post(`lab/orders/${order.id}/collect-sample/`, {
+        sample_type: sampleType,
         sample_code: barcode
       });
-      alert(`Sample collected! Barcode ID generated: ${barcode}`);
-      loadData();
-    } catch (e) {
-      alert('Failed to collect sample.');
+      const generatedCode = res.data?.sample?.sample_code || barcode;
+      alert(`Sample collected successfully!\n\nSpecimen Type: ${sampleType}\nBarcode Tag: ${generatedCode}\nOrder: #LAB-${String(order.id).padStart(4, '0')}`);
+      await loadData();
+    } catch (e: any) {
+      console.error('Failed to collect sample:', e);
+      const errMsg = e.response?.data?.error || e.response?.data?.detail || e.message || 'Failed to collect sample.';
+      alert(`Failed to collect sample: ${errMsg}`);
+    } finally {
+      setCollectingId(null);
     }
   };
 
@@ -57,19 +112,24 @@ export const Laboratory: React.FC = () => {
     e.preventDefault();
     if (!selectedOrder) return;
 
+    setSavingResult(true);
     try {
       await api.post(`lab/orders/${selectedOrder.id}/save-result/`, {
         result_value: resultVal,
-        unit: 'mg/dL',
-        reference_range: '70 - 140',
+        unit: resultUnit,
+        reference_range: refRange,
         interpretation_flag: interpFlag,
         notes
       });
       alert(`Lab result verified and pushed to patient EMR timeline for ${selectedOrder.patient_name}!`);
       setSelectedOrder(null);
-      loadData();
-    } catch (e) {
-      alert('Failed to save lab result.');
+      await loadData();
+    } catch (e: any) {
+      console.error('Failed to save lab result:', e);
+      const errMsg = e.response?.data?.error || e.response?.data?.detail || e.message || 'Failed to save lab result.';
+      alert(`Failed to save lab result: ${errMsg}`);
+    } finally {
+      setSavingResult(false);
     }
   };
 
@@ -190,10 +250,10 @@ export const Laboratory: React.FC = () => {
                       </td>
                       <td className="p-3.5 text-slate-800 font-semibold">{o.test_name}</td>
                       <td className="p-3.5">
-                        {o.sample_details?.sample_code ? (
+                        {(o.sample_details?.sample_code || o.sample?.sample_code) ? (
                           <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
                             <QrCode className="w-3 h-3 text-purple-600" />
-                            {o.sample_details.sample_code}
+                            {o.sample_details?.sample_code || o.sample?.sample_code}
                           </span>
                         ) : (
                           <span className="text-[10px] text-slate-400 italic">Pending</span>
@@ -224,16 +284,24 @@ export const Laboratory: React.FC = () => {
                       <td className="p-3.5 space-x-2">
                         {o.status === 'ORDERED' && (
                           <button
-                            onClick={() => handleCollectSample(o.id)}
-                            className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded text-[10px] shadow-xs"
+                            onClick={() => handleCollectSample(o)}
+                            disabled={collectingId === o.id}
+                            className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-300 text-white font-bold rounded text-[10px] shadow-xs inline-flex items-center gap-1 transition cursor-pointer"
                           >
-                            Collect Sample
+                            {collectingId === o.id ? (
+                              <>
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                                <span>Collecting...</span>
+                              </>
+                            ) : (
+                              <span>Collect Sample</span>
+                            )}
                           </button>
                         )}
                         {o.status === 'SAMPLE_COLLECTED' && (
                           <button
-                            onClick={() => setSelectedOrder(o)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] shadow-xs"
+                            onClick={() => handleOpenResultModal(o)}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] shadow-xs transition cursor-pointer"
                           >
                             Enter Result
                           </button>
@@ -302,7 +370,7 @@ export const Laboratory: React.FC = () => {
                 <FileCheck className="w-4 h-4 text-purple-600" />
                 Enter & Verify Result for {selectedOrder.patient_name}
               </h2>
-              <button onClick={() => setSelectedOrder(null)} className="text-slate-400 font-bold hover:text-slate-700">✕</button>
+              <button onClick={() => setSelectedOrder(null)} className="text-slate-400 font-bold hover:text-slate-700 cursor-pointer">✕</button>
             </div>
 
             <form onSubmit={handleSaveResult} className="space-y-3">
@@ -311,19 +379,43 @@ export const Laboratory: React.FC = () => {
                   <span className="text-purple-800 font-bold">Test: {selectedOrder.test_name}</span>
                   <span className="text-purple-600">ID: #LAB-{selectedOrder.id}</span>
                 </div>
-                <div className="text-purple-700">
-                  Specimen Code: {selectedOrder.sample_details?.sample_code || 'SMP-2026-LOGGED'}
+                <div className="text-purple-700 flex items-center gap-1">
+                  <QrCode className="w-3 h-3 text-purple-600" />
+                  Specimen Code: {selectedOrder.sample_details?.sample_code || selectedOrder.sample?.sample_code || 'SMP-2026-LOGGED'}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Result Value *</label>
+                  <input
+                    type="text"
+                    value={resultVal}
+                    onChange={(e) => setResultVal(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-purple-600 font-mono font-bold"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Unit</label>
+                  <input
+                    type="text"
+                    value={resultUnit}
+                    onChange={(e) => setResultUnit(e.target.value)}
+                    placeholder="e.g. mg/dL, %"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-purple-600 font-mono font-bold"
+                  />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-700 font-bold mb-1">Result Value *</label>
+                <label className="block text-slate-700 font-bold mb-1">Reference Range</label>
                 <input
                   type="text"
-                  value={resultVal}
-                  onChange={(e) => setResultVal(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-purple-600 font-mono font-bold"
-                  required
+                  value={refRange}
+                  onChange={(e) => setRefRange(e.target.value)}
+                  placeholder="e.g. 70 - 100 mg/dL"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-purple-600 font-mono text-[11px]"
                 />
               </div>
 
@@ -353,9 +445,17 @@ export const Laboratory: React.FC = () => {
 
               <button
                 type="submit"
-                className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl shadow-md transition"
+                disabled={savingResult}
+                className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-300 text-white font-bold rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2"
               >
-                Verify Result & Release to Patient EMR
+                {savingResult ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Verifying and Syncing EMR...</span>
+                  </>
+                ) : (
+                  <span>Verify Result & Release to Patient EMR</span>
+                )}
               </button>
             </form>
           </div>

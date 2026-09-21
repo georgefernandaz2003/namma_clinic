@@ -45,6 +45,9 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
+        facility_param = self.request.query_params.get('facility')
+        if facility_param:
+            queryset = queryset.filter(facility_id=facility_param)
         return queryset
 
     def create(self, request, *args, **kwargs):
@@ -78,14 +81,6 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                 clinical_notes=data.get('clinical_notes', '')
             )
 
-        # Update visit status
-        visit = consultation.visit
-        visit.status = 'COMPLETED'
-        visit.save()
-        if hasattr(visit, 'token'):
-            visit.token.status = 'COMPLETED'
-            visit.token.save()
-
         # Handle Prescriptions if provided
         prescription_items = data.get('prescription_items', [])
         if prescription_items:
@@ -112,6 +107,21 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                     status='PENDING'
                 )
 
+        # Update visit status & queue
+        visit = consultation.visit
+        if visit:
+            if prescription_items:
+                visit.current_queue = 'PHARMACY'
+                visit.status = 'WAITING_FOR_PHARMACY'
+            else:
+                visit.current_queue = 'COMPLETED'
+                visit.status = 'COMPLETED'
+                visit.completed_time = timezone.now()
+            visit.save()
+            if hasattr(visit, 'token'):
+                visit.token.status = 'COMPLETED' if visit.status == 'COMPLETED' else 'IN_PROGRESS'
+                visit.token.save()
+
         return Response(ConsultationSerializer(consultation).data, status=status.HTTP_201_CREATED)
 
 class PrescriptionViewSet(viewsets.ModelViewSet):
@@ -132,4 +142,7 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
+        facility_param = self.request.query_params.get('facility')
+        if facility_param:
+            queryset = queryset.filter(facility_id=facility_param)
         return queryset

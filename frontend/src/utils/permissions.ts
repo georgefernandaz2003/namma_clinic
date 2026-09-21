@@ -28,28 +28,45 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
   ]),
   PHARMACIST: new Set([
     'prescription.view', 'pharmacy.view', 'pharmacy.dispense', 'inventory.view', 'inventory.create', 'inventory.update',
-    'clinic.view', 'dashboard.view'
+    'reports.view', 'reports.export', 'clinic.view', 'dashboard.view'
   ])
+};
+
+export const HUMAN_ROLE_LABELS: Record<Role, string> = {
+  DISTRICT_OFFICER: 'District Officer',
+  HOSPITAL_ADMIN: 'Hospital Admin',
+  DOCTOR: 'Doctor',
+  NURSE: 'Nurse',
+  LAB_TECHNICIAN: 'Lab Technician',
+  PHARMACIST: 'Pharmacist'
+};
+
+export const getHumanRoleLabel = (role: Role | string | undefined): string => {
+  if (!role) return 'Healthcare User';
+  if (role in HUMAN_ROLE_LABELS) {
+    return HUMAN_ROLE_LABELS[role as Role];
+  }
+  return role.replace(/_/g, ' ');
 };
 
 export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
   DISTRICT_OFFICER: [
-    '/', '/network', '/facilities', '/reports', '/alerts', '/compliance', '/audit'
+    '/', '/network', '/facilities', '/queue', '/referrals', '/pharmacy', '/reports', '/alerts', '/compliance', '/audit'
   ],
   HOSPITAL_ADMIN: [
-    '/', '/network', '/facilities', '/patients', '/queue', '/pharmacy', '/referrals', '/followups', '/infrastructure', '/reports'
+    '/', '/patients', '/queue', '/facilities', '/pharmacy', '/referrals', '/followups', '/infrastructure', '/reports', '/alerts'
   ],
   DOCTOR: [
-    '/', '/queue', '/patients', '/consultation', '/lab', '/referrals', '/followups', '/teleconsultation'
+    '/', '/patients', '/queue', '/consultation', '/lab', '/referrals', '/followups', '/teleconsultation', '/alerts'
   ],
   NURSE: [
-    '/', '/patients', '/queue', '/triage', '/followups', '/ncd', '/maternal-child', '/outreach', '/wellness'
+    '/', '/patients', '/triage', '/queue', '/followups', '/ncd', '/maternal-child', '/outreach', '/wellness', '/alerts'
   ],
   LAB_TECHNICIAN: [
-    '/', '/lab'
+    '/', '/queue', '/lab', '/alerts'
   ],
   PHARMACIST: [
-    '/', '/pharmacy', '/infrastructure'
+    '/', '/queue', '/pharmacy', '/infrastructure', '/alerts'
   ]
 };
 

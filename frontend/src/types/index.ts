@@ -260,18 +260,46 @@ export interface LabOrder {
   order_date: string;
   status: 'ORDERED' | 'SAMPLE_COLLECTED' | 'RESULT_ENTRY' | 'VERIFIED';
   sample?: LabSample;
+  sample_details?: LabSample;
   result?: LabResult;
+}
+
+export interface Vendor {
+  id: number;
+  vendor_code?: string;
+  vendor_name?: string;
+  name?: string;
+  contact_person: string;
+  phone: string;
+  email: string;
+  address: string;
+  gst_number?: string;
+  gstin?: string;
+  status?: string;
+  active?: boolean;
+  purchase_orders_count?: number;
+  po_count?: number;
+  pending_orders?: number;
+  completed_orders?: number;
+  total_spend?: number;
+  created_by_name?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface MedicineMaster {
   id: number;
+  code: string;
   generic_name: string;
   brand_name: string;
   strength: string;
   dosage_form: string;
   unit: string;
   category: string;
+  minimum_stock: number;
   reorder_level: number;
+  total_available_stock?: number;
+  stock_status?: 'NORMAL' | 'LOW_STOCK' | 'OUT_OF_STOCK';
 }
 
 export interface MedicineBatch {
@@ -280,13 +308,133 @@ export interface MedicineBatch {
   facility_name?: string;
   medicine: number;
   medicine_name?: string;
+  medicine_brand?: string;
+  medicine_unit?: string;
   batch_number: string;
-  supplier: string;
+  vendor?: number | null;
+  vendor_name?: string;
+  supplier?: string;
   received_date: string;
+  mfg_date?: string | null;
   expiry_date: string;
   quantity: number;
   unit_cost: number;
-  status: 'ACTIVE' | 'LOW_STOCK' | 'NEAR_EXPIRY' | 'EXPIRED';
+  status: 'ACTIVE' | 'EXPIRING_SOON' | 'EXPIRED' | 'EXHAUSTED' | 'LOW_STOCK' | 'NEAR_EXPIRY';
+  is_expired?: boolean;
+  days_to_expiry?: number;
+}
+
+export interface PurchaseOrderItem {
+  id?: number;
+  medicine: number;
+  medicine_name?: string;
+  medicine_brand?: string;
+  medicine_strength?: string;
+  medicine_unit?: string;
+  ordered_quantity?: number;
+  requested_quantity?: number;
+  received_quantity: number;
+  remaining_quantity?: number;
+  unit_price?: number;
+  unit_cost?: number;
+  total_price?: number;
+}
+
+export interface PurchaseOrder {
+  id: number;
+  po_number: string;
+  facility: number;
+  facility_name?: string;
+  vendor: number;
+  vendor_name?: string;
+  vendor_code?: string;
+  order_date: string;
+  expected_delivery: string | null;
+  expected_delivery_date?: string | null;
+  status: 'DRAFT' | 'PENDING_APPROVAL' | 'PENDING' | 'APPROVED' | 'ORDERED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
+  total_amount: number;
+  notes: string;
+  created_by?: number | null;
+  created_by_name?: string;
+  approved_by?: number | null;
+  approved_by_name?: string;
+  approved_at?: string | null;
+  rejected_by?: number | null;
+  rejected_by_name?: string;
+  rejected_at?: string | null;
+  rejection_reason?: string;
+  created_at: string;
+  updated_at?: string;
+  items: PurchaseOrderItem[];
+}
+
+export interface ProcurementSummaryKPIs {
+  draft: number;
+  pending_approval: number;
+  approved: number;
+  ordered: number;
+  partially_received: number;
+  received: number;
+  cancelled: number;
+  total_orders: number;
+  total_spend: number;
+}
+
+export interface InventoryTransaction {
+  id: number;
+  facility: number;
+  facility_name?: string;
+  batch: number;
+  batch_number?: string;
+  medicine_name?: string;
+  transaction_type: 'PURCHASE_RECEIVED' | 'DISPENSED' | 'RETURNED' | 'ADJUSTMENT' | 'DAMAGED' | 'EXPIRED' | 'ISSUED' | 'TRANSFERRED';
+  quantity: number;
+  reference_id: string;
+  notes: string;
+  created_by?: number | null;
+  created_by_name?: string;
+  timestamp: string;
+}
+
+export interface PharmacyDashboardKPIs {
+  total_medicines: number;
+  total_available_stock: number;
+  low_stock_count: number;
+  out_of_stock_count: number;
+  expiring_soon_count: number;
+  expired_count: number;
+  pending_prescriptions_count: number;
+  dispensed_today_count: number;
+  pending_purchase_orders_count: number;
+  total_vendors_count: number;
+}
+
+export interface PharmacyAlert {
+  id: string;
+  type: 'LOW_STOCK' | 'OUT_OF_STOCK' | 'EXPIRING_SOON' | 'EXPIRED' | 'PENDING_PO';
+  title: string;
+  description: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  medicine_id?: number;
+  batch_id?: number;
+  po_id?: number;
+}
+
+export interface PharmacyReportSummary {
+  dispensing_summary: {
+    dispensed_today: number;
+    prescriptions_count: number;
+  };
+  stock_valuation: {
+    total_batches: number;
+    total_quantity: number;
+    total_value: number;
+  };
+  consumption_summary: Array<{
+    batch__medicine__generic_name: string;
+    batch__medicine__brand_name: string;
+    total_consumed: number;
+  }>;
 }
 
 export interface ReferralResponse {
@@ -417,3 +565,40 @@ export interface AuditLog {
   details: string;
   timestamp: string;
 }
+
+export interface PatientDocument {
+  id: number;
+  patient: number;
+  patient_name?: string;
+  patient_uhid?: string;
+  document_type: 'MEDICAL_RECORD' | 'LAB_REPORT' | 'PRESCRIPTION' | 'DISCHARGE_SUMMARY' | 'REFERRAL_DOC' | 'OTHER';
+  document_type_display?: string;
+  title: string;
+  description: string;
+  file: string;
+  file_url?: string;
+  file_name: string;
+  file_size: number;
+  file_size_formatted?: string;
+  mime_type: string;
+  uploaded_at: string;
+  uploaded_by?: number | null;
+  uploaded_by_name?: string;
+  facility?: number | null;
+  facility_name?: string;
+}
+
+export interface PatientRecordsSummary {
+  patient: Patient;
+  total_visits: number;
+  total_consultations: number;
+  total_lab_reports: number;
+  total_prescriptions: number;
+  total_documents: number;
+  recent_visits: Visit[];
+  recent_consultations: Consultation[];
+  recent_lab_reports: LabOrder[];
+  recent_prescriptions: Prescription[];
+  documents: PatientDocument[];
+}
+

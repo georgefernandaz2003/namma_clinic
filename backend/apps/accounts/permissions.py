@@ -4,32 +4,37 @@ ROLE_PERMISSIONS = {
     'DISTRICT_OFFICER': {
         'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
         'audit_logs.view', 'dashboard.view', 'referrals.view', 'inventory.view', 'queue.view',
-        'lab_orders.view', 'patients.view'
+        'lab_orders.view', 'patients.view', 'po.view', 'vendor.view'
     },
     'HOSPITAL_ADMIN': {
         'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update',
         'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.create', 'appointments.update',
         'inventory.view', 'inventory.create', 'inventory.update', 'reports.view', 'reports.export',
-        'system_config.view', 'system_config.update', 'dashboard.view', 'queue.view', 'referrals.view'
+        'system_config.view', 'system_config.update', 'dashboard.view', 'queue.view', 'referrals.view',
+        'po.view', 'po.create', 'po.update', 'po.approve', 'vendor.view', 'vendor.create', 'vendor.update',
+        'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update'
     },
     'DOCTOR': {
         'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
         'diagnosis.view', 'diagnosis.create', 'diagnosis.update', 'prescription.view', 'prescription.create', 'prescription.update',
-        'lab_orders.view', 'lab_orders.create', 'lab_results.view', 'referrals.view', 'referrals.create',
-        'clinic.view', 'queue.view', 'dashboard.view'
+        'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update',
+        'referrals.view', 'referrals.create', 'clinic.view', 'queue.view', 'dashboard.view'
     },
     'NURSE': {
         'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.update',
         'vitals.view', 'vitals.create', 'vitals.update', 'triage.view', 'triage.create', 'triage.update',
-        'queue.view', 'queue.update', 'clinic.view', 'dashboard.view'
+        'queue.view', 'queue.update', 'clinic.view', 'dashboard.view',
+        'lab_orders.view', 'lab_orders.update', 'lab_results.view'
     },
     'LAB_TECHNICIAN': {
-        'patients.view', 'lab_orders.view', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update',
+        'patients.view', 'lab_orders.view', 'lab_orders.create', 'lab_orders.update',
+        'lab_results.view', 'lab_results.create', 'lab_results.update',
         'clinic.view', 'dashboard.view'
     },
     'PHARMACIST': {
         'prescription.view', 'pharmacy.view', 'pharmacy.dispense', 'inventory.view', 'inventory.create', 'inventory.update',
-        'clinic.view', 'dashboard.view'
+        'reports.view', 'reports.export', 'clinic.view', 'dashboard.view',
+        'po.view', 'po.create', 'po.update', 'po.receive', 'vendor.view', 'vendor.create', 'vendor.update'
     }
 }
 
@@ -86,8 +91,11 @@ class HasPermission(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
+        action = getattr(view, 'action', None)
         perm_map = getattr(view, 'required_permissions', {})
-        if perm_map and request.method in perm_map:
+        if perm_map and action and action in perm_map:
+            req_perm = perm_map[action]
+        elif perm_map and request.method in perm_map:
             req_perm = perm_map[request.method]
         else:
             req_perm = getattr(view, 'required_permission', None)
@@ -101,7 +109,7 @@ class HasPermission(permissions.BasePermission):
 class HasFacilityScope(permissions.BasePermission):
     """
     DRF Permission enforcing Facility & Resource Scoping on API requests:
-    - DISTRICT_OFFICER: Read-only access across facilities in district. Cannot perform clinical mutations.
+    - DISTRICT_OFFICER: Read-only access across facilities in district. Cannot perform clinical or procurement mutations.
     - HOSPITAL_ADMIN, DOCTOR, NURSE, LAB_TECHNICIAN, PHARMACIST: Scoped strictly to their assigned facility.
     """
     message = "You do not have authorization to access resources outside your assigned facility."
@@ -110,13 +118,18 @@ class HasFacilityScope(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        # District Officer is blocked from direct clinical mutation endpoints
+        # District Officer is blocked from direct clinical and facility procurement mutations
         if request.user.role == 'DISTRICT_OFFICER':
             if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
-                clinical_views = {'ConsultationViewSet', 'PrescriptionViewSet', 'TriageVitalsViewSet', 'DispenseMedicineView'}
-                if view.__class__.__name__ in clinical_views:
-                    self.message = "District Officers do not have permission to create or modify clinical records."
+                mutation_restricted_views = {
+                    'ConsultationViewSet', 'PrescriptionViewSet', 'TriageVitalsViewSet', 'DispenseMedicineView',
+                    'PurchaseOrderViewSet', 'VendorViewSet'
+                }
+                if view.__class__.__name__ in mutation_restricted_views:
+                    self.message = "District Officers have read-only access and cannot modify facility clinical or procurement records."
                     return False
+
+        return True
 
         return True
 

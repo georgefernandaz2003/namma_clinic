@@ -51,10 +51,11 @@ export const Queue: React.FC = () => {
 
   const loadPatients = async () => {
     try {
-      const res = await api.get('patients/');
+      const facQuery = activeFacility?.id ? `?facility=${activeFacility.id}` : '';
+      const res = await api.get(`patients/${facQuery}`);
       const patList = res.data.results || res.data || [];
       setPatients(patList);
-      if (patList.length > 0 && !selectedPatientId) {
+      if (patList.length > 0) {
         setSelectedPatientId(patList[0].id);
       }
     } catch (e) {
@@ -76,7 +77,7 @@ export const Queue: React.FC = () => {
     loadQueue();
     loadPatients();
     loadHistorySummary();
-  }, [activeFacility, selectedDate, activeTab]);
+  }, [activeFacility, activeFacility?.id, selectedDate, activeTab]);
 
   // Date Navigation Handlers
   const handlePrevDay = () => {

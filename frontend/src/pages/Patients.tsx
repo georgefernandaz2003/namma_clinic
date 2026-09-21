@@ -37,7 +37,8 @@ export const Patients: React.FC = () => {
 
   const loadPatients = async () => {
     try {
-      const res = await api.get('patients/');
+      const facQuery = activeFacility?.id ? `?facility=${activeFacility.id}` : '';
+      const res = await api.get(`patients/${facQuery}`);
       setPatients(res.data.results || res.data || []);
     } catch (e) {
       console.error('Failed to load patients', e);
@@ -46,7 +47,7 @@ export const Patients: React.FC = () => {
 
   useEffect(() => {
     loadPatients();
-  }, []);
+  }, [activeFacility]);
 
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault();

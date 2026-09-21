@@ -54,6 +54,11 @@ class ReferralViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(
                 Q(source_facility_id__in=accessible_ids) | Q(destination_facility_id__in=accessible_ids)
             ).distinct()
+        facility_param = self.request.query_params.get('facility')
+        if facility_param:
+            queryset = queryset.filter(
+                Q(source_facility_id=facility_param) | Q(destination_facility_id=facility_param)
+            ).distinct()
         return queryset
 
     def create(self, request, *args, **kwargs):

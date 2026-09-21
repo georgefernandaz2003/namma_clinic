@@ -118,12 +118,13 @@ export const Infrastructure: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
+      const facQuery = activeFacility?.id ? `?facility=${activeFacility.id}` : '';
       const [oxyRes, conRes, tickRes, bedCapRes, bedAllocRes] = await Promise.all([
-        api.get('facilities-infra/oxygen-supplies/'),
-        api.get('facilities-infra/consumables/'),
-        api.get('facilities-infra/maintenance-tickets/'),
-        api.get('facilities-infra/bed-capacity/'),
-        api.get('facilities-infra/bed-allocations/')
+        api.get(`facilities-infra/oxygen-supplies/${facQuery}`),
+        api.get(`facilities-infra/consumables/${facQuery}`),
+        api.get(`facilities-infra/maintenance-tickets/${facQuery}`),
+        api.get(`facilities-infra/bed-capacity/${facQuery}`),
+        api.get(`facilities-infra/bed-allocations/${facQuery}`)
       ]);
 
       setOxygenList(oxyRes.data.results || oxyRes.data || []);

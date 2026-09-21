@@ -63,17 +63,23 @@ export const Consultation: React.FC = () => {
     if (!activeFacility) return;
     try {
       const res = await api.get(`visits/?facility=${activeFacility.id}&queue=DOCTOR`);
-      const list: Visit[] = res.data.results || res.data || [];
-      setTriagedVisits(list);
+      const rawList: Visit[] = res.data.results || res.data || [];
+      const activeDoctorList = rawList.filter((v) => v.current_queue === 'DOCTOR' && v.status !== 'COMPLETED');
+      setTriagedVisits(activeDoctorList);
 
       if (stateVisitId) {
-        const found = list.find((v) => v.id === stateVisitId);
+        const found = activeDoctorList.find((v) => v.id === stateVisitId);
         if (found) selectVisit(found);
-        else if (list.length > 0) selectVisit(list[0]);
-      } else if (list.length > 0) {
-        selectVisit(list[0]);
+        else if (activeDoctorList.length > 0) selectVisit(activeDoctorList[0]);
+        else {
+          setSelectedVisit(null);
+          setVitals(null);
+        }
+      } else if (activeDoctorList.length > 0) {
+        selectVisit(activeDoctorList[0]);
       } else {
         setSelectedVisit(null);
+        setVitals(null);
       }
     } catch (e) {
       console.error('Failed to load doctor queue', e);

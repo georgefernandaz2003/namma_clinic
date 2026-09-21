@@ -9,12 +9,18 @@ from apps.facilities.views import (
     FacilityOxygenSupplyViewSet, FacilityConsumableInventoryViewSet, FacilityMaintenanceTicketViewSet,
     FacilityBedCapacityViewSet, FacilityBedAllocationViewSet
 )
-from apps.patients.views import PatientViewSet, PatientTimelineView
+from apps.patients.views import (
+    PatientViewSet, PatientTimelineView, PatientRecordsView, PatientDocumentViewSet, PatientDocumentDownloadView
+)
 from apps.visits.views import VisitViewSet
 from apps.triage.views import TriageVitalsViewSet
 from apps.consultations.views import ConsultationViewSet, PrescriptionViewSet
 from apps.laboratory.views import LabTestMasterViewSet, LabOrderViewSet
-from apps.pharmacy.views import MedicineMasterViewSet, MedicineBatchViewSet, DispenseMedicineView
+from apps.pharmacy.views import (
+    MedicineMasterViewSet, MedicineBatchViewSet, DispenseMedicineView,
+    VendorViewSet, PurchaseOrderViewSet, InventoryTransactionViewSet,
+    PharmacyDashboardSummaryView, PharmacyAlertsView, PharmacyReportsView
+)
 from apps.referrals.views import ReferralViewSet, FollowUpViewSet
 from apps.ncd.views import NCDRecordViewSet
 from apps.surveillance.views import DiseaseCaseViewSet
@@ -52,6 +58,9 @@ router.register(r'lab/tests', LabTestMasterViewSet, basename='labtest')
 router.register(r'lab/orders', LabOrderViewSet, basename='laborder')
 router.register(r'pharmacy/medicines', MedicineMasterViewSet, basename='medicinemaster')
 router.register(r'pharmacy/batches', MedicineBatchViewSet, basename='medicinebatch')
+router.register(r'pharmacy/vendors', VendorViewSet, basename='pharmacyvendor')
+router.register(r'pharmacy/purchase-orders', PurchaseOrderViewSet, basename='pharmacypurchaseorder')
+router.register(r'pharmacy/transactions', InventoryTransactionViewSet, basename='pharmacytransaction')
 router.register(r'referrals', ReferralViewSet, basename='referral')
 router.register(r'followups', FollowUpViewSet, basename='followup')
 router.register(r'ncd', NCDRecordViewSet, basename='ncd')
@@ -78,11 +87,18 @@ urlpatterns = [
     path('facilities/hierarchy/', FacilityHierarchyView.as_view(), name='facility_hierarchy'),
     path('facilities/network-graph/', NetworkGraphView.as_view(), name='network_graph'),
 
-    # Patient Timeline
+    # Patient Timeline & Unified Records
     path('patients/<int:pk>/timeline/', PatientTimelineView.as_view(), name='patient_timeline'),
+    path('patients/<int:pk>/records/', PatientRecordsView.as_view(), name='patient_records'),
+    path('patients/<int:patient_id>/documents/', PatientDocumentViewSet.as_view({'get': 'list', 'post': 'create'}), name='patient_documents_list'),
+    path('patients/<int:patient_id>/documents/<int:pk>/', PatientDocumentViewSet.as_view({'get': 'retrieve', 'delete': 'destroy'}), name='patient_documents_detail'),
+    path('patients/<int:patient_id>/documents/<int:document_id>/download/', PatientDocumentDownloadView.as_view(), name='patient_document_download'),
 
-    # Pharmacy FEFO Dispense
+    # Pharmacy Endpoints
     path('pharmacy/dispense/', DispenseMedicineView.as_view(), name='pharmacy_dispense'),
+    path('pharmacy/dashboard/', PharmacyDashboardSummaryView.as_view(), name='pharmacy_dashboard'),
+    path('pharmacy/alerts/', PharmacyAlertsView.as_view(), name='pharmacy_alerts'),
+    path('pharmacy/reports/', PharmacyReportsView.as_view(), name='pharmacy_reports'),
 
     # Dashboard & Reports
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard_summary'),

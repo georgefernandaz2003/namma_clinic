@@ -15,3 +15,7 @@ frontend/dist/
 frontend/build/
 .DS_Store
 *.log
+
+# Media / Uploads
+media/
+backend/media/

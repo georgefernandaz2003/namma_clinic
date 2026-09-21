@@ -10,10 +10,15 @@ const reportTypes = [
   { id: 'surveillance', title: 'Disease Surveillance & Outbreak Report', desc: 'Communicable disease case registers, ward distributions & threshold alerts' }
 ];
 
+import { useAuth } from '../context/AuthContext';
+
 export const Reports: React.FC = () => {
+  const { activeFacility } = useAuth();
+
   const handleExportCSV = (type: string) => {
     const token = localStorage.getItem('access_token');
-    const url = `http://localhost:8000/api/reports/export/?type=${type}`;
+    const facParam = activeFacility?.id ? `&facility=${activeFacility.id}` : '';
+    const url = `http://localhost:8000/api/reports/export/?type=${type}${facParam}`;
     
     fetch(url, {
       headers: { Authorization: `Bearer ${token}` }
