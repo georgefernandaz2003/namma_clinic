@@ -23,8 +23,11 @@ class VisitStatusHistorySerializer(serializers.ModelSerializer):
 
 class VisitSerializer(serializers.ModelSerializer):
     patient_details = PatientSerializer(source='patient', read_only=True)
+    patient_name = serializers.ReadOnlyField(source='patient.name')
+    patient_mobile = serializers.ReadOnlyField(source='patient.mobile')
     facility_name = serializers.ReadOnlyField(source='facility.facility_name')
     token_details = TokenSerializer(source='token', read_only=True)
+    token_number = serializers.ReadOnlyField(source='token.token_number')
     assigned_doctor_name = serializers.ReadOnlyField(source='assigned_doctor.full_name')
     waiting_time_minutes = serializers.SerializerMethodField()
     status_history_list = VisitStatusHistorySerializer(source='status_history', many=True, read_only=True)

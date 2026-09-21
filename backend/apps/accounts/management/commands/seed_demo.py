@@ -56,8 +56,11 @@ class Command(BaseCommand):
         FollowUp.objects.all().delete()
         ReferralResponse.objects.all().delete()
         Referral.objects.all().delete()
+        PurchaseOrderItem.objects.all().delete()
+        PurchaseOrder.objects.all().delete()
         InventoryTransaction.objects.all().delete()
         MedicineBatch.objects.all().delete()
+        Vendor.objects.all().delete()
         MedicineMaster.objects.all().delete()
         LabResult.objects.all().delete()
         LabSample.objects.all().delete()
@@ -250,24 +253,58 @@ class Command(BaseCommand):
                 facility=fac, medicine=med_amx, batch_number=f"AMX-{fac.facility_code}-OLD", vendor=v_kapl, supplier=v_kapl.vendor_name,
                 mfg_date=today - datetime.timedelta(days=375), expiry_date=today - datetime.timedelta(days=10), quantity=30, unit_cost=2.10, status='EXPIRED'
             )
+            b6 = MedicineBatch.objects.create(
+                facility=fac, medicine=med_cet, batch_number=f"CET-{fac.facility_code}-2026C", vendor=v_ksmscl, supplier=v_ksmscl.vendor_name,
+                mfg_date=today - datetime.timedelta(days=45), expiry_date=today + datetime.timedelta(days=15), quantity=15, unit_cost=0.45, status='LOW_STOCK'
+            )
 
-            # Purchase Orders per Facility
-            po = PurchaseOrder.objects.create(
+            # Purchase Orders across All Lifecycle States (Draft, Pending Approval, Ordered/Approved, Received)
+            # PO 1: Approved / Ordered (Ready for Receive Goods action in UI)
+            po1 = PurchaseOrder.objects.create(
                 po_number=f"PO-{fac.facility_code}-2026-001", vendor=v_ksmscl, facility=fac, order_date=today - datetime.timedelta(days=5),
-                expected_delivery_date=today + datetime.timedelta(days=3), status='ORDERED', created_by=u_dist,
-                notes='Emergency replenishment of Essential Anti-Hypertensives & Analgesics.'
+                expected_delivery_date=today + datetime.timedelta(days=3), status='ORDERED', created_by=u_dist, approved_by=u_dist,
+                approved_at=timezone.now() - datetime.timedelta(days=4), notes='Emergency replenishment of Essential Anti-Hypertensives & Antibiotics.'
             )
-            PurchaseOrderItem.objects.create(purchase_order=po, medicine=med_aml, ordered_quantity=200, received_quantity=0, unit_price=0.85, total_price=170.00)
-            PurchaseOrderItem.objects.create(purchase_order=po, medicine=med_amx, ordered_quantity=150, received_quantity=0, unit_price=2.10, total_price=315.00)
-            po.total_amount = 485.00
-            po.save()
-            MedicineBatch.objects.create(
-                facility=fac, medicine=med_ifa, batch_number=f"IFA-{fac.facility_code}-2026M", supplier='KSMSCL E-Aushada',
-                expiry_date=today + datetime.timedelta(days=240), quantity=800, status='ACTIVE'
+            PurchaseOrderItem.objects.create(purchase_order=po1, medicine=med_aml, ordered_quantity=200, received_quantity=0, unit_price=0.85, total_price=170.00)
+            PurchaseOrderItem.objects.create(purchase_order=po1, medicine=med_amx, ordered_quantity=150, received_quantity=0, unit_price=2.10, total_price=315.00)
+            po1.total_amount = 485.00
+            po1.save()
+
+            # PO 2: Pending Approval
+            po2 = PurchaseOrder.objects.create(
+                po_number=f"PO-{fac.facility_code}-2026-002", vendor=v_kapl, facility=fac, order_date=today - datetime.timedelta(days=1),
+                expected_delivery_date=today + datetime.timedelta(days=7), status='PENDING_APPROVAL', created_by=u_pharm,
+                notes='Monthly stock replenishment for Paracetamol & IFA tablets.'
             )
-            MedicineBatch.objects.create(
-                facility=fac, medicine=med_amx, batch_number=f"AMX-{fac.facility_code}-OLD", supplier='KSMSCL E-Aushada',
-                expiry_date=today - datetime.timedelta(days=10), quantity=30, status='EXPIRED'
+            PurchaseOrderItem.objects.create(purchase_order=po2, medicine=med_pcm, ordered_quantity=500, received_quantity=0, unit_price=0.50, total_price=250.00)
+            PurchaseOrderItem.objects.create(purchase_order=po2, medicine=med_ifa, ordered_quantity=400, received_quantity=0, unit_price=0.60, total_price=240.00)
+            po2.total_amount = 490.00
+            po2.save()
+
+            # PO 3: Draft
+            po3 = PurchaseOrder.objects.create(
+                po_number=f"PO-{fac.facility_code}-2026-003", vendor=v_ksmscl, facility=fac, order_date=today,
+                expected_delivery_date=today + datetime.timedelta(days=10), status='DRAFT', created_by=u_pharm,
+                notes='Draft purchase indent for quarterly Cetirizine antihistamine supply.'
+            )
+            PurchaseOrderItem.objects.create(purchase_order=po3, medicine=med_cet, ordered_quantity=300, received_quantity=0, unit_price=0.45, total_price=135.00)
+            po3.total_amount = 135.00
+            po3.save()
+
+            # PO 4: Received Goods
+            po4 = PurchaseOrder.objects.create(
+                po_number=f"PO-{fac.facility_code}-2026-004", vendor=v_ksmscl, facility=fac, order_date=today - datetime.timedelta(days=15),
+                expected_delivery_date=today - datetime.timedelta(days=5), status='RECEIVED', created_by=u_dist, approved_by=u_dist,
+                approved_at=timezone.now() - datetime.timedelta(days=14), notes='Goods received and verified by pharmacist into batch inventory.'
+            )
+            PurchaseOrderItem.objects.create(purchase_order=po4, medicine=med_met, ordered_quantity=500, received_quantity=500, unit_price=1.20, total_price=600.00)
+            po4.total_amount = 600.00
+            po4.save()
+
+            # Log stock transactions
+            InventoryTransaction.objects.create(
+                facility=fac, medicine=med_met, batch=b1, transaction_type='PURCHASE_RECEIVED', quantity=500,
+                reference_id=po4.po_number, created_by=u_pharm, notes=f"Goods received from KSMSCL under PO #{po4.po_number}"
             )
 
         # 7. Patient Registrations Properly Mapped to Each Facility
@@ -392,6 +429,25 @@ class Command(BaseCommand):
         )
         t_rc_2 = Token.objects.create(token_number=2, visit=v_rc_2, facility=rc_a4, date=today, priority='NORMAL', status='WAITING')
 
+        # Today Visit 3 (Token #3) - Waiting for Doctor (Vitals already triaged)
+        v_rc_3 = Visit.objects.create(
+            visit_id=f"VIS-RC-{today.strftime('%Y%m%d')}-003", patient=p_suresh, facility=rc_a4,
+            opd_date=today, visit_type='GENERAL_OPD', priority='NORMAL', current_queue='DOCTOR',
+            status='WAITING_FOR_DOCTOR', chief_complaint='Persistent dry cough and mild fever',
+            assigned_doctor=u_doc, arrival_time=timezone.now() - datetime.timedelta(minutes=40)
+        )
+        t_rc_3 = Token.objects.create(token_number=3, visit=v_rc_3, facility=rc_a4, date=today, priority='NORMAL', status='WAITING')
+
+        # Today Visit 4 (Token #4) - Completed Visit
+        v_rc_4 = Visit.objects.create(
+            visit_id=f"VIS-RC-{today.strftime('%Y%m%d')}-004", patient=p_vh2_2, facility=rc_a4,
+            opd_date=today, visit_type='GENERAL_OPD', priority='NORMAL', current_queue='COMPLETED',
+            status='COMPLETED', chief_complaint='Follow up for seasonal allergy and skin rash',
+            assigned_doctor=u_doc, arrival_time=timezone.now() - datetime.timedelta(hours=2),
+            completed_time=timezone.now() - datetime.timedelta(minutes=30)
+        )
+        t_rc_4 = Token.objects.create(token_number=4, visit=v_rc_4, facility=rc_a4, date=today, priority='NORMAL', status='COMPLETED')
+
         # --- FACILITY 4: Gunjur Village Satellite Clinic ---
         # Today Visit 1 (Token #1) - Completed
         v_vc_1 = Visit.objects.create(
@@ -454,6 +510,13 @@ class Command(BaseCommand):
         )
 
         TriageVitals.objects.create(
+            visit=v_rc_3, patient=p_suresh, nurse=u_nurse,
+            blood_pressure_systolic=128, blood_pressure_diastolic=82, pulse_bpm=78, temperature_f=99.0,
+            spo2_percent=98, respiratory_rate=18, height_cm=165.0, weight_kg=70.0, blood_glucose_mgdl=115,
+            nurse_notes='Vitals captured. Patient waiting for MO consultation.'
+        )
+
+        TriageVitals.objects.create(
             visit=v_vc_1, patient=p_suresh, nurse=u_nurse,
             blood_pressure_systolic=132, blood_pressure_diastolic=84, pulse_bpm=78, temperature_f=100.2,
             spo2_percent=97, respiratory_rate=18, height_cm=162.0, weight_kg=68.0, blood_glucose_mgdl=130,
@@ -491,6 +554,16 @@ class Command(BaseCommand):
             follow_up_date=today + datetime.timedelta(days=14), clinical_notes='Dietary counseling provided.'
         )
 
+        c_rc_4 = Consultation.objects.create(
+            visit=v_rc_4, patient=p_vh2_2, doctor=u_doc, facility=rc_a4,
+            chief_complaint='Follow up for seasonal allergy and skin rash',
+            clinical_history='Occasional allergic contact dermatitis.',
+            clinical_assessment='Skin lesions resolving. Vitals normal and stable.',
+            diagnosis_code='L23.9', diagnosis_name='Allergic Contact Dermatitis',
+            treatment_plan='Cetirizine 10mg OD for 5 days.',
+            follow_up_date=today + datetime.timedelta(days=7), clinical_notes='Patient advised regarding allergen avoidance.'
+        )
+
         c_vc_1 = Consultation.objects.create(
             visit=v_vc_1, patient=p_suresh, doctor=u_vh2_doc, facility=vc_a4_1,
             chief_complaint='Acute fever and body ache',
@@ -511,10 +584,13 @@ class Command(BaseCommand):
         pr_sdh = Prescription.objects.create(consultation=c_sdh_1, patient=p_anita, doctor=u_sdh_doc, facility=nc_a1, status='DISPENSED')
         PrescriptionItem.objects.create(prescription=pr_sdh, medicine_name='Iron & Folic Acid Tablet', dosage='1-0-0 After Food', frequency='Once Daily', duration_days=30, quantity=30, status='DISPENSED')
 
-        # Facility 3 Prescription (Pending Dispensation)
+        # Facility 3 Prescriptions (Both PENDING and DISPENSED for complete testing)
         pr_rc = Prescription.objects.create(consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, status='PENDING')
         PrescriptionItem.objects.create(prescription=pr_rc, medicine_name='Metformin 500 mg Tablet', dosage='1-0-1 After Food', frequency='Twice Daily', duration_days=14, quantity=28, status='PENDING')
         PrescriptionItem.objects.create(prescription=pr_rc, medicine_name='Amlodipine 5 mg Tablet', dosage='1-0-0 Morning', frequency='Once Daily', duration_days=14, quantity=14, status='PENDING')
+
+        pr_rc_dispensed = Prescription.objects.create(consultation=c_rc_4, patient=p_vh2_2, doctor=u_doc, facility=rc_a4, status='DISPENSED')
+        PrescriptionItem.objects.create(prescription=pr_rc_dispensed, medicine_name='Cetirizine 10 mg Tablet', dosage='0-0-1 Night', frequency='Once Daily', duration_days=5, quantity=5, status='DISPENSED')
 
         # Facility 4 Prescription
         pr_vc = Prescription.objects.create(consultation=c_vc_1, patient=p_suresh, doctor=u_vh2_doc, facility=vc_a4_1, status='DISPENSED')
@@ -531,10 +607,21 @@ class Command(BaseCommand):
         LabSample.objects.create(lab_order=lo_sdh, sample_type='Blood', sample_code='SMP-SDH-001', collected_by=u_sdh_nurse)
         LabResult.objects.create(lab_order=lo_sdh, result_value='10.2', unit='g/dL', reference_range='12.0 - 15.5 g/dL', interpretation_flag='LOW', verified_by=u_sdh_doc, notes='Mild Anemia')
 
-        # Facility 3 Lab Order
-        lo_rc = LabOrder.objects.create(consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, test_master=lt_hba1c, status='VERIFIED')
-        LabSample.objects.create(lab_order=lo_rc, sample_type='Blood', sample_code='SMP-RC-001', collected_by=u_lab)
-        LabResult.objects.create(lab_order=lo_rc, result_value='8.4', unit='%', reference_range='4.0 - 5.6 %', interpretation_flag='HIGH', verified_by=u_lab, notes='Uncontrolled HbA1c')
+        # Facility 3 Lab Orders (Covering All 6 Specimen Pipeline Stages)
+        # Order 1: VERIFIED - Synced EMR
+        lo_rc_1 = LabOrder.objects.create(consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, test_master=lt_hba1c, status='VERIFIED')
+        LabSample.objects.create(lab_order=lo_rc_1, sample_type='Blood / Serum', sample_code='SMP-2026-0045', collected_by=u_lab)
+        LabResult.objects.create(lab_order=lo_rc_1, result_value='8.4', unit='%', reference_range='4.0 - 5.6 %', interpretation_flag='HIGH', verified_by=u_lab, notes='Uncontrolled HbA1c. Dietary counseling and medication adjustment advised.')
+
+        # Order 2: SAMPLE_COLLECTED - Ready to click "Enter Result"
+        lo_rc_2 = LabOrder.objects.create(consultation=c_rc_1, patient=p_ramesh, doctor=u_doc, facility=rc_a4, test_master=lt_fbg, status='SAMPLE_COLLECTED')
+        LabSample.objects.create(lab_order=lo_rc_2, sample_type='Blood / Serum', sample_code='SMP-2026-0046', collected_by=u_lab)
+
+        # Order 3: ORDERED - Ready to click "Collect Sample"
+        lo_rc_3 = LabOrder.objects.create(patient=p_vh1_2, doctor=u_doc, facility=rc_a4, test_master=lt_u_prot, status='ORDERED')
+
+        # Order 4: ORDERED - Ready to click "Collect Sample"
+        lo_rc_4 = LabOrder.objects.create(patient=p_suresh, doctor=u_doc, facility=rc_a4, test_master=lt_dengue, status='ORDERED')
 
         # Facility 4 Lab Order
         lo_vc = LabOrder.objects.create(consultation=c_vc_1, patient=p_suresh, doctor=u_vh2_doc, facility=vc_a4_1, test_master=lt_malaria, status='VERIFIED')
