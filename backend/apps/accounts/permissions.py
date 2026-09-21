@@ -17,7 +17,7 @@ ROLE_PERMISSIONS = {
     'DOCTOR': {
         'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
         'diagnosis.view', 'diagnosis.create', 'diagnosis.update', 'prescription.view', 'prescription.create', 'prescription.update',
-        'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update',
+        'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view',
         'referrals.view', 'referrals.create', 'clinic.view', 'queue.view', 'dashboard.view'
     },
     'NURSE': {
