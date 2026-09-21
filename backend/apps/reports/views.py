@@ -69,6 +69,7 @@ class DashboardSummaryView(APIView):
         lab_pending = LabOrder.objects.filter(facility_id__in=target_fac_ids, order_date__date=target_date, status__in=['ORDERED', 'SAMPLE_COLLECTED']).count()
         pharmacy_waiting = Prescription.objects.filter(facility_id__in=target_fac_ids, date=target_date, status='PENDING').count()
         completed_count = opd_visits_qs.filter(status='COMPLETED').count()
+        emergency_count = opd_visits_qs.filter(priority='EMERGENCY').count()
 
         # Overall Totals
         total_patients = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids).count()
@@ -157,6 +158,7 @@ class DashboardSummaryView(APIView):
             'total_patients': total_patients,
             'registered_today': registered_today,
             'todays_opd': todays_opd,
+            'emergency_count': emergency_count,
             'opd_stage_flow': {
                 'registration': registered_today or todays_opd,
                 'triage': triage_waiting + in_triage,
@@ -192,6 +194,7 @@ class DashboardSummaryView(APIView):
                 'lab_pending': lab_pending,
                 'pharmacy_waiting': pharmacy_waiting,
                 'completed': completed_count,
+                'emergency': emergency_count,
                 'low_stock': low_stock_count,
                 'expiring_soon': near_expiry_count
             },

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Stethoscope, Clock, Users, ArrowRight, Activity } from 'lucide-react';
+import { Stethoscope, Clock, Users, ArrowRight, Activity, UserPlus, ShieldAlert } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
@@ -62,38 +62,55 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date })
         </div>
       </div>
 
-      {/* 5 KPI Cards */}
+      {/* 5 KPI Cards: First Total Patients Today OPD, Second New Patients in OPD, then the rest */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <p className="text-[11px] font-bold text-slate-500 uppercase">Triage Waiting</p>
+        {/* Card 1: Total Patients Today OPD */}
+        <div className="bg-white p-4 rounded-xl border border-purple-200 bg-purple-50/30 shadow-xs">
+          <p className="text-[11px] font-bold text-purple-800 uppercase flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5 text-purple-600" />
+            Total Patients Today OPD
+          </p>
+          <h3 className="text-xl font-black text-purple-900 mt-1">{summary?.todays_opd || 0}</h3>
+          <p className="text-[10px] text-purple-700 font-medium mt-0.5">Total OPD Visits</p>
+        </div>
+
+        {/* Card 2: New Patients in OPD */}
+        <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
+          <p className="text-[11px] font-bold text-emerald-800 uppercase flex items-center gap-1.5">
+            <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
+            New Patients in OPD
+          </p>
+          <h3 className="text-xl font-black text-emerald-900 mt-1">{summary?.registered_today || 0}</h3>
+          <p className="text-[10px] text-emerald-700 font-medium mt-0.5">New Patient Registrations</p>
+        </div>
+
+        {/* Card 3: Triage Waiting */}
+        <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/30 shadow-xs">
+          <p className="text-[11px] font-bold text-amber-800 uppercase flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+            Triage Waiting
+          </p>
           <h3 className="text-xl font-black text-amber-900 mt-1">{kpis.triage_waiting || 0}</h3>
           <p className="text-[10px] text-amber-700 font-medium mt-0.5">Awaiting Screening</p>
         </div>
 
+        {/* Card 4: In Triage */}
         <div className="bg-white p-4 rounded-xl border border-blue-200 bg-blue-50/30 shadow-xs">
-          <p className="text-[11px] font-bold text-blue-800 uppercase">In Triage</p>
+          <p className="text-[11px] font-bold text-blue-800 uppercase flex items-center gap-1.5">
+            <Stethoscope className="w-3.5 h-3.5 text-blue-600" />
+            In Triage
+          </p>
           <h3 className="text-xl font-black text-blue-900 mt-1">{kpis.in_triage || 0}</h3>
           <p className="text-[10px] text-blue-700 font-medium mt-0.5">Being Screened</p>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-purple-200 bg-purple-50/30 shadow-xs">
-          <p className="text-[11px] font-bold text-purple-800 uppercase flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5 text-purple-600" />
-            Total Patients Today
-          </p>
-          <h3 className="text-xl font-black text-purple-900 mt-1">{summary?.todays_opd || 0}</h3>
-          <p className="text-[10px] text-purple-700 font-medium mt-0.5">Today's OPD Count</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
-          <p className="text-[11px] font-bold text-emerald-800 uppercase">Registered Today</p>
-          <h3 className="text-xl font-black text-emerald-900 mt-1">{summary?.registered_today || 0}</h3>
-          <p className="text-[10px] text-emerald-700 font-medium mt-0.5">New Patient Intake</p>
-        </div>
-
+        {/* Card 5: Emergency & Red Flags */}
         <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/30 shadow-xs">
-          <p className="text-[11px] font-bold text-rose-800 uppercase">Emergency</p>
-          <h3 className="text-xl font-black text-rose-900 mt-1">0</h3>
+          <p className="text-[11px] font-bold text-rose-800 uppercase flex items-center gap-1.5">
+            <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+            Emergency & Red Flags
+          </p>
+          <h3 className="text-xl font-black text-rose-900 mt-1">{summary?.emergency_count ?? kpis.emergency ?? 0}</h3>
           <p className="text-[10px] text-rose-700 font-medium mt-0.5">Priority Red Flags</p>
         </div>
       </div>
