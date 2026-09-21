@@ -317,7 +317,6 @@ export const Patients: React.FC = () => {
                   <option value="Urban Slum Resident BPL">Urban Slum Resident BPL</option>
                   <option value="Senior Citizen / Diabetic">Senior Citizen / Diabetic</option>
                   <option value="Senior Citizen / Cardiac History">Senior Citizen / Cardiac History</option>
-                  <option value="High Risk Pregnancy ANC">High Risk Pregnancy ANC</option>
                   <option value="Slum Household BPL">Slum Household BPL</option>
                 </select>
               </div>

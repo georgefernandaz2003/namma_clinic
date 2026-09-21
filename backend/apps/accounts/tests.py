@@ -1611,7 +1611,6 @@ class PhaseC3RegressionTests(TestCase):
             'Urban Slum Resident BPL',
             'Senior Citizen / Diabetic',
             'Senior Citizen / Cardiac History',
-            'High Risk Pregnancy ANC',
             'Slum Household BPL'
         ]
         for idx, cat in enumerate(categories):

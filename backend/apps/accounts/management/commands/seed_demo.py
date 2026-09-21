@@ -254,16 +254,6 @@ class Command(BaseCommand):
                 mfg_date=today - datetime.timedelta(days=375), expiry_date=today - datetime.timedelta(days=10), quantity=30, unit_cost=2.10, status='EXPIRED'
             )
 
-            # Purchase Orders per Facility
-            po = PurchaseOrder.objects.create(
-                po_number=f"PO-{fac.facility_code}-2026-001", vendor=v_ksmscl, facility=fac, order_date=today - datetime.timedelta(days=5),
-                expected_delivery_date=today + datetime.timedelta(days=3), status='ORDERED', created_by=u_dist,
-                notes='Emergency replenishment of Essential Anti-Hypertensives & Analgesics.'
-            )
-            PurchaseOrderItem.objects.create(purchase_order=po, medicine=med_aml, ordered_quantity=200, received_quantity=0, unit_price=0.85, total_price=170.00)
-            PurchaseOrderItem.objects.create(purchase_order=po, medicine=med_amx, ordered_quantity=150, received_quantity=0, unit_price=2.10, total_price=315.00)
-            po.total_amount = 485.00
-            po.save()
             MedicineBatch.objects.create(
                 facility=fac, medicine=med_ifa, batch_number=f"IFA-{fac.facility_code}-2026M", supplier='KSMSCL E-Aushada',
                 expiry_date=today + datetime.timedelta(days=240), quantity=800, status='ACTIVE'
@@ -272,6 +262,37 @@ class Command(BaseCommand):
                 facility=fac, medicine=med_amx, batch_number=f"AMX-{fac.facility_code}-OLD", supplier='KSMSCL E-Aushada',
                 expiry_date=today - datetime.timedelta(days=10), quantity=30, status='EXPIRED'
             )
+
+        # 6b. Targeted Demo Purchase Orders (Exactly 2 POs)
+        po1 = PurchaseOrder.objects.create(
+            po_number="PO-HOSP-DIST-01-2026-001",
+            vendor=v_ksmscl,
+            facility=hosp_a,
+            order_date=today - datetime.timedelta(days=5),
+            expected_delivery_date=today + datetime.timedelta(days=3),
+            status='ORDERED',
+            created_by=u_dist,
+            notes='Quarterly replenishment indent for Essential Anti-Hypertensives & Antibiotics.'
+        )
+        PurchaseOrderItem.objects.create(purchase_order=po1, medicine=med_aml, ordered_quantity=200, received_quantity=0, unit_price=0.85, total_price=170.00)
+        PurchaseOrderItem.objects.create(purchase_order=po1, medicine=med_amx, ordered_quantity=150, received_quantity=0, unit_price=2.10, total_price=315.00)
+        po1.total_amount = 485.00
+        po1.save()
+
+        po2 = PurchaseOrder.objects.create(
+            po_number="PO-HOSP-DIST-01-2026-002",
+            vendor=v_kapl,
+            facility=hosp_a,
+            order_date=today - datetime.timedelta(days=12),
+            expected_delivery_date=today - datetime.timedelta(days=2),
+            status='RECEIVED',
+            created_by=u_dist,
+            notes='Fulfilled procurement order for Analgesics and Health supplements.'
+        )
+        PurchaseOrderItem.objects.create(purchase_order=po2, medicine=med_pcm, ordered_quantity=1000, received_quantity=1000, unit_price=0.50, total_price=500.00)
+        PurchaseOrderItem.objects.create(purchase_order=po2, medicine=med_ifa, ordered_quantity=800, received_quantity=800, unit_price=0.60, total_price=480.00)
+        po2.total_amount = 980.00
+        po2.save()
 
         # 7. Patient Registrations Properly Mapped to Each Facility
         # Facility 1: Victoria District Hospital Patients
