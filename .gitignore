@@ -19,3 +19,9 @@ frontend/build/
 # Media / Uploads
 media/
 backend/media/
+
+# SQLite Backups & WAL
+backups/
+backend/backups/
+*.sqlite3-wal
+*.sqlite3-shm
