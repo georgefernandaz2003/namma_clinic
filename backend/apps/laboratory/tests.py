@@ -384,3 +384,134 @@ class DoctorLabDoctorWorkflowTests(TestCase):
         self.assertEqual(visit.current_queue, 'COMPLETED')
         self.assertEqual(visit.status, 'COMPLETED')
         self.assertEqual(visit.token.status, 'COMPLETED')
+
+    def test_regression_test_1_select_one_lab_test(self):
+        """Test 1: Doctor selects 1 lab test -> 1 LabOrder, 1 LabToken."""
+        visit, _ = self._create_triaged_visit(self.patient_1, self.facility_a, self.doctor_a)
+        self.client.force_authenticate(user=self.doctor_a)
+        res = self.client.post('/api/consultations/', {
+            'visit': visit.id,
+            'patient': self.patient_1.id,
+            'facility': self.facility_a.id,
+            'chief_complaint': 'Check blood sugar',
+            'has_lab_orders': True,
+            'lab_test_ids': [self.test_fbg.id]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(LabOrder.objects.filter(visit=visit).count(), 1)
+        self.assertEqual(LabToken.objects.filter(visit=visit).count(), 1)
+
+    def test_regression_test_2_select_three_lab_tests(self):
+        """Test 2: Doctor selects 3 lab tests -> 3 LabOrders, 1 LabToken."""
+        visit, _ = self._create_triaged_visit(self.patient_1, self.facility_a, self.doctor_a)
+        self.client.force_authenticate(user=self.doctor_a)
+        res = self.client.post('/api/consultations/', {
+            'visit': visit.id,
+            'patient': self.patient_1.id,
+            'facility': self.facility_a.id,
+            'chief_complaint': 'Comprehensive metabolic screening',
+            'has_lab_orders': True,
+            'lab_test_ids': [self.test_fbg.id, self.test_hba1c.id, self.test_lipid.id]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(LabOrder.objects.filter(visit=visit).count(), 3)
+        self.assertEqual(LabToken.objects.filter(visit=visit).count(), 1)
+
+    def test_regression_test_3_select_n_lab_tests(self):
+        """Test 3: Doctor selects N lab tests -> N LabOrders, 1 LabToken."""
+        visit, _ = self._create_triaged_visit(self.patient_1, self.facility_a, self.doctor_a)
+        self.client.force_authenticate(user=self.doctor_a)
+        test_cbc = LabTestMaster.objects.create(code='CBC_TEST', name='Complete Blood Count', category='Hematology')
+        test_ids = [self.test_fbg.id, self.test_hba1c.id, self.test_lipid.id, test_cbc.id]
+        res = self.client.post('/api/consultations/', {
+            'visit': visit.id,
+            'patient': self.patient_1.id,
+            'facility': self.facility_a.id,
+            'chief_complaint': 'N tests evaluation',
+            'has_lab_orders': True,
+            'lab_test_ids': test_ids
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(LabOrder.objects.filter(visit=visit).count(), len(test_ids))
+        self.assertEqual(LabToken.objects.filter(visit=visit).count(), 1)
+
+    def test_regression_test_4_duplicate_consultation_submission_idempotency(self):
+        """Test 4: Doctor submits same consultation twice -> No duplicate LabOrders, 1 Consultation, 1 LabToken."""
+        visit, _ = self._create_triaged_visit(self.patient_1, self.facility_a, self.doctor_a)
+        self.client.force_authenticate(user=self.doctor_a)
+        payload = {
+            'visit': visit.id,
+            'patient': self.patient_1.id,
+            'facility': self.facility_a.id,
+            'chief_complaint': 'Repeated submission check',
+            'has_lab_orders': True,
+            'lab_test_ids': [self.test_fbg.id, self.test_hba1c.id]
+        }
+        res1 = self.client.post('/api/consultations/', payload, format='json')
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+        consultation_id = res1.data['id']
+        self.assertEqual(LabOrder.objects.filter(visit=visit).count(), 2)
+        self.assertEqual(LabToken.objects.filter(visit=visit).count(), 1)
+        self.assertEqual(Consultation.objects.filter(visit=visit).count(), 1)
+
+        res2 = self.client.post('/api/consultations/', payload, format='json')
+        self.assertIn(res2.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED])
+        self.assertEqual(res2.data['id'], consultation_id)
+
+        self.assertEqual(Consultation.objects.filter(visit=visit).count(), 1)
+        self.assertEqual(LabToken.objects.filter(visit=visit).count(), 1)
+        self.assertEqual(LabOrder.objects.filter(visit=visit).count(), 2)
+
+    def test_regression_test_5_lab_order_linkages(self):
+        """Test 5: Verify all LabOrders have consultation, visit, patient, doctor, facility, lab_token."""
+        visit, _ = self._create_triaged_visit(self.patient_1, self.facility_a, self.doctor_a)
+        self.client.force_authenticate(user=self.doctor_a)
+        res = self.client.post('/api/consultations/', {
+            'visit': visit.id,
+            'patient': self.patient_1.id,
+            'facility': self.facility_a.id,
+            'chief_complaint': 'Linkage verification',
+            'has_lab_orders': True,
+            'lab_test_ids': [self.test_fbg.id, self.test_hba1c.id, self.test_lipid.id]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        consultation_id = res.data['id']
+
+        orders = LabOrder.objects.filter(visit=visit)
+        self.assertEqual(orders.count(), 3)
+        lab_token = LabToken.objects.get(visit=visit)
+        for order in orders:
+            self.assertEqual(order.consultation_id, consultation_id)
+            self.assertEqual(order.visit, visit)
+            self.assertEqual(order.patient, self.patient_1)
+            self.assertEqual(order.doctor, self.doctor_a)
+            self.assertEqual(order.facility, self.facility_a)
+            self.assertEqual(order.lab_token, lab_token)
+
+    def test_regression_test_6_one_lab_token_per_active_session(self):
+        """Test 6: Verify one LabToken per active laboratory session across multiple order calls."""
+        visit, _ = self._create_triaged_visit(self.patient_1, self.facility_a, self.doctor_a)
+        self.client.force_authenticate(user=self.doctor_a)
+
+        c_res = self.client.post('/api/consultations/', {
+            'visit': visit.id,
+            'patient': self.patient_1.id,
+            'facility': self.facility_a.id,
+            'chief_complaint': 'Session test',
+            'has_lab_orders': True,
+            'lab_test_ids': [self.test_fbg.id]
+        }, format='json')
+        self.assertEqual(c_res.status_code, status.HTTP_201_CREATED)
+        initial_lab_token = LabToken.objects.get(visit=visit)
+
+        l_res = self.client.post('/api/lab/orders/', {
+            'patient': self.patient_1.id,
+            'facility': self.facility_a.id,
+            'visit': visit.id,
+            'test_ids': [self.test_hba1c.id]
+        }, format='json')
+        self.assertEqual(l_res.status_code, status.HTTP_201_CREATED)
+
+        self.assertEqual(LabToken.objects.filter(visit=visit).count(), 1)
+        current_lab_token = LabToken.objects.get(visit=visit)
+        self.assertEqual(initial_lab_token.id, current_lab_token.id)

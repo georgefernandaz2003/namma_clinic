@@ -223,11 +223,9 @@ export const Consultation: React.FC = () => {
   };
 
   const toggleTestSelection = (testId: number) => {
-    if (selectedTestIds.includes(testId)) {
-      setSelectedTestIds(selectedTestIds.filter((id) => id !== testId));
-    } else {
-      setSelectedTestIds([...selectedTestIds, testId]);
-    }
+    setSelectedTestIds((prev) =>
+      prev.includes(testId) ? prev.filter((id) => id !== testId) : [...prev, testId]
+    );
   };
 
   const handleSaveConsultation = async (e: React.FormEvent) => {
@@ -239,7 +237,7 @@ export const Consultation: React.FC = () => {
       const isReviewFlow = selectedVisit.status === 'DOCTOR_REVIEW';
       const willOrderTests = selectedTestIds.length > 0 && !isReviewFlow;
 
-      // 1. Save Consultation & Prescription
+      // 1. Save Consultation, Prescriptions & Diagnostic Lab Orders (Authoritative endpoint)
       const consultRes = await api.post('consultations/', {
         visit: selectedVisit.id,
         patient: selectedVisit.patient,
@@ -256,6 +254,7 @@ export const Consultation: React.FC = () => {
       });
 
       const consultationId = consultRes.data?.id;
+      const createdLabTokenCode = consultRes.data?.lab_token_code || '';
 
       // 2. Save Referral if checked with authoritative Visit and Consultation links
       if (createReferral && destFacilityId) {
@@ -270,26 +269,6 @@ export const Consultation: React.FC = () => {
           required_service: 'Specialist Consultation',
           urgency: refUrgency
         });
-      }
-
-      // 3. Save Diagnostic Lab Orders
-      let createdLabTokenCode = '';
-      if (willOrderTests) {
-        try {
-          const labRes = await api.post('lab/orders/', {
-            patient: selectedVisit.patient,
-            facility: activeFacility.id,
-            visit: selectedVisit.id,
-            consultation: consultationId,
-            test_ids: selectedTestIds
-          });
-          const createdList = Array.isArray(labRes.data) ? labRes.data : [labRes.data];
-          if (createdList.length > 0 && createdList[0]?.lab_token_code) {
-            createdLabTokenCode = createdList[0].lab_token_code;
-          }
-        } catch (err) {
-          console.error('Failed to order lab tests', err);
-        }
       }
 
       // 4. Save Scheduled Follow-up
@@ -714,19 +693,26 @@ export const Consultation: React.FC = () => {
                     return (
                       <label
                         key={t.id}
-                        onClick={() => toggleTestSelection(t.id)}
+                        htmlFor={`test-check-${t.id}`}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            toggleTestSelection(t.id);
+                          }
+                        }}
                         className={`p-2 rounded-lg border flex items-center justify-between cursor-pointer transition select-none ${
                           isSelected
                             ? 'bg-teal-50 border-teal-500 text-teal-900 font-bold'
                             : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                         }`}
                       >
-                        <span>{t.name}</span>
+                        <span className="cursor-pointer">{t.name}</span>
                         <input
+                          id={`test-check-${t.id}`}
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => {}}
-                          className="w-3.5 h-3.5 text-teal-600 rounded border-slate-300"
+                          onChange={() => toggleTestSelection(t.id)}
+                          className="w-3.5 h-3.5 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer"
                         />
                       </label>
                     );

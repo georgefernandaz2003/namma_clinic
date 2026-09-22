@@ -1,0 +1,38 @@
+{
+  "opd_token": 704,
+  "opd_token_id": 168,
+  "visit_id": "VIS-2026-UAT704",
+  "visit_db_id": 174,
+  "consultation_id": 80,
+  "lab_token_code": "LAB-001",
+  "lab_token_id": 4,
+  "lab_order_ids": [
+    72,
+    73,
+    74,
+    75,
+    76,
+    77
+  ],
+  "lab_result_ids": [
+    57,
+    58,
+    59,
+    60,
+    61,
+    56
+  ],
+  "prescription_id": 74,
+  "final_visit_status": "COMPLETED",
+  "final_visit_queue": "COMPLETED",
+  "final_token_status": "COMPLETED",
+  "same_encounter_verified": true,
+  "token_invariants": {
+    "opd_tokens_count": 1,
+    "visits_count": 1,
+    "consultations_count": 1,
+    "lab_tokens_count": 1,
+    "lab_orders_count": 6,
+    "lab_results_count": 6
+  }
+}

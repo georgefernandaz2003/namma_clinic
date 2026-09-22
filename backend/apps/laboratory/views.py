@@ -215,6 +215,14 @@ class LabOrderViewSet(viewsets.ModelViewSet):
                 test_master = LabTestMaster.objects.filter(id=tid).first()
                 if not test_master:
                     continue
+                if visit:
+                    existing_order = LabOrder.objects.filter(
+                        visit=visit,
+                        test_master=test_master
+                    ).exclude(status__in=['CANCELLED', 'REJECTED']).first()
+                    if existing_order:
+                        created_orders.append(existing_order)
+                        continue
                 order = LabOrder.objects.create(
                     lab_token=lab_token,
                     visit=visit,
