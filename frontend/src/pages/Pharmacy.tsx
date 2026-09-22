@@ -49,6 +49,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { hasPermission } from '../utils/permissions';
 
 type ActiveTab =
   | 'DASHBOARD'
@@ -73,6 +74,19 @@ export const Pharmacy: React.FC = () => {
     user?.role === 'DOCTOR' ||
     user?.role === 'NURSE' ||
     user?.role === 'LAB_TECHNICIAN';
+
+  const canCreateMedicine = Boolean(
+    (user?.permissions && user.permissions.includes('medicine_master.create')) ||
+    hasPermission(user?.role, 'medicine_master.create')
+  );
+  const canUpdateMedicine = Boolean(
+    (user?.permissions && user.permissions.includes('medicine_master.update')) ||
+    hasPermission(user?.role, 'medicine_master.update')
+  );
+  const canDeleteMedicine = Boolean(
+    (user?.permissions && user.permissions.includes('medicine_master.delete')) ||
+    hasPermission(user?.role, 'medicine_master.delete')
+  );
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('DASHBOARD');
   const [loading, setLoading] = useState<boolean>(false);
@@ -147,6 +161,33 @@ export const Pharmacy: React.FC = () => {
     notes: '',
     items: [{ medicine: 0, requested_quantity: 100, unit_cost: 10.0 }],
   });
+
+  // Medicine Master Management States
+  const [showAddMedicineModal, setShowAddMedicineModal] = useState(false);
+  const [newMedicineData, setNewMedicineData] = useState({
+    generic_name: '',
+    brand_name: '',
+    strength: '500 mg',
+    dosage_form: 'Tablet',
+    unit: 'Tablets',
+    category: 'Essential Medicines',
+    minimum_stock: 25,
+    reorder_level: 50,
+    description: '',
+  });
+  const [editingMedicine, setEditingMedicine] = useState<MedicineMaster | null>(null);
+  const [editMedicineData, setEditMedicineData] = useState({
+    generic_name: '',
+    brand_name: '',
+    strength: '',
+    dosage_form: '',
+    unit: '',
+    category: '',
+    minimum_stock: 25,
+    reorder_level: 50,
+    description: '',
+  });
+  const [medicineActionLoading, setMedicineActionLoading] = useState(false);
 
   // Goods Receiving Modal
   const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);
@@ -328,6 +369,78 @@ export const Pharmacy: React.FC = () => {
     } catch (e: any) {
       const msg = e.response?.data?.error || 'Failed to dispense prescription.';
       setDispensingError(msg);
+    }
+  };
+
+  // Medicine Master Action Handlers
+  const handleAddMedicine = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canCreateMedicine) return;
+    setMedicineActionLoading(true);
+    try {
+      const res = await api.post('pharmacy/medicines/', newMedicineData);
+      setMedicines((prev) => [...prev, res.data]);
+      setShowAddMedicineModal(false);
+      setNewMedicineData({
+        generic_name: '',
+        brand_name: '',
+        strength: '500 mg',
+        dosage_form: 'Tablet',
+        unit: 'Tablets',
+        category: 'Essential Medicines',
+        minimum_stock: 25,
+        reorder_level: 50,
+        description: '',
+      });
+      alert('Medicine registered successfully!');
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.response?.data?.generic_name?.[0] || 'Failed to register medicine');
+    } finally {
+      setMedicineActionLoading(false);
+    }
+  };
+
+  const handleOpenEditMedicine = (med: MedicineMaster) => {
+    if (!canUpdateMedicine) return;
+    setEditingMedicine(med);
+    setEditMedicineData({
+      generic_name: med.generic_name,
+      brand_name: med.brand_name || '',
+      strength: med.strength,
+      dosage_form: med.dosage_form,
+      unit: med.unit,
+      category: med.category,
+      minimum_stock: med.minimum_stock,
+      reorder_level: med.reorder_level,
+      description: med.description || '',
+    });
+  };
+
+  const handleSaveEditMedicine = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canUpdateMedicine || !editingMedicine) return;
+    setMedicineActionLoading(true);
+    try {
+      const res = await api.patch(`pharmacy/medicines/${editingMedicine.id}/`, editMedicineData);
+      setMedicines((prev) => prev.map((m) => (m.id === editingMedicine.id ? res.data : m)));
+      setEditingMedicine(null);
+      alert('Medicine updated successfully!');
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.response?.data?.generic_name?.[0] || 'Failed to update medicine');
+    } finally {
+      setMedicineActionLoading(false);
+    }
+  };
+
+  const handleDeleteMedicine = async (id: number) => {
+    if (!canDeleteMedicine) return;
+    if (!window.confirm('Are you sure you want to remove this medicine from the master catalog?')) return;
+    try {
+      await api.delete(`pharmacy/medicines/${id}/`);
+      setMedicines((prev) => prev.filter((m) => m.id !== id));
+      alert('Medicine deleted successfully!');
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to delete medicine');
     }
   };
 
@@ -1213,6 +1326,14 @@ export const Pharmacy: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 self-stretch md:self-auto">
+              {canCreateMedicine && (
+                <button
+                  onClick={() => setShowAddMedicineModal(true)}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer self-start md:self-auto mr-2"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Medicine
+                </button>
+              )}
               <button
                 onClick={() => setMedicineCategoryFilter('ALL')}
                 className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
@@ -1252,12 +1373,15 @@ export const Pharmacy: React.FC = () => {
                     <th className="p-4">Min / Reorder</th>
                     <th className="p-4">Available Qty</th>
                     <th className="p-4">Status</th>
+                    {(canUpdateMedicine || canDeleteMedicine) && (
+                      <th className="p-4 text-right">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredMedicines.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-400 font-medium">
+                      <td colSpan={(canUpdateMedicine || canDeleteMedicine) ? 9 : 8} className="p-8 text-center text-slate-400 font-medium">
                         No medicines found matching the search criteria.
                       </td>
                     </tr>
@@ -1294,6 +1418,30 @@ export const Pharmacy: React.FC = () => {
                             {m.stock_status || 'NORMAL'}
                           </span>
                         </td>
+                        {(canUpdateMedicine || canDeleteMedicine) && (
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {canUpdateMedicine && (
+                                <button
+                                  onClick={() => handleOpenEditMedicine(m)}
+                                  title="Edit Medicine"
+                                  className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition cursor-pointer"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {canDeleteMedicine && (
+                                <button
+                                  onClick={() => handleDeleteMedicine(m.id)}
+                                  title="Delete Medicine"
+                                  className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     ))
                   )}
@@ -3266,6 +3414,257 @@ export const Pharmacy: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Add Medicine Modal */}
+      {showAddMedicineModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <form
+            onSubmit={handleAddMedicine}
+            className="bg-white w-full max-w-lg rounded-2xl border border-slate-200 shadow-xl overflow-hidden p-6 space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <Pill className="w-4 h-4 text-emerald-600" />
+                Add Medicine to Master Catalog
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddMedicineModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="md:col-span-2">
+                <label className="font-bold text-slate-600 block mb-1">Generic Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Paracetamol"
+                  value={newMedicineData.generic_name}
+                  onChange={(e) => setNewMedicineData({ ...newMedicineData, generic_name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Brand Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Dolo 650"
+                  value={newMedicineData.brand_name}
+                  onChange={(e) => setNewMedicineData({ ...newMedicineData, brand_name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Category</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Essential Medicines"
+                  value={newMedicineData.category}
+                  onChange={(e) => setNewMedicineData({ ...newMedicineData, category: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Strength</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 500 mg"
+                  value={newMedicineData.strength}
+                  onChange={(e) => setNewMedicineData({ ...newMedicineData, strength: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Dosage Form</label>
+                <select
+                  value={newMedicineData.dosage_form}
+                  onChange={(e) => setNewMedicineData({ ...newMedicineData, dosage_form: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                >
+                  <option value="Tablet">Tablet</option>
+                  <option value="Capsule">Capsule</option>
+                  <option value="Syrup">Syrup</option>
+                  <option value="Injection">Injection</option>
+                  <option value="Ointment">Ointment</option>
+                  <option value="Drops">Drops</option>
+                  <option value="Inhaler">Inhaler</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Unit</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Tablets"
+                  value={newMedicineData.unit}
+                  onChange={(e) => setNewMedicineData({ ...newMedicineData, unit: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Reorder Level</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newMedicineData.reorder_level}
+                  onChange={(e) => setNewMedicineData({ ...newMedicineData, reorder_level: Number(e.target.value) })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowAddMedicineModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={medicineActionLoading}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{medicineActionLoading ? 'Saving...' : 'Save Medicine'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Edit Medicine Modal */}
+      {editingMedicine && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <form
+            onSubmit={handleSaveEditMedicine}
+            className="bg-white w-full max-w-lg rounded-2xl border border-slate-200 shadow-xl overflow-hidden p-6 space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <Edit2 className="w-4 h-4 text-emerald-600" />
+                Edit Medicine Master
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingMedicine(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="md:col-span-2">
+                <label className="font-bold text-slate-600 block mb-1">Generic Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editMedicineData.generic_name}
+                  onChange={(e) => setEditMedicineData({ ...editMedicineData, generic_name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Brand Name</label>
+                <input
+                  type="text"
+                  value={editMedicineData.brand_name}
+                  onChange={(e) => setEditMedicineData({ ...editMedicineData, brand_name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Category</label>
+                <input
+                  type="text"
+                  value={editMedicineData.category}
+                  onChange={(e) => setEditMedicineData({ ...editMedicineData, category: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Strength</label>
+                <input
+                  type="text"
+                  value={editMedicineData.strength}
+                  onChange={(e) => setEditMedicineData({ ...editMedicineData, strength: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Dosage Form</label>
+                <select
+                  value={editMedicineData.dosage_form}
+                  onChange={(e) => setEditMedicineData({ ...editMedicineData, dosage_form: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                >
+                  <option value="Tablet">Tablet</option>
+                  <option value="Capsule">Capsule</option>
+                  <option value="Syrup">Syrup</option>
+                  <option value="Injection">Injection</option>
+                  <option value="Ointment">Ointment</option>
+                  <option value="Drops">Drops</option>
+                  <option value="Inhaler">Inhaler</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Unit</label>
+                <input
+                  type="text"
+                  value={editMedicineData.unit}
+                  onChange={(e) => setEditMedicineData({ ...editMedicineData, unit: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 block mb-1">Reorder Level</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={editMedicineData.reorder_level}
+                  onChange={(e) => setEditMedicineData({ ...editMedicineData, reorder_level: Number(e.target.value) })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingMedicine(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={medicineActionLoading}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                <span>{medicineActionLoading ? 'Saving...' : 'Update Medicine'}</span>
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

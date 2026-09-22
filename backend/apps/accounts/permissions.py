@@ -4,7 +4,8 @@ ROLE_PERMISSIONS = {
     'DISTRICT_OFFICER': {
         'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
         'audit_logs.view', 'dashboard.view', 'referrals.view', 'inventory.view', 'queue.view',
-        'lab_orders.view', 'patients.view', 'po.view', 'vendor.view', 'staff.view', 'users.view'
+        'lab_orders.view', 'patients.view', 'po.view', 'vendor.view', 'staff.view', 'users.view',
+        'medicine_master.view'
     },
     'HOSPITAL_ADMIN': {
         'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update', 'staff.delete',
@@ -14,13 +15,15 @@ ROLE_PERMISSIONS = {
         'system_config.view', 'system_config.update', 'dashboard.view', 'queue.view', 'referrals.view',
         'po.view', 'po.create', 'po.update', 'po.approve', 'vendor.view', 'vendor.create', 'vendor.update',
         'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update',
-        'demo.reset'
+        'demo.reset',
+        'medicine_master.view', 'medicine_master.create', 'medicine_master.update', 'medicine_master.delete'
     },
     'DOCTOR': {
         'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
         'diagnosis.view', 'diagnosis.create', 'diagnosis.update', 'prescription.view', 'prescription.create', 'prescription.update',
         'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view',
-        'referrals.view', 'referrals.create', 'clinic.view', 'queue.view', 'dashboard.view'
+        'referrals.view', 'referrals.create', 'clinic.view', 'queue.view', 'dashboard.view',
+        'medicine_master.view'
     },
     'NURSE': {
         'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.update',
@@ -36,7 +39,8 @@ ROLE_PERMISSIONS = {
     'PHARMACIST': {
         'prescription.view', 'pharmacy.view', 'pharmacy.dispense', 'inventory.view', 'inventory.create', 'inventory.update',
         'reports.view', 'reports.export', 'clinic.view', 'dashboard.view',
-        'po.view', 'po.create', 'po.update', 'po.receive', 'vendor.view', 'vendor.create', 'vendor.update'
+        'po.view', 'po.create', 'po.update', 'po.receive', 'vendor.view', 'vendor.create', 'vendor.update',
+        'medicine_master.view', 'medicine_master.create', 'medicine_master.update', 'medicine_master.delete'
     }
 }
 

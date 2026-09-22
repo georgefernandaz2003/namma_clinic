@@ -3,19 +3,20 @@ import type { Role } from '../types';
 export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
   DISTRICT_OFFICER: new Set([
     'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
-    'audit_logs.view', 'dashboard.view'
+    'audit_logs.view', 'dashboard.view', 'medicine_master.view'
   ]),
   HOSPITAL_ADMIN: new Set([
     'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update',
     'patients.view', 'patients.create', 'appointments.view', 'appointments.create', 'appointments.update',
     'inventory.view', 'inventory.create', 'inventory.update', 'reports.view', 'reports.export',
-    'system_config.view', 'system_config.update', 'dashboard.view', 'demo.reset'
+    'system_config.view', 'system_config.update', 'dashboard.view', 'demo.reset',
+    'medicine_master.view', 'medicine_master.create', 'medicine_master.update', 'medicine_master.delete'
   ]),
   DOCTOR: new Set([
     'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
     'diagnosis.view', 'diagnosis.create', 'diagnosis.update', 'prescription.view', 'prescription.create', 'prescription.update',
     'lab_orders.view', 'lab_orders.create', 'lab_results.view', 'referrals.view', 'referrals.create',
-    'clinic.view', 'queue.view', 'dashboard.view'
+    'clinic.view', 'queue.view', 'dashboard.view', 'medicine_master.view'
   ]),
   NURSE: new Set([
     'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.create',
@@ -28,7 +29,8 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
   ]),
   PHARMACIST: new Set([
     'prescription.view', 'pharmacy.view', 'pharmacy.dispense', 'inventory.view', 'inventory.create', 'inventory.update',
-    'reports.view', 'reports.export', 'clinic.view', 'dashboard.view'
+    'reports.view', 'reports.export', 'clinic.view', 'dashboard.view',
+    'medicine_master.view', 'medicine_master.create', 'medicine_master.update', 'medicine_master.delete'
   ])
 };
 

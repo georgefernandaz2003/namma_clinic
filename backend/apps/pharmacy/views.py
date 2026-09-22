@@ -148,9 +148,22 @@ class InventoryTransactionSerializer(serializers.ModelSerializer):
 # ViewSets & APIs
 
 class MedicineMasterViewSet(viewsets.ModelViewSet):
-    queryset = MedicineMaster.objects.all()
+    queryset = MedicineMaster.objects.all().order_by('id')
     serializer_class = MedicineMasterSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    required_permissions = {
+        'GET': 'medicine_master.view',
+        'POST': 'medicine_master.create',
+        'PUT': 'medicine_master.update',
+        'PATCH': 'medicine_master.update',
+        'DELETE': 'medicine_master.delete',
+        'list': 'medicine_master.view',
+        'retrieve': 'medicine_master.view',
+        'create': 'medicine_master.create',
+        'update': 'medicine_master.update',
+        'partial_update': 'medicine_master.update',
+        'destroy': 'medicine_master.delete',
+    }
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
