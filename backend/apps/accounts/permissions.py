@@ -4,10 +4,11 @@ ROLE_PERMISSIONS = {
     'DISTRICT_OFFICER': {
         'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
         'audit_logs.view', 'dashboard.view', 'referrals.view', 'inventory.view', 'queue.view',
-        'lab_orders.view', 'patients.view', 'po.view', 'vendor.view'
+        'lab_orders.view', 'patients.view', 'po.view', 'vendor.view', 'staff.view', 'users.view'
     },
     'HOSPITAL_ADMIN': {
-        'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update',
+        'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update', 'staff.delete',
+        'users.view', 'users.create', 'users.update', 'users.delete',
         'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.create', 'appointments.update',
         'inventory.view', 'inventory.create', 'inventory.update', 'reports.view', 'reports.export',
         'system_config.view', 'system_config.update', 'dashboard.view', 'queue.view', 'referrals.view',
@@ -118,18 +119,16 @@ class HasFacilityScope(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        # District Officer is blocked from direct clinical and facility procurement mutations
+        # District Officer is blocked from direct clinical, facility procurement, and user mutations
         if request.user.role == 'DISTRICT_OFFICER':
             if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
                 mutation_restricted_views = {
                     'ConsultationViewSet', 'PrescriptionViewSet', 'TriageVitalsViewSet', 'DispenseMedicineView',
-                    'PurchaseOrderViewSet', 'VendorViewSet'
+                    'PurchaseOrderViewSet', 'VendorViewSet', 'UserViewSet'
                 }
                 if view.__class__.__name__ in mutation_restricted_views:
-                    self.message = "District Officers have read-only access and cannot modify facility clinical or procurement records."
+                    self.message = "District Officers have read-only access and cannot modify facility clinical, procurement, or user records."
                     return False
-
-        return True
 
         return True
 
@@ -138,23 +137,43 @@ class HasFacilityScope(permissions.BasePermission):
             return False
 
         if request.user.role == 'DISTRICT_OFFICER':
-            if request.method in permissions.SAFE_METHODS:
-                return True
-            return False
+            if request.method not in permissions.SAFE_METHODS:
+                return False
+            # Check district scope
+            if request.user.assigned_district_id:
+                accessible_fac_ids = get_accessible_facility_ids_for_user(request.user)
+                obj_fac_id = (
+                    getattr(obj, 'facility_id', None)
+                    or getattr(obj, 'assigned_facility_id', None)
+                    or getattr(obj, 'registered_at_facility_id', None)
+                )
+                obj_dist_id = getattr(obj, 'district_id', None) or getattr(obj, 'assigned_district_id', None)
+                if obj_dist_id and obj_dist_id != request.user.assigned_district_id:
+                    return False
+                if obj_fac_id and accessible_fac_ids is not None and obj_fac_id not in accessible_fac_ids:
+                    return False
+            return True
 
         user_fac_id = request.user.assigned_facility_id
         if not user_fac_id:
             return False
-
-        obj_fac_id = getattr(obj, 'facility_id', None) or getattr(obj, 'assigned_facility_id', None) or getattr(obj, 'registered_at_facility_id', None)
 
         # Cross-facility referral exemption: if user's facility is destination or source of referral
         if hasattr(obj, 'source_facility_id') and hasattr(obj, 'destination_facility_id'):
             if obj.source_facility_id == user_fac_id or obj.destination_facility_id == user_fac_id:
                 return True
 
+        if hasattr(obj, 'assigned_facility_id'):
+            return bool(obj.assigned_facility_id and obj.assigned_facility_id == user_fac_id)
+
+        obj_fac_id = (
+            getattr(obj, 'facility_id', None)
+            or getattr(obj, 'assigned_facility_id', None)
+            or getattr(obj, 'registered_at_facility_id', None)
+        )
         if obj_fac_id:
             return obj_fac_id == user_fac_id
 
         return True
+
 
