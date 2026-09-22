@@ -4,7 +4,8 @@ ROLE_PERMISSIONS = {
     'DISTRICT_OFFICER': {
         'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
         'audit_logs.view', 'dashboard.view', 'referrals.view', 'inventory.view', 'queue.view',
-        'lab_orders.view', 'patients.view', 'po.view', 'vendor.view', 'staff.view', 'users.view'
+        'lab_orders.view', 'patients.view', 'po.view', 'vendor.view', 'staff.view', 'users.view',
+        'demo.reset'
     },
     'HOSPITAL_ADMIN': {
         'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update', 'staff.delete',

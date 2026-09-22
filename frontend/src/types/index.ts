@@ -19,6 +19,7 @@ export interface User {
   facility_type?: string;
   assigned_district: number | null;
   district_name?: string;
+  permissions?: string[];
 }
 
 export type FacilityType =

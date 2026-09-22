@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { isPathAllowedForRole } from '../utils/permissions';
+import { isPathAllowedForRole, hasPermission } from '../utils/permissions';
 import api from '../services/api';
 import {
   LayoutDashboard,
@@ -73,6 +73,10 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
   const location = useLocation();
   const navigate = useNavigate();
   const [resetting, setResetting] = useState(false);
+  const canResetDemo = Boolean(
+    (user?.permissions && user.permissions.includes('demo.reset')) ||
+    hasPermission(user?.role, 'demo.reset')
+  );
 
   const handleResetDemo = async () => {
     if (!window.confirm('Reset all demo data back to initial pristine state?')) return;
@@ -218,14 +222,16 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full" />
             </Link>
 
-            <button
-              onClick={handleResetDemo}
-              disabled={resetting}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition cursor-pointer"
-            >
-              <RotateCcw className={`w-3.5 h-3.5 text-amber-600 ${resetting ? 'animate-spin' : ''}`} />
-              <span>{resetting ? 'Resetting...' : 'Reset Demo'}</span>
-            </button>
+            {canResetDemo && (
+              <button
+                onClick={handleResetDemo}
+                disabled={resetting}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition cursor-pointer"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 text-amber-600 ${resetting ? 'animate-spin' : ''}`} />
+                <span>{resetting ? 'Resetting...' : 'Reset Demo'}</span>
+              </button>
+            )}
           </div>
         </header>
 

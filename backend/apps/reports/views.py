@@ -16,7 +16,7 @@ from apps.referrals.models import Referral, FollowUp
 from apps.ncd.models import NCDRecord
 from apps.surveillance.models import DiseaseCase
 from apps.alerts.models import Alert
-from apps.accounts.permissions import get_accessible_facility_ids_for_user
+from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission
 
 class DashboardSummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -274,11 +274,33 @@ class CSVExportView(APIView):
         return response
 
 class ResetDemoView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    required_permission = 'demo.reset'
+    required_permissions = {
+        'POST': 'demo.reset',
+    }
 
     def post(self, request):
+        from apps.audit.models import AuditLog
+        user = request.user
         try:
             call_command('seed_demo')
+            AuditLog.objects.create(
+                user=user,
+                username_snapshot=user.username,
+                action='RESET_DEMO',
+                facility=getattr(user, 'assigned_facility', None),
+                details=f"Demo database reset triggered by {user.username} ({user.role})",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
             return Response({'status': 'SUCCESS', 'message': 'Demo dataset reset to pristine demonstration state!'})
         except Exception as e:
+            AuditLog.objects.create(
+                user=user,
+                username_snapshot=user.username,
+                action='RESET_DEMO_FAILED',
+                facility=getattr(user, 'assigned_facility', None),
+                details=f"Demo reset failed: {str(e)}",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
             return Response({'status': 'ERROR', 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
