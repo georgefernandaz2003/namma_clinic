@@ -95,6 +95,15 @@ class UserViewSet(viewsets.ModelViewSet):
         else:
             serializer.save()
 
+    def perform_update(self, serializer):
+        user = self.request.user
+        if user.role == RoleChoices.HOSPITAL_ADMIN:
+            if serializer.instance.assigned_facility_id != user.assigned_facility_id:
+                raise permissions.exceptions.PermissionDenied("You cannot modify staff belonging to another facility.")
+            serializer.save(assigned_facility=user.assigned_facility)
+        else:
+            serializer.save()
+
     def perform_destroy(self, instance):
         if instance.id == self.request.user.id:
             raise serializers.ValidationError("You cannot delete your own account.")

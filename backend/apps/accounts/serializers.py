@@ -36,33 +36,77 @@ class UserSerializer(serializers.ModelSerializer):
 
         # 3. Hospital Admin business rules & privilege escalation prevention
         if user.role == RoleChoices.HOSPITAL_ADMIN:
-            # Cannot create or escalate user to DISTRICT_OFFICER
-            if role == RoleChoices.DISTRICT_OFFICER:
-                raise serializers.ValidationError({
-                    'role': 'Hospital administrators cannot create or assign District Officer accounts.'
-                })
-
-            # Cannot assign district-level accounts
-            if assigned_district:
-                raise serializers.ValidationError({
-                    'assigned_district': 'Hospital administrators cannot assign district-level accounts.'
-                })
-
-            # Must belong to user's assigned facility
             user_fac = user.assigned_facility
             if not user_fac:
                 raise serializers.ValidationError({
                     'assigned_facility': 'You must be assigned to a facility to manage staff.'
                 })
 
-            if assigned_facility and assigned_facility != user_fac:
+            # Prevent facility removal or assignment to another facility
+            if 'assigned_facility' in attrs:
+                if attrs['assigned_facility'] is None:
+                    raise serializers.ValidationError({
+                        'assigned_facility': 'Staff facility assignment cannot be removed or set to null.'
+                    })
+                if attrs['assigned_facility'] != user_fac:
+                    raise serializers.ValidationError({
+                        'assigned_facility': 'You cannot assign users to another facility.'
+                    })
+            elif not self.instance:
+                attrs['assigned_facility'] = user_fac
+
+            # Cannot assign district-level accounts
+            if 'assigned_district' in attrs and attrs['assigned_district']:
                 raise serializers.ValidationError({
-                    'assigned_facility': 'You cannot assign users to another facility.'
+                    'assigned_district': 'Hospital administrators cannot assign district-level accounts.'
                 })
 
-            # Auto-assign Hospital Admin's facility on creation if not explicitly passed
-            if not self.instance and not assigned_facility:
-                attrs['assigned_facility'] = user_fac
+            permitted_operational_roles = {
+                RoleChoices.DOCTOR,
+                RoleChoices.NURSE,
+                RoleChoices.LAB_TECHNICIAN,
+                RoleChoices.PHARMACIST,
+            }
+
+            # When creating a new user:
+            if not self.instance:
+                target_role = attrs.get('role')
+                if not target_role:
+                    raise serializers.ValidationError({'role': 'Role is required.'})
+                if target_role == RoleChoices.HOSPITAL_ADMIN:
+                    raise serializers.ValidationError({
+                        'role': 'Hospital administrators cannot create Hospital Admin accounts.'
+                    })
+                if target_role == RoleChoices.DISTRICT_OFFICER:
+                    raise serializers.ValidationError({
+                        'role': 'Hospital administrators cannot create District Officer accounts.'
+                    })
+                if target_role not in permitted_operational_roles:
+                    raise serializers.ValidationError({
+                        'role': f'Hospital administrators can only create operational staff roles: {", ".join(sorted(permitted_operational_roles))}.'
+                    })
+
+            # When updating an existing user:
+            if self.instance:
+                if 'role' in attrs:
+                    new_role = attrs['role']
+                    if new_role == RoleChoices.HOSPITAL_ADMIN:
+                        raise serializers.ValidationError({
+                            'role': 'Hospital administrators cannot promote staff to Hospital Admin.'
+                        })
+                    if new_role == RoleChoices.DISTRICT_OFFICER:
+                        raise serializers.ValidationError({
+                            'role': 'Hospital administrators cannot promote staff to District Officer.'
+                        })
+                    if new_role not in permitted_operational_roles:
+                        raise serializers.ValidationError({
+                            'role': f'Hospital administrators can only assign operational staff roles: {", ".join(sorted(permitted_operational_roles))}.'
+                        })
+
+                if self.instance.id != user.id and self.instance.role not in permitted_operational_roles:
+                    raise serializers.ValidationError({
+                        'role': 'Hospital administrators can only manage operational staff accounts.'
+                    })
 
         # 4. Prevent users from modifying their own role, facility, or district through arbitrary PATCH
         if self.instance and self.instance.id == user.id:

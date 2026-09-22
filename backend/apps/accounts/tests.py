@@ -277,3 +277,69 @@ class UserManagementRBACSecurityTests(APITestCase):
         # Direct GET on other facility user is blocked (403 or 404)
         res_detail = self.client.get(f'/api/users/{self.staff_b.id}/')
         self.assertIn(res_detail.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
+
+    # 15. Hospital Admin cannot promote staff to Hospital Admin
+    def test_hospital_admin_cannot_promote_staff_to_hospital_admin(self):
+        self.client.force_authenticate(user=self.admin_a)
+        res = self.client.patch(f'/api/users/{self.doctor_a.id}/', {
+            'role': RoleChoices.HOSPITAL_ADMIN
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.doctor_a.refresh_from_db()
+        self.assertEqual(self.doctor_a.role, RoleChoices.DOCTOR)
+
+    # 16. Hospital Admin cannot promote staff to District Officer
+    def test_hospital_admin_cannot_promote_staff_to_district_officer(self):
+        self.client.force_authenticate(user=self.admin_a)
+        res = self.client.patch(f'/api/users/{self.doctor_a.id}/', {
+            'role': RoleChoices.DISTRICT_OFFICER
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.doctor_a.refresh_from_db()
+        self.assertEqual(self.doctor_a.role, RoleChoices.DOCTOR)
+
+    # 17. Hospital Admin cannot remove staff facility
+    def test_hospital_admin_cannot_remove_staff_facility(self):
+        self.client.force_authenticate(user=self.admin_a)
+        res = self.client.patch(f'/api/users/{self.doctor_a.id}/', {
+            'assigned_facility': None
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.doctor_a.refresh_from_db()
+        self.assertEqual(self.doctor_a.assigned_facility, self.facility_a)
+
+    # 18. Hospital Admin can change permitted staff role
+    def test_hospital_admin_can_change_permitted_staff_role(self):
+        self.client.force_authenticate(user=self.admin_a)
+        res = self.client.patch(f'/api/users/{self.doctor_a.id}/', {
+            'role': RoleChoices.NURSE
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.doctor_a.refresh_from_db()
+        self.assertEqual(self.doctor_a.role, RoleChoices.NURSE)
+        self.assertEqual(self.doctor_a.assigned_facility, self.facility_a)
+
+    # 19. District Officer cannot access unscoped user
+    def test_district_officer_cannot_access_unscoped_user(self):
+        unscoped_user = User.objects.create_user(
+            username='unscoped_user',
+            password='password123',
+            role=RoleChoices.DOCTOR,
+            assigned_facility=None,
+            assigned_district=None,
+            full_name='Unscoped Doctor'
+        )
+        self.client.force_authenticate(user=self.do_user)
+        res = self.client.get(f'/api/users/{unscoped_user.id}/')
+        self.assertIn(res.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
+
+    # 20. Hospital Admin cannot create Hospital Admin
+    def test_hospital_admin_cannot_create_hospital_admin(self):
+        self.client.force_authenticate(user=self.admin_a)
+        res = self.client.post('/api/users/', {
+            'username': 'new_hospital_admin',
+            'role': RoleChoices.HOSPITAL_ADMIN,
+            'full_name': 'Another Hospital Admin'
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('role', res.data)

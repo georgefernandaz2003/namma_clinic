@@ -139,19 +139,35 @@ class HasFacilityScope(permissions.BasePermission):
         if request.user.role == 'DISTRICT_OFFICER':
             if request.method not in permissions.SAFE_METHODS:
                 return False
-            # Check district scope
-            if request.user.assigned_district_id:
-                accessible_fac_ids = get_accessible_facility_ids_for_user(request.user)
-                obj_fac_id = (
-                    getattr(obj, 'facility_id', None)
-                    or getattr(obj, 'assigned_facility_id', None)
-                    or getattr(obj, 'registered_at_facility_id', None)
-                )
-                obj_dist_id = getattr(obj, 'district_id', None) or getattr(obj, 'assigned_district_id', None)
-                if obj_dist_id and obj_dist_id != request.user.assigned_district_id:
-                    return False
-                if obj_fac_id and accessible_fac_ids is not None and obj_fac_id not in accessible_fac_ids:
-                    return False
+
+            if not request.user.assigned_district_id:
+                return False
+
+            accessible_fac_ids = get_accessible_facility_ids_for_user(request.user) or []
+
+            # Cross-facility referral exemption for district officer
+            if hasattr(obj, 'source_facility_id') and hasattr(obj, 'destination_facility_id'):
+                if obj.source_facility_id in accessible_fac_ids or obj.destination_facility_id in accessible_fac_ids:
+                    return True
+                return False
+
+            obj_fac_id = (
+                getattr(obj, 'facility_id', None)
+                or getattr(obj, 'assigned_facility_id', None)
+                or getattr(obj, 'registered_at_facility_id', None)
+            )
+            obj_dist_id = getattr(obj, 'district_id', None) or getattr(obj, 'assigned_district_id', None)
+
+            # Reject objects that have no facility and no district (unscoped objects)
+            if not obj_fac_id and not obj_dist_id:
+                return False
+
+            if obj_dist_id and obj_dist_id != request.user.assigned_district_id:
+                return False
+
+            if obj_fac_id and obj_fac_id not in accessible_fac_ids:
+                return False
+
             return True
 
         user_fac_id = request.user.assigned_facility_id
