@@ -36,6 +36,9 @@ export const Queue: React.FC = () => {
 
   const isToday = selectedDate === getTodayStr();
   const isPast = selectedDate < getTodayStr();
+  const canConsult = user?.role === 'DOCTOR' || user?.role === 'HOSPITAL_ADMIN';
+  const canLab = user?.role === 'LAB_TECHNICIAN' || user?.role === 'HOSPITAL_ADMIN';
+  const canDispense = user?.role === 'PHARMACIST' || user?.role === 'HOSPITAL_ADMIN';
 
   const loadQueue = async () => {
     if (!activeFacility) return;
@@ -533,32 +536,50 @@ export const Queue: React.FC = () => {
                             )}
 
                             {(v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'IN_CONSULTATION' || v.status === 'LAB_COMPLETED') && (
-                              <button
-                                onClick={() => navigate('/consultation', { state: { visitId: v.id } })}
-                                className={`px-3 py-1 font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs text-white ${
-                                  v.status === 'LAB_COMPLETED' ? 'bg-purple-600 hover:bg-purple-500' : 'bg-blue-600 hover:bg-blue-500'
-                                }`}
-                              >
-                                <span>{v.status === 'LAB_COMPLETED' ? 'Re-Consult' : 'Consult'}</span> <ArrowRight className="w-3 h-3" />
-                              </button>
+                              canConsult ? (
+                                <button
+                                  onClick={() => navigate('/consultation', { state: { visitId: v.id } })}
+                                  className={`px-3 py-1 font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs text-white ${
+                                    v.status === 'LAB_COMPLETED' ? 'bg-purple-600 hover:bg-purple-500' : 'bg-blue-600 hover:bg-blue-500'
+                                  }`}
+                                >
+                                  <span>{v.status === 'LAB_COMPLETED' ? 'Re-Consult' : 'Consult'}</span> <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <span className="px-2.5 py-1 bg-blue-50 text-blue-800 text-[11px] font-bold rounded-lg border border-blue-200">
+                                  Waiting for Doctor
+                                </span>
+                              )
                             )}
 
                             {(v.current_queue === 'LAB' || v.status === 'LAB_PENDING' || v.status === 'LAB_IN_PROGRESS') && (
-                              <button
-                                onClick={() => navigate('/lab', { state: { selectedDate } })}
-                                className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
-                              >
-                                <span>Lab Order</span> <ArrowRight className="w-3 h-3" />
-                              </button>
+                              canLab ? (
+                                <button
+                                  onClick={() => navigate('/lab', { state: { selectedDate } })}
+                                  className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                >
+                                  <span>Lab Order</span> <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <span className="px-2.5 py-1 bg-purple-50 text-purple-800 text-[11px] font-bold rounded-lg border border-purple-200">
+                                  In Laboratory
+                                </span>
+                              )
                             )}
 
                             {(v.status.includes('PHARMACY') || v.current_queue === 'PHARMACY') && (
-                              <button
-                                onClick={() => navigate('/pharmacy', { state: { visitId: v.id, patientId: v.patient, activeTab: 'PRESCRIPTIONS' } })}
-                                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
-                              >
-                                <span>Dispense</span> <ArrowRight className="w-3 h-3" />
-                              </button>
+                              canDispense ? (
+                                <button
+                                  onClick={() => navigate('/pharmacy', { state: { visitId: v.id, patientId: v.patient, activeTab: 'PRESCRIPTIONS' } })}
+                                  className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                >
+                                  <span>Dispense</span> <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <span className="px-2.5 py-1 bg-amber-50 text-amber-800 text-[11px] font-bold rounded-lg border border-amber-200">
+                                  Waiting Pharmacy
+                                </span>
+                              )
                             )}
 
                             {v.status === 'COMPLETED' && (

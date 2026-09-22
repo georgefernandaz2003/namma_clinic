@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Visit } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { Stethoscope } from 'lucide-react';
+import { Stethoscope, CheckCircle2 } from 'lucide-react';
 
 export const Triage: React.FC = () => {
   const { activeFacility } = useAuth();
@@ -26,6 +26,7 @@ export const Triage: React.FC = () => {
   const [glucose, setGlucose] = useState('175');
   const [notes, setNotes] = useState('High BP and elevated glucose detected. High risk flag auto-triggered.');
   const [saving, setSaving] = useState(false);
+  const [completedInfo, setCompletedInfo] = useState<{ patientName: string; tokenNumber?: string | number } | null>(null);
 
   const loadQueue = async () => {
     if (!activeFacility) return;
@@ -74,9 +75,28 @@ export const Triage: React.FC = () => {
         nurse_notes: notes
       });
 
-      alert(`Nurse triage vitals logged for ${selectedVisit.patient_details?.name}! High Risk flags evaluated.`);
-      loadQueue();
-      navigate('/consultation', { state: { visitId: selectedVisit.id } });
+      const patientName = selectedVisit.patient_details?.name || 'Patient';
+      const tokenNum = selectedVisit.token_details?.token_number || selectedVisit.token_number || selectedVisit.id;
+
+      setCompletedInfo({
+        patientName,
+        tokenNumber: tokenNum
+      });
+
+      // Reset vitals form for next patient
+      setSys('120');
+      setDia('80');
+      setPulse('72');
+      setTemp('98.6');
+      setSpo2('98');
+      setHeight('165');
+      setWeight('65');
+      setGlucose('100');
+      setNotes('');
+
+      await loadQueue();
+    } catch (e: any) {
+      alert(e.response?.data?.error || 'Failed to save triage vitals');
     } finally {
       setSaving(false);
     }
@@ -111,6 +131,31 @@ export const Triage: React.FC = () => {
           Vitals logging, automatic high-risk condition flagging (High BP, High Glucose, Low SpO2, Fever)
         </p>
       </div>
+
+      {/* Triage Completed Banner */}
+      {completedInfo && (
+        <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 flex items-center justify-between shadow-sm animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-emerald-950">
+                Triage is completed!
+              </h3>
+              <p className="text-xs text-emerald-800">
+                Vitals logged for <strong>{completedInfo.patientName}</strong> (Token #{completedInfo.tokenNumber}). Patient has been moved to Doctor&apos;s Waiting Queue.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setCompletedInfo(null)}
+            className="text-emerald-700 hover:text-emerald-900 text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 transition shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Value Proposition Callout Banner */}
       <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 p-4 rounded-2xl text-white space-y-1 shadow-md">
