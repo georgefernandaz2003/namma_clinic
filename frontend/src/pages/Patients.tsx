@@ -349,7 +349,7 @@ export const Patients: React.FC = () => {
       )}
 
       {/* Issue Token Modal */}
-      {showTokenModal && targetPatient && (
+      {hasPermission(user?.role, 'queue.create') && showTokenModal && targetPatient && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">

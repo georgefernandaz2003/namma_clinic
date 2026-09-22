@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Patient, PatientDocument } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/permissions';
 import { 
   ArrowLeft, User, Phone, MapPin, Activity, Clock, 
   FileText, Pill, Share2, Stethoscope, History, Plus,
@@ -404,7 +405,7 @@ export const PatientDetail: React.FC = () => {
         </button>
 
         <div className="flex flex-wrap items-center gap-2">
-          {!isDistrictOfficer && (
+          {hasPermission(user?.role, 'patients.update') && (
             <button
               onClick={() => setShowUploadModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition"
@@ -414,13 +415,15 @@ export const PatientDetail: React.FC = () => {
             </button>
           )}
 
-          <button
-            onClick={() => setShowTokenModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Issue OPD Queue Token</span>
-          </button>
+          {hasPermission(user?.role, 'queue.create') && (
+            <button
+              onClick={() => setShowTokenModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Issue OPD Queue Token</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1227,7 +1230,7 @@ export const PatientDetail: React.FC = () => {
                         <span>{downloadingDocId === doc.id ? 'Downloading...' : 'Download'}</span>
                       </button>
 
-                      {!isDistrictOfficer && (
+                      {hasPermission(user?.role, 'patients.update') && (
                         <button
                           onClick={() => handleDeleteDocument(doc.id, doc.title)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
@@ -1246,7 +1249,7 @@ export const PatientDetail: React.FC = () => {
       )}
 
       {/* UPLOAD DOCUMENT MODAL */}
-      {showUploadModal && (
+      {hasPermission(user?.role, 'patients.update') && showUploadModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
@@ -1431,8 +1434,8 @@ export const PatientDetail: React.FC = () => {
         </div>
       )}
 
-      {/* Quick Token Modal */}
-      {showTokenModal && (
+      {/* Issue Token Modal */}
+      {hasPermission(user?.role, 'queue.create') && showTokenModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">

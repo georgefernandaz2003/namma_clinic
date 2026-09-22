@@ -3,10 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Visit } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/permissions';
 import { Stethoscope } from 'lucide-react';
 
 export const Triage: React.FC = () => {
-  const { activeFacility } = useAuth();
+  const { activeFacility, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const stateVisitId = location.state?.visitId;
@@ -302,13 +303,19 @@ export const Triage: React.FC = () => {
                 />
               </div>
 
-              <button
-                type="submit"
-                disabled={saving}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition"
-              >
-                {saving ? 'Logging Vitals...' : 'Log Nurse Triage & Forward to Doctor Queue'}
-              </button>
+              {hasPermission(user?.role, 'triage.create') ? (
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition"
+                >
+                  {saving ? 'Logging Vitals...' : 'Log Nurse Triage & Forward to Doctor Queue'}
+                </button>
+              ) : (
+                <div className="p-3 bg-slate-100 text-slate-500 rounded-xl text-center text-xs font-semibold">
+                  Triage vital modifications are restricted to nursing staff.
+                </div>
+              )}
             </form>
           ) : (
             <div className="p-12 text-center text-xs text-slate-400">

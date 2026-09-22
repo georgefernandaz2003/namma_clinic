@@ -8,7 +8,7 @@ import {
   FileText, TestTube, Pill, Lock, History, Eye, Play
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { isPathAllowedForRole } from '../utils/permissions';
+import { isPathAllowedForRole, hasPermission } from '../utils/permissions';
 
 export const Queue: React.FC = () => {
   const { activeFacility, user } = useAuth();
@@ -235,26 +235,28 @@ export const Queue: React.FC = () => {
             Today
           </button>
 
-          {/* Issue Token Button (Enabled ONLY on Today) */}
-          <button
-            onClick={() => {
-              if (!isToday) {
-                alert('OPD tokens can only be issued for the current operational day (Today).');
-                return;
-              }
-              loadPatients();
-              setShowTokenModal(true);
-            }}
-            disabled={!isToday}
-            className={`flex items-center gap-2 px-4 py-2 font-bold text-xs rounded-xl shadow-sm transition ${
-              isToday
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
-            }`}
-          >
-            <Plus className="w-4 h-4" />
-            <span>Issue New OPD Token</span>
-          </button>
+          {/* Issue Token Button (Enabled ONLY on Today and authorized roles) */}
+          {hasPermission(user?.role, 'queue.create') && (
+            <button
+              onClick={() => {
+                if (!isToday) {
+                  alert('OPD tokens can only be issued for the current operational day (Today).');
+                  return;
+                }
+                loadPatients();
+                setShowTokenModal(true);
+              }}
+              disabled={!isToday}
+              className={`flex items-center gap-2 px-4 py-2 font-bold text-xs rounded-xl shadow-sm transition ${
+                isToday
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>Issue New OPD Token</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -407,7 +409,7 @@ export const Queue: React.FC = () => {
         </div>
 
         {/* Call Next Patient Button */}
-        {isToday && (
+        {isToday && hasPermission(user?.role, 'queue.call_next') && (
           <button
             onClick={handleCallNext}
             disabled={callingNext}
@@ -653,7 +655,7 @@ export const Queue: React.FC = () => {
       )}
 
       {/* Issue Token Modal (Today Only) */}
-      {showTokenModal && (
+      {hasPermission(user?.role, 'queue.create') && showTokenModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">

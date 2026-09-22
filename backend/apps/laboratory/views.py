@@ -88,12 +88,12 @@ class LabOrderViewSet(viewsets.ModelViewSet):
     required_permissions = {
         'GET': 'lab_orders.view',
         'POST': 'lab_orders.create',
-        'collect_sample': 'lab_orders.update',
+        'collect_sample': 'lab_results.create',
         'save_result': 'lab_results.create',
         'enter_result': 'lab_results.create',
-        'PUT': 'lab_orders.update',
-        'PATCH': 'lab_orders.update',
-        'DELETE': 'lab_orders.update'
+        'PUT': 'lab_results.create',
+        'PATCH': 'lab_results.create',
+        'DELETE': 'lab_results.create'
     }
     filterset_fields = ['facility', 'status', 'patient', 'visit', 'consultation', 'lab_token']
 

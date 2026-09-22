@@ -46,10 +46,13 @@ class DashboardSummaryView(APIView):
         active_fac_name = "All District Facilities"
         active_fac_type = "District Network"
         if facility_param:
-            selected_fac = Facility.objects.filter(id=facility_param).first()
+            selected_fac = fac_qs.first()
             if selected_fac:
                 active_fac_name = selected_fac.facility_name
                 active_fac_type = selected_fac.get_facility_type_display()
+            else:
+                active_fac_name = "Restricted Facility"
+                active_fac_type = "Out of Scope"
         elif request.user.assigned_facility:
             active_fac_name = request.user.assigned_facility.facility_name
             active_fac_type = request.user.assigned_facility.get_facility_type_display()

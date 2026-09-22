@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import type { FollowUp } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/permissions';
 import { CalendarCheck, CheckCircle2 } from 'lucide-react';
 
 export const FollowUps: React.FC = () => {
-  const { activeFacility } = useAuth();
+  const { activeFacility, user } = useAuth();
   const [followups, setFollowups] = useState<FollowUp[]>([]);
   const [completingId, setCompletingId] = useState<number | null>(null);
 
@@ -91,7 +92,7 @@ export const FollowUps: React.FC = () => {
                       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Done
                       </span>
-                    ) : (
+                    ) : hasPermission(user?.role, 'patients.update') ? (
                       <button
                         onClick={() => handleMarkCompleted(f.id)}
                         disabled={completingId === f.id}
@@ -100,6 +101,8 @@ export const FollowUps: React.FC = () => {
                         <CheckCircle2 className="w-3 h-3" />
                         {completingId === f.id ? 'Saving...' : 'Mark Completed'}
                       </button>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 font-medium italic">Pending Review</span>
                     )}
                   </td>
                 </tr>

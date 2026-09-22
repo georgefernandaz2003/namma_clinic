@@ -361,10 +361,10 @@ class PatientDocumentViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
     required_permissions = {
         'GET': 'patients.view',
-        'POST': 'patients.view',
-        'PUT': 'patients.view',
-        'PATCH': 'patients.view',
-        'DELETE': 'patients.view'
+        'POST': 'patients.update',
+        'PUT': 'patients.update',
+        'PATCH': 'patients.update',
+        'DELETE': 'patients.update'
     }
 
     def get_queryset(self):

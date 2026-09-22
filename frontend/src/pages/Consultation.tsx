@@ -3,10 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Visit, TriageVitals } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/permissions';
 import { FileText, Pill, Share2, Plus, Trash2, TestTube, CheckCircle2, Clock } from 'lucide-react';
 
 export const Consultation: React.FC = () => {
-  const { activeFacility, allFacilities } = useAuth();
+  const { activeFacility, allFacilities, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const queryVisitParam = new URLSearchParams(location.search).get('visit');
@@ -807,25 +808,31 @@ export const Consultation: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={saving}
-                className={`w-full py-3 text-white font-bold text-xs rounded-xl shadow-md transition ${
-                  selectedTestIds.length > 0 && selectedVisit.status !== 'DOCTOR_REVIEW'
-                    ? 'bg-gradient-to-r from-teal-600 to-purple-600 hover:from-teal-500 hover:to-purple-500'
+              {hasPermission(user?.role, 'consultation.create') ? (
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className={`w-full py-3 text-white font-bold text-xs rounded-xl shadow-md transition ${
+                    selectedTestIds.length > 0 && selectedVisit.status !== 'DOCTOR_REVIEW'
+                      ? 'bg-gradient-to-r from-teal-600 to-purple-600 hover:from-teal-500 hover:to-purple-500'
+                      : selectedVisit.status === 'DOCTOR_REVIEW'
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500'
+                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500'
+                  }`}
+                >
+                  {saving
+                    ? 'Processing...'
+                    : selectedTestIds.length > 0 && selectedVisit.status !== 'DOCTOR_REVIEW'
+                    ? 'Order Lab Tests & Route to Laboratory Queue (Lab Token)'
                     : selectedVisit.status === 'DOCTOR_REVIEW'
-                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500'
-                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500'
-                }`}
-              >
-                {saving
-                  ? 'Processing...'
-                  : selectedTestIds.length > 0 && selectedVisit.status !== 'DOCTOR_REVIEW'
-                  ? 'Order Lab Tests & Route to Laboratory Queue (Lab Token)'
-                  : selectedVisit.status === 'DOCTOR_REVIEW'
-                  ? 'Complete Doctor Review & Finalize Encounter'
-                  : 'Complete Consultation & Finalize'}
-              </button>
+                    ? 'Complete Doctor Review & Finalize Encounter'
+                    : 'Complete Consultation & Finalize'}
+                </button>
+              ) : (
+                <div className="p-3 bg-slate-100 text-slate-500 rounded-xl text-center text-xs font-semibold">
+                  Consultation modifications are restricted to authorized clinical staff.
+                </div>
+              )}
             </form>
           ) : (
             <div className="p-12 text-center text-xs text-slate-400">

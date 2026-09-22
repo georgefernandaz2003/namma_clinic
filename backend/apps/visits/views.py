@@ -133,6 +133,13 @@ class VisitViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError):
             pass
 
+        from apps.accounts.permissions import can_access_facility
+        if not can_access_facility(request.user, facility_id):
+            return Response(
+                {'error': 'You do not have authorization to create OPD tokens for a facility outside your assigned scope.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         # Operational OPD Date is strictly today
         today = datetime.date.today()
 

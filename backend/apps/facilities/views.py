@@ -13,7 +13,7 @@ from apps.facilities.serializers import (
     FacilityBedAllocationSerializer
 )
 from apps.geography.models import District
-from apps.accounts.permissions import get_accessible_facility_ids_for_user
+from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
 
 class FacilityViewSet(viewsets.ModelViewSet):
     serializer_class = FacilitySerializer
@@ -139,7 +139,14 @@ class NetworkGraphView(APIView):
 
 class FacilityOxygenSupplyViewSet(viewsets.ModelViewSet):
     serializer_class = FacilityOxygenSupplySerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permissions = {
+        'GET': 'hospital.view',
+        'POST': 'system_config.update',
+        'PUT': 'system_config.update',
+        'PATCH': 'system_config.update',
+        'DELETE': 'system_config.update'
+    }
     filterset_fields = ['facility', 'status', 'oxygen_source']
 
     def get_queryset(self):
@@ -152,7 +159,14 @@ class FacilityOxygenSupplyViewSet(viewsets.ModelViewSet):
 
 class FacilityConsumableInventoryViewSet(viewsets.ModelViewSet):
     serializer_class = FacilityConsumableInventorySerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permissions = {
+        'GET': 'hospital.view',
+        'POST': 'system_config.update',
+        'PUT': 'system_config.update',
+        'PATCH': 'system_config.update',
+        'DELETE': 'system_config.update'
+    }
     filterset_fields = ['facility', 'category', 'reorder_status']
 
     def get_queryset(self):
@@ -165,7 +179,14 @@ class FacilityConsumableInventoryViewSet(viewsets.ModelViewSet):
 
 class FacilityMaintenanceTicketViewSet(viewsets.ModelViewSet):
     serializer_class = FacilityMaintenanceTicketSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permissions = {
+        'GET': 'hospital.view',
+        'POST': 'system_config.update',
+        'PUT': 'system_config.update',
+        'PATCH': 'system_config.update',
+        'DELETE': 'system_config.update'
+    }
     filterset_fields = ['facility', 'category', 'priority', 'status']
 
     def get_queryset(self):
@@ -178,7 +199,14 @@ class FacilityMaintenanceTicketViewSet(viewsets.ModelViewSet):
 
 class FacilityBedCapacityViewSet(viewsets.ModelViewSet):
     serializer_class = FacilityBedCapacitySerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permissions = {
+        'GET': 'hospital.view',
+        'POST': 'system_config.update',
+        'PUT': 'system_config.update',
+        'PATCH': 'system_config.update',
+        'DELETE': 'system_config.update'
+    }
     filterset_fields = ['facility', 'bed_category']
 
     def get_queryset(self):
@@ -191,7 +219,14 @@ class FacilityBedCapacityViewSet(viewsets.ModelViewSet):
 
 class FacilityBedAllocationViewSet(viewsets.ModelViewSet):
     serializer_class = FacilityBedAllocationSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    required_permissions = {
+        'GET': 'hospital.view',
+        'POST': 'system_config.update',
+        'PUT': 'system_config.update',
+        'PATCH': 'system_config.update',
+        'DELETE': 'system_config.update'
+    }
     filterset_fields = ['facility', 'bed_category', 'status']
 
     def get_queryset(self):
