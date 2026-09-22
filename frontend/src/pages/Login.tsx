@@ -29,8 +29,12 @@ export const Login: React.FC = () => {
     try {
       await login(username, password);
       navigate('/');
-    } catch (err) {
-      setError('Invalid username or password.');
+    } catch (err: any) {
+      if (err.code === 'ERR_NETWORK' || !err.response) {
+        setError('Cannot connect to backend server. Please ensure the backend server is running.');
+      } else {
+        setError(err.response?.data?.detail || err.response?.data?.error || 'Invalid username or password.');
+      }
     } finally {
       setLoading(false);
     }
