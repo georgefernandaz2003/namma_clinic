@@ -79,59 +79,59 @@ class ResetDemoSecurityTests(APITestCase):
         res = self.client.post('/api/admin/reset-demo/')
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    # 2. Doctor cannot reset demo -> 403
+    # 2. District Officer cannot reset demo -> 403
+    def test_district_officer_cannot_reset_demo(self):
+        self.client.force_authenticate(user=self.district_officer)
+        res = self.client.post('/api/admin/reset-demo/')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    # 3. Doctor cannot reset demo -> 403
     def test_doctor_cannot_reset_demo(self):
         self.client.force_authenticate(user=self.doctor)
         res = self.client.post('/api/admin/reset-demo/')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
-    # 3. Nurse cannot reset demo -> 403
+    # 4. Nurse cannot reset demo -> 403
     def test_nurse_cannot_reset_demo(self):
         self.client.force_authenticate(user=self.nurse)
         res = self.client.post('/api/admin/reset-demo/')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
-    # 4. Lab Technician cannot reset demo -> 403
+    # 5. Lab Technician cannot reset demo -> 403
     def test_lab_technician_cannot_reset_demo(self):
         self.client.force_authenticate(user=self.lab_tech)
         res = self.client.post('/api/admin/reset-demo/')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
-    # 5. Pharmacist cannot reset demo -> 403
+    # 6. Pharmacist cannot reset demo -> 403
     def test_pharmacist_cannot_reset_demo(self):
         self.client.force_authenticate(user=self.pharmacist)
         res = self.client.post('/api/admin/reset-demo/')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
-    # 6. Unauthorized roles cannot reset demo (Hospital Admin) -> 403
-    def test_unauthorized_roles_cannot_reset_demo(self):
-        self.client.force_authenticate(user=self.hospital_admin)
-        res = self.client.post('/api/admin/reset-demo/')
-        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
-
-    # 7. Authorized role (District Officer) can reset demo -> 200 OK + AuditLog
+    # 7. Authorized role (Hospital Admin) can reset demo -> 200 OK + AuditLog
     @patch('apps.reports.views.call_command')
     def test_authorized_role_can_reset_demo(self, mock_call_command):
-        self.client.force_authenticate(user=self.district_officer)
+        self.client.force_authenticate(user=self.hospital_admin)
         initial_log_count = AuditLog.objects.filter(action='RESET_DEMO').count()
 
         res = self.client.post('/api/admin/reset-demo/')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.data.get('status'), 'SUCCESS')
 
-        # Verify call_command was invoked with 'seed_demo'
+        # Verify call_command was invoked with 'seed_demo' exactly once
         mock_call_command.assert_called_once_with('seed_demo')
 
         # Verify AuditLog recorded
         self.assertEqual(AuditLog.objects.filter(action='RESET_DEMO').count(), initial_log_count + 1)
         latest_log = AuditLog.objects.filter(action='RESET_DEMO').latest('timestamp')
-        self.assertEqual(latest_log.user, self.district_officer)
-        self.assertEqual(latest_log.username_snapshot, 'district_officer')
+        self.assertEqual(latest_log.user, self.hospital_admin)
+        self.assertEqual(latest_log.username_snapshot, 'hospital_admin')
 
     # 8. Reset Demo only allows POST (GET/PUT/PATCH/DELETE return 405 Method Not Allowed)
     @patch('apps.reports.views.call_command')
     def test_reset_demo_only_allows_post(self, mock_call_command):
-        self.client.force_authenticate(user=self.district_officer)
+        self.client.force_authenticate(user=self.hospital_admin)
 
         res_get = self.client.get('/api/admin/reset-demo/')
         self.assertEqual(res_get.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -147,10 +147,10 @@ class ResetDemoSecurityTests(APITestCase):
 
         mock_call_command.assert_not_called()
 
-    # 9. Verify demo.reset permission is explicit and only assigned to intended role(s)
+    # 9. Verify demo.reset permission is explicit and only assigned to intended role (HOSPITAL_ADMIN)
     def test_reset_demo_permission_is_explicit(self):
-        self.assertIn('demo.reset', ROLE_PERMISSIONS['DISTRICT_OFFICER'])
-        self.assertNotIn('demo.reset', ROLE_PERMISSIONS['HOSPITAL_ADMIN'])
+        self.assertIn('demo.reset', ROLE_PERMISSIONS['HOSPITAL_ADMIN'])
+        self.assertNotIn('demo.reset', ROLE_PERMISSIONS['DISTRICT_OFFICER'])
         self.assertNotIn('demo.reset', ROLE_PERMISSIONS['DOCTOR'])
         self.assertNotIn('demo.reset', ROLE_PERMISSIONS['NURSE'])
         self.assertNotIn('demo.reset', ROLE_PERMISSIONS['LAB_TECHNICIAN'])

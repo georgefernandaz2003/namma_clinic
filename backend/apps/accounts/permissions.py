@@ -4,8 +4,7 @@ ROLE_PERMISSIONS = {
     'DISTRICT_OFFICER': {
         'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
         'audit_logs.view', 'dashboard.view', 'referrals.view', 'inventory.view', 'queue.view',
-        'lab_orders.view', 'patients.view', 'po.view', 'vendor.view', 'staff.view', 'users.view',
-        'demo.reset'
+        'lab_orders.view', 'patients.view', 'po.view', 'vendor.view', 'staff.view', 'users.view'
     },
     'HOSPITAL_ADMIN': {
         'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update', 'staff.delete',
@@ -14,7 +13,8 @@ ROLE_PERMISSIONS = {
         'inventory.view', 'inventory.create', 'inventory.update', 'reports.view', 'reports.export',
         'system_config.view', 'system_config.update', 'dashboard.view', 'queue.view', 'referrals.view',
         'po.view', 'po.create', 'po.update', 'po.approve', 'vendor.view', 'vendor.create', 'vendor.update',
-        'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update'
+        'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update',
+        'demo.reset'
     },
     'DOCTOR': {
         'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',

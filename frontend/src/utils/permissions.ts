@@ -3,13 +3,13 @@ import type { Role } from '../types';
 export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
   DISTRICT_OFFICER: new Set([
     'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
-    'audit_logs.view', 'dashboard.view', 'demo.reset'
+    'audit_logs.view', 'dashboard.view'
   ]),
   HOSPITAL_ADMIN: new Set([
     'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update',
     'patients.view', 'patients.create', 'appointments.view', 'appointments.create', 'appointments.update',
     'inventory.view', 'inventory.create', 'inventory.update', 'reports.view', 'reports.export',
-    'system_config.view', 'system_config.update', 'dashboard.view'
+    'system_config.view', 'system_config.update', 'dashboard.view', 'demo.reset'
   ]),
   DOCTOR: new Set([
     'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
