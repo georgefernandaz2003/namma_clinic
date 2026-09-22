@@ -190,7 +190,9 @@ export interface PrescriptionItem {
   frequency: string;
   duration_days: number;
   quantity: number;
-  status: 'PENDING' | 'DISPENSED';
+  dispensed_quantity?: number;
+  remaining_quantity?: number;
+  status: 'PENDING' | 'PARTIALLY_DISPENSED' | 'DISPENSED';
 }
 
 export interface Prescription {
@@ -202,7 +204,22 @@ export interface Prescription {
   doctor_name?: string;
   facility: number;
   date: string;
-  status: string;
+  status:
+    | 'PENDING_VERIFICATION'
+    | 'VERIFIED'
+    | 'ON_HOLD'
+    | 'REJECTED'
+    | 'PARTIALLY_DISPENSED'
+    | 'DISPENSED'
+    | 'CANCELLED'
+    | 'EXPIRED'
+    | 'ACTIVE'
+    | string;
+  verified_by?: number | null;
+  verified_by_name?: string | null;
+  verified_at?: string | null;
+  verification_notes?: string;
+  rejection_reason?: string;
   items: PrescriptionItem[];
 }
 
@@ -345,10 +362,118 @@ export interface MedicineBatch {
   mfg_date?: string | null;
   expiry_date: string;
   quantity: number;
+  available_quantity?: number;
+  quarantined_quantity?: number;
+  recalled_quantity?: number;
+  damaged_quantity?: number;
+  disposed_quantity?: number;
+  is_dispensable?: boolean;
+  expiry_bucket?: 'EXPIRED' | 'CRITICAL' | 'EXPIRING_SOON' | 'VALID' | string;
   unit_cost: number;
-  status: 'ACTIVE' | 'EXPIRING_SOON' | 'EXPIRED' | 'EXHAUSTED' | 'LOW_STOCK' | 'NEAR_EXPIRY';
+  status:
+    | 'AVAILABLE'
+    | 'QUARANTINED'
+    | 'RECALLED'
+    | 'DAMAGED'
+    | 'DISPOSED'
+    | 'EXHAUSTED'
+    | 'ACTIVE'
+    | 'EXPIRING_SOON'
+    | 'EXPIRED'
+    | 'LOW_STOCK'
+    | 'NEAR_EXPIRY'
+    | string;
   is_expired?: boolean;
   days_to_expiry?: number;
+}
+
+export interface DispensationReturn {
+  id: number;
+  facility: number;
+  return_number: string;
+  prescription_item: number;
+  batch: number;
+  returned_quantity: number;
+  return_reason: string;
+  patient_reported_issue?: string;
+  status: 'PENDING_ASSESSMENT' | 'APPROVED_FOR_STOCK' | 'QUARANTINE' | 'DISPOSAL';
+  assessment_notes?: string;
+  initiated_by: number;
+  assessed_by?: number;
+  created_at: string;
+  assessed_at?: string;
+}
+
+export interface BatchRecall {
+  id: number;
+  facility: number;
+  recall_number: string;
+  batch: number;
+  batch_number?: string;
+  recalled_quantity: number;
+  recall_reason: string;
+  regulatory_reference?: string;
+  recall_class?: 'CLASS_I' | 'CLASS_II' | 'CLASS_III' | 'VOLUNTARY' | string;
+  initiated_by: number;
+  is_active: boolean;
+  notes?: string;
+  created_at: string;
+}
+
+export interface ColdChainLog {
+  id: number;
+  facility: number;
+  equipment_identifier: string;
+  recorded_temperature_celsius: number;
+  min_acceptable_celsius?: number | null;
+  max_acceptable_celsius?: number | null;
+  reading_timestamp: string;
+  status: 'IN_RANGE' | 'OUT_OF_RANGE' | 'UNCONFIGURED_RANGE';
+  excursion_action_taken?: string;
+  recorded_by: number;
+  recorded_by_name?: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface PatientCounselling {
+  id: number;
+  facility: number;
+  prescription: number;
+  patient: number;
+  dosage_instructions_given?: boolean | null;
+  side_effects_explained?: boolean | null;
+  storage_conditions_explained?: boolean | null;
+  dietary_precautions_explained?: boolean | null;
+  special_warnings_given?: boolean | null;
+  patient_comprehension_confirmed?: boolean | null;
+  counselled_by: number;
+  counselled_at: string;
+  notes?: string;
+}
+
+export interface GoodsReceiptNote {
+  id: number;
+  facility: number;
+  grn_number: string;
+  purchase_order: number;
+  received_date: string;
+  invoice_number?: string;
+  received_by: number;
+  status: 'DRAFT' | 'VERIFIED' | 'CANCELLED';
+  notes?: string;
+  created_at: string;
+  items?: Array<{
+    id?: number;
+    medicine: number;
+    medicine_name?: string;
+    batch_number: string;
+    expiry_date: string;
+    received_quantity: number;
+    accepted_quantity: number;
+    rejected_quantity: number;
+    rejection_reason?: string;
+  }>;
 }
 
 export interface PurchaseOrderItem {

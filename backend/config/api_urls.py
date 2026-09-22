@@ -19,7 +19,9 @@ from apps.laboratory.views import LabTestMasterViewSet, LabOrderViewSet, LabToke
 from apps.pharmacy.views import (
     MedicineMasterViewSet, MedicineBatchViewSet, DispenseMedicineView,
     VendorViewSet, PurchaseOrderViewSet, InventoryTransactionViewSet,
-    PharmacyDashboardSummaryView, PharmacyAlertsView, PharmacyReportsView
+    PharmacyDashboardSummaryView, PharmacyAlertsView, PharmacyReportsView,
+    GoodsReceiptNoteViewSet, DispensationReturnViewSet, BatchRecallViewSet,
+    PatientCounsellingViewSet, ColdChainLogViewSet
 )
 from apps.referrals.views import ReferralViewSet, FollowUpViewSet
 from apps.ncd.views import NCDRecordViewSet
@@ -62,6 +64,11 @@ router.register(r'pharmacy/batches', MedicineBatchViewSet, basename='medicinebat
 router.register(r'pharmacy/vendors', VendorViewSet, basename='pharmacyvendor')
 router.register(r'pharmacy/purchase-orders', PurchaseOrderViewSet, basename='pharmacypurchaseorder')
 router.register(r'pharmacy/transactions', InventoryTransactionViewSet, basename='pharmacytransaction')
+router.register(r'pharmacy/grn', GoodsReceiptNoteViewSet, basename='pharmacygrn')
+router.register(r'pharmacy/returns', DispensationReturnViewSet, basename='pharmacyreturn')
+router.register(r'pharmacy/recalls', BatchRecallViewSet, basename='pharmacyrecall')
+router.register(r'pharmacy/counselling', PatientCounsellingViewSet, basename='pharmacycounselling')
+router.register(r'pharmacy/cold-chain', ColdChainLogViewSet, basename='pharmacycoldchain')
 router.register(r'referrals', ReferralViewSet, basename='referral')
 router.register(r'followups', FollowUpViewSet, basename='followup')
 router.register(r'ncd', NCDRecordViewSet, basename='ncd')

@@ -52,6 +52,21 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
     }
   };
 
+  const handleVerify = async (rxId: number) => {
+    try {
+      const res = await api.post(`prescriptions/${rxId}/verify/`, {
+        notes: 'Pharmacist verification completed at dispensing counter',
+      });
+      alert(res.data.message || 'Prescription verified successfully.');
+      fetchPrescriptions();
+      if (selectedRx && selectedRx.id === rxId) {
+        setSelectedRx({ ...selectedRx, status: 'VERIFIED' });
+      }
+    } catch (e: any) {
+      alert(e.response?.data?.error || 'Failed to verify prescription.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Pharmacist Banner */}
@@ -160,7 +175,15 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
                 System will automatically pick earliest expiring active batch and update inventory stock in backend.
               </div>
 
-              {selectedRx.status === 'PENDING' ? (
+              {selectedRx.status === 'PENDING_VERIFICATION' ? (
+                <button
+                  onClick={() => handleVerify(selectedRx.id)}
+                  disabled={!isToday}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Verify Prescription Safety Check
+                </button>
+              ) : ['VERIFIED', 'ACTIVE', 'PENDING', 'PARTIALLY_DISPENSED'].includes(selectedRx.status) ? (
                 <button
                   onClick={() => handleDispense(selectedRx.id)}
                   disabled={dispensing || !isToday}
@@ -169,8 +192,8 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
                   {dispensing ? 'Dispensing...' : 'Execute FEFO Dispense & Deduct Stock'}
                 </button>
               ) : (
-                <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-900 font-bold text-center">
-                  Prescription Already Dispensed
+                <div className="p-2.5 rounded-xl bg-slate-100 text-slate-800 font-bold text-center">
+                  Prescription Status: {selectedRx.status}
                 </div>
               )}
             </div>
@@ -215,7 +238,13 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                          p.status === 'DISPENSED' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'
+                          p.status === 'DISPENSED'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : p.status === 'VERIFIED'
+                            ? 'bg-teal-50 text-teal-800 border-teal-200'
+                            : p.status === 'PARTIALLY_DISPENSED'
+                            ? 'bg-blue-50 text-blue-800 border-blue-200'
+                            : 'bg-amber-50 text-amber-800 border-amber-200'
                         }`}>
                           {p.status}
                         </span>
