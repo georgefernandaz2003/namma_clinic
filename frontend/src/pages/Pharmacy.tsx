@@ -93,6 +93,8 @@ export const Pharmacy: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [prescriptionStatusFilter, setPrescriptionStatusFilter] = useState<string>('ALL');
   const [batchStatusFilter, setBatchStatusFilter] = useState<string>('ALL');
+  const [medicineSearchQuery, setMedicineSearchQuery] = useState('');
+  const [medicineCategoryFilter, setMedicineCategoryFilter] = useState<string>('ALL');
 
   // Vendor Management States
   const [vendorSearch, setVendorSearch] = useState('');
@@ -172,7 +174,7 @@ export const Pharmacy: React.FC = () => {
       const [kpiRes, pRes, mRes, bRes, tRes, vRes, poRes, alertRes, rptRes, procRes] = await Promise.all([
         api.get(`pharmacy/dashboard/?facility=${facilityId}`).catch(() => ({ data: null })),
         api.get(`pharmacy/prescriptions/?facility=${facilityId}`).catch(() => ({ data: [] })),
-        api.get(`pharmacy/medicines/`).catch(() => ({ data: [] })),
+        api.get(`pharmacy/medicines/?facility=${facilityId}`).catch(() => ({ data: [] })),
         api.get(`pharmacy/batches/?facility=${facilityId}`).catch(() => ({ data: [] })),
         api.get(`pharmacy/transactions/?facility=${facilityId}`).catch(() => ({ data: [] })),
         api.get(`pharmacy/vendors/`).catch(() => ({ data: [] })),
@@ -684,255 +686,264 @@ export const Pharmacy: React.FC = () => {
     groupedBatches[key].sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
   });
 
+  const totalValuation =
+    reportSummary?.stock_valuation?.total_value ??
+    batches.reduce((sum, b) => sum + (Number(b.quantity) || 0) * (Number(b.unit_cost) || 0), 0);
+
+  const pendingPrescriptionsCount = prescriptions.filter((p) =>
+    ['PENDING', 'ACTIVE', 'PARTIALLY_DISPENSED'].includes(p.status)
+  ).length;
+
+  const activeAlertsCount = alerts.length;
+  const activePOCount = purchaseOrders.filter((p) => ['ORDERED', 'PENDING', 'DRAFT'].includes(p.status)).length;
+
+  const filteredMedicines = medicines.filter((m) => {
+    const query = medicineSearchQuery.toLowerCase();
+    const matchSearch =
+      !medicineSearchQuery ||
+      m.generic_name?.toLowerCase().includes(query) ||
+      m.brand_name?.toLowerCase().includes(query) ||
+      m.code?.toLowerCase().includes(query);
+    const matchCategory = medicineCategoryFilter === 'ALL' || m.category === medicineCategoryFilter;
+    return matchSearch && matchCategory;
+  });
+
+  const medicineCategories = Array.from(new Set(medicines.map((m) => m.category).filter(Boolean)));
+
   return (
     <div className="space-y-6">
       {/* Top Banner Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-amber-100 rounded-xl text-amber-700">
-            <Pill className="w-7 h-7" />
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <div className="p-3 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl shadow-sm flex items-center justify-center">
+            <Pill className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900">Pharmacy & Drug Stock Ledger</h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
-                FEFO Mandatory Engine
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-black text-slate-900 tracking-tight">Pharmacy & Drug Inventory</h1>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                FEFO Engine Active
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Controlled FEFO stock dispensing, vendor management, PO goods receiving, and real-time inventory ledger for{' '}
-              <strong className="text-slate-700">{activeFacility?.facility_name || 'Facility Store'}</strong>
+            <p className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-2">
+              <span>Facility: <strong className="text-slate-800 font-semibold">{activeFacility?.facility_name || 'Central Store'}</strong></span>
+              <span className="text-slate-300">•</span>
+              <span>First-Expiry Controlled Dispensing & Real-Time Stock Ledger</span>
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setShowAddVendorModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition shadow-2xs cursor-pointer"
           >
-            <Building2 className="w-4 h-4 text-slate-600" />
+            <Building2 className="w-3.5 h-3.5 text-slate-500" />
             <span>+ Add Vendor</span>
           </button>
           <button
             onClick={() => setShowCreatePOModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100 font-bold text-xs rounded-xl transition"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-300 transition shadow-2xs cursor-pointer"
           >
-            <ShoppingCart className="w-4 h-4 text-amber-700" />
+            <ShoppingCart className="w-3.5 h-3.5 text-emerald-600" />
             <span>+ Create PO</span>
           </button>
           <button
             onClick={loadData}
-            className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs transition"
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
           >
-            <PackageCheck className="w-4 h-4" />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
         </div>
       </div>
 
-      {/* Dynamic Nav Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
-        <button
-          onClick={() => setActiveTab('DASHBOARD')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'DASHBOARD'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <Boxes className="w-3.5 h-3.5" /> Dashboard
-        </button>
-
-        <button
-          onClick={() => setActiveTab('PRESCRIPTIONS')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'PRESCRIPTIONS'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <ClipboardList className="w-3.5 h-3.5" /> Prescriptions Queue ({prescriptions.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab('INVENTORY')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'INVENTORY'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <Pill className="w-3.5 h-3.5" /> Inventory Ledger ({medicines.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab('BATCHES')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'BATCHES'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5" /> Batches ({batches.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab('TRANSACTIONS')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'TRANSACTIONS'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <History className="w-3.5 h-3.5" /> Stock Transactions ({transactions.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab('VENDORS')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'VENDORS'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <Building2 className="w-3.5 h-3.5" /> Vendors ({vendors.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab('PURCHASE_ORDERS')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'PURCHASE_ORDERS'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <Truck className="w-3.5 h-3.5" /> Purchase Orders ({purchaseOrders.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab('ALERTS')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'ALERTS'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <AlertTriangle className="w-3.5 h-3.5 text-red-300" /> Alerts ({alerts.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab('REPORTS')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'REPORTS'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <FileSpreadsheet className="w-3.5 h-3.5" /> Reports & Analytics
-        </button>
+      {/* Modern Segmented Navigation Tabs */}
+      <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/80 flex flex-wrap items-center gap-1 shadow-xs">
+        {[
+          { id: 'DASHBOARD', label: 'Overview', icon: Boxes, badge: null, badgeColor: '' },
+          {
+            id: 'PRESCRIPTIONS',
+            label: 'Prescriptions Queue',
+            icon: ClipboardList,
+            badge: pendingPrescriptionsCount > 0 ? `${pendingPrescriptionsCount} Pending` : `${prescriptions.length}`,
+            badgeColor: pendingPrescriptionsCount > 0 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-slate-200/80 text-slate-700 border-slate-300'
+          },
+          { id: 'INVENTORY', label: 'Inventory Ledger', icon: Pill, badge: `${medicines.length}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
+          { id: 'BATCHES', label: 'Batches', icon: Layers, badge: `${batches.length}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
+          { id: 'TRANSACTIONS', label: 'Stock Transactions', icon: History, badge: `${transactions.length}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
+          {
+            id: 'PURCHASE_ORDERS',
+            label: 'Purchase Orders',
+            icon: Truck,
+            badge: activePOCount > 0 ? `${activePOCount}` : null,
+            badgeColor: 'bg-blue-100 text-blue-800 border-blue-200'
+          },
+          { id: 'VENDORS', label: 'Vendors', icon: Building2, badge: `${vendors.length}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
+          {
+            id: 'ALERTS',
+            label: 'Stock Alerts',
+            icon: AlertTriangle,
+            badge: activeAlertsCount > 0 ? `${activeAlertsCount}` : null,
+            badgeColor: 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse'
+          },
+          { id: 'REPORTS', label: 'Reports & Export', icon: FileSpreadsheet, badge: null, badgeColor: '' },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as ActiveTab)}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                isActive
+                  ? 'bg-white text-emerald-900 shadow-xs border border-slate-200/80 ring-1 ring-slate-900/5'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              }`}
+            >
+              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-700' : 'text-slate-400'}`} />
+              <span>{tab.label}</span>
+              {tab.badge && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black border ${tab.badgeColor}`}>
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* TAB 1: DASHBOARD */}
       {activeTab === 'DASHBOARD' && (
         <div className="space-y-6">
-          {/* KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Stock Qty</span>
+          {/* 6 Responsive KPI Metric Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1 hover:border-slate-300 transition">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Available Stock</span>
               <div className="flex items-baseline justify-between">
                 <span className="text-2xl font-black text-slate-900">{kpis?.total_available_stock ?? 0}</span>
-                <Pill className="w-5 h-5 text-amber-600" />
+                <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+                  <Pill className="w-4 h-4" />
+                </div>
               </div>
-              <span className="text-[10px] text-slate-400 block">{kpis?.total_medicines ?? 0} EDL Medicines</span>
+              <span className="text-[10px] text-slate-400 block">{kpis?.total_medicines ?? medicines.length} EDL Drugs</span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white border border-amber-200 shadow-xs space-y-1">
-              <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block">Low Stock Alert</span>
+            <div className="p-4 rounded-2xl bg-white border border-emerald-200/80 shadow-xs space-y-1 hover:border-emerald-300 transition">
+              <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Stock Valuation</span>
               <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-black text-amber-800">{kpis?.low_stock_count ?? 0}</span>
-                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                <span className="text-xl font-black text-emerald-900">
+                  ₹{Number(totalValuation).toLocaleString('en-IN')}
+                </span>
+                <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+                  <DollarSign className="w-4 h-4" />
+                </div>
+              </div>
+              <span className="text-[10px] text-emerald-600 block">{batches.length} Active Batches</span>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white border border-teal-200/80 shadow-xs space-y-1 hover:border-teal-300 transition">
+              <span className="text-[11px] font-bold text-teal-700 uppercase tracking-wider block">Dispensed Today</span>
+              <div className="flex items-baseline justify-between">
+                <span className="text-2xl font-black text-teal-900">{kpis?.dispensed_today_count ?? 0}</span>
+                <div className="p-1.5 rounded-lg bg-teal-50 text-teal-600">
+                  <PackageCheck className="w-4 h-4" />
+                </div>
+              </div>
+              <span className="text-[10px] text-teal-600 block">{pendingPrescriptionsCount} Waiting in Queue</span>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white border border-amber-200 shadow-xs space-y-1 hover:border-amber-300 transition">
+              <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block">Low Stock Items</span>
+              <div className="flex items-baseline justify-between">
+                <span className="text-2xl font-black text-amber-900">{kpis?.low_stock_count ?? 0}</span>
+                <div className="p-1.5 rounded-lg bg-amber-50 text-amber-600">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
               </div>
               <span className="text-[10px] text-amber-600 block">{kpis?.out_of_stock_count ?? 0} Out of Stock</span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white border border-red-200 shadow-xs space-y-1">
-              <span className="text-[11px] font-bold text-red-700 uppercase tracking-wider block">Expiring Soon</span>
+            <div className="p-4 rounded-2xl bg-white border border-rose-200 shadow-xs space-y-1 hover:border-rose-300 transition">
+              <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider block">Expiring Batches</span>
               <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-black text-red-800">{kpis?.expiring_soon_count ?? 0}</span>
-                <Clock className="w-5 h-5 text-red-600" />
+                <span className="text-2xl font-black text-rose-900">{kpis?.expiring_soon_count ?? 0}</span>
+                <div className="p-1.5 rounded-lg bg-rose-50 text-rose-600">
+                  <Clock className="w-4 h-4" />
+                </div>
               </div>
-              <span className="text-[10px] text-red-600 block">{kpis?.expired_count ?? 0} Expired Batches</span>
+              <span className="text-[10px] text-rose-600 block">{kpis?.expired_count ?? 0} Expired (Blocked)</span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white border border-emerald-200 shadow-xs space-y-1">
-              <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Dispensed Today</span>
+            <div className="p-4 rounded-2xl bg-white border border-purple-200 shadow-xs space-y-1 hover:border-purple-300 transition">
+              <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider block">Procurement</span>
               <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-black text-emerald-800">{kpis?.dispensed_today_count ?? 0}</span>
-                <PackageCheck className="w-5 h-5 text-emerald-600" />
+                <span className="text-2xl font-black text-purple-900">{kpis?.pending_purchase_orders_count ?? activePOCount}</span>
+                <div className="p-1.5 rounded-lg bg-purple-50 text-purple-600">
+                  <Truck className="w-4 h-4" />
+                </div>
               </div>
-              <span className="text-[10px] text-emerald-600 block">{kpis?.pending_prescriptions_count ?? 0} Rx Pending</span>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-white border border-blue-200 shadow-xs space-y-1">
-              <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider block">Pending POs</span>
-              <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-black text-blue-800">{kpis?.pending_purchase_orders_count ?? 0}</span>
-                <Truck className="w-5 h-5 text-blue-600" />
-              </div>
-              <span className="text-[10px] text-blue-600 block">{kpis?.total_vendors_count ?? 0} Registered Vendors</span>
+              <span className="text-[10px] text-purple-600 block">{vendors.length} Active Suppliers</span>
             </div>
           </div>
 
-          {/* Callout Banners */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            <div className="bg-gradient-to-r from-amber-900 via-yellow-900 to-slate-900 p-4 rounded-2xl text-white space-y-1 shadow-md">
-              <div className="flex items-center gap-2 font-black uppercase tracking-wider text-amber-400 text-[11px]">
-                <ShieldCheck className="w-4 h-4" />
-                <span>Government FEFO Dispensing Mandate</span>
+          {/* Operational Intelligence Strip */}
+          <div className="bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-950 p-4 rounded-2xl text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-400/30">
+                <ShieldCheck className="w-5 h-5" />
               </div>
-              <p className="text-amber-100 font-medium leading-relaxed text-[11px]">
-                &ldquo;The Government guidelines explicitly require near-expiry medicines to be dispensed first and maintain drug stock/issue/dispense/expiry records.&rdquo;
-              </p>
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-emerald-400">
+                  FEFO Automated Quality & Expiry Protection
+                </h4>
+                <p className="text-[11px] text-emerald-100/90 mt-0.5">
+                  Near-expiry drugs are prioritized automatically. Expired batches are blocked at the database level to ensure 100% patient safety.
+                </p>
+              </div>
             </div>
-
-            <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 p-4 rounded-2xl text-white space-y-1 shadow-md">
-              <div className="flex items-center gap-2 font-black uppercase tracking-wider text-emerald-400 text-[11px]">
-                <TrendingDown className="w-4 h-4" />
-                <span>High Impact Business Value</span>
-              </div>
-              <p className="text-emerald-100 font-bold leading-relaxed text-xs">
-                Less Expiry <span className="text-emerald-300">→</span> Less Wastage <span className="text-emerald-300">→</span> Better Stock Availability <span className="text-emerald-300">→</span> Optimized Procurement Planning
-              </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setActiveTab('PRESCRIPTIONS')}
+                className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl transition shadow-xs cursor-pointer"
+              >
+                Go to Rx Queue ({pendingPrescriptionsCount})
+              </button>
             </div>
           </div>
 
-          {/* Recent Alerts & FEFO Matrix Preview */}
+          {/* Two-Column Analytics & Alerts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Realtime Stock Alerts */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-600" /> Real-time Pharmacy Stock Alerts
+                  <AlertTriangle className="w-4 h-4 text-amber-600" /> Critical Inventory Alerts
                 </h3>
-                <button onClick={() => setActiveTab('ALERTS')} className="text-xs text-amber-700 font-bold hover:underline">
+                <button onClick={() => setActiveTab('ALERTS')} className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer">
                   View All ({alerts.length})
                 </button>
               </div>
 
               {alerts.length === 0 ? (
-                <p className="text-xs text-slate-400 italic py-4 text-center">No active inventory warnings for this facility.</p>
+                <div className="py-8 text-center text-slate-400 text-xs">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
+                  <p className="font-semibold text-slate-600">All drug stock levels are currently healthy.</p>
+                  <p className="text-[11px]">No low stock or expiry warnings at this time.</p>
+                </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {alerts.slice(0, 4).map((alt) => (
                     <div
                       key={alt.id}
-                      className={`p-3 rounded-xl border flex items-start justify-between ${
+                      className={`p-3 rounded-xl border flex items-start justify-between gap-3 ${
                         alt.severity === 'CRITICAL'
-                          ? 'bg-red-50 border-red-200 text-red-900'
+                          ? 'bg-rose-50/80 border-rose-200 text-rose-900'
                           : alt.severity === 'HIGH'
-                          ? 'bg-amber-50 border-amber-200 text-amber-900'
-                          : 'bg-blue-50 border-blue-200 text-blue-900'
+                          ? 'bg-amber-50/80 border-amber-200 text-amber-900'
+                          : 'bg-blue-50/80 border-blue-200 text-blue-900'
                       }`}
                     >
                       <div className="space-y-0.5">
@@ -940,9 +951,9 @@ export const Pharmacy: React.FC = () => {
                           <AlertCircle className="w-3.5 h-3.5" />
                           {alt.title}
                         </span>
-                        <p className="text-[11px] opacity-80">{alt.description}</p>
+                        <p className="text-[11px] opacity-85 leading-relaxed">{alt.description}</p>
                       </div>
-                      <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-white/80 border border-current">
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-white/90 border border-current shrink-0">
                         {alt.severity}
                       </span>
                     </div>
@@ -952,34 +963,36 @@ export const Pharmacy: React.FC = () => {
             </div>
 
             {/* FEFO Matrix Quick Summary */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-amber-600" /> Active Batches FEFO Order
+                  <Layers className="w-4 h-4 text-emerald-600" /> Active Batches (FEFO Priority Order)
                 </h3>
-                <button onClick={() => setActiveTab('BATCHES')} className="text-xs text-amber-700 font-bold hover:underline">
-                  Manage Batches
+                <button onClick={() => setActiveTab('BATCHES')} className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer">
+                  Manage Batches ({batches.length})
                 </button>
               </div>
 
-              <div className="space-y-2">
-                {Object.keys(groupedBatches).slice(0, 3).map((medName) => {
+              <div className="space-y-2.5">
+                {Object.keys(groupedBatches).slice(0, 4).map((medName) => {
                   const medBatches = groupedBatches[medName];
                   const earliest = medBatches[0];
 
                   return (
-                    <div key={medName} className="p-3 rounded-xl border border-slate-100 bg-slate-50 space-y-1.5">
+                    <div key={medName} className="p-3 rounded-xl border border-slate-100 bg-slate-50/70 space-y-1.5">
                       <div className="flex justify-between items-center text-xs">
                         <strong className="text-slate-900 font-bold">{medName}</strong>
-                        <span className="text-[10px] text-slate-500 font-mono">
-                          {medBatches.reduce((s, b) => s + b.quantity, 0)} Units Available
+                        <span className="text-[10px] text-slate-500 font-mono font-bold">
+                          {medBatches.reduce((s, b) => s + b.quantity, 0)} Units on Shelf
                         </span>
                       </div>
 
                       {earliest && (
-                        <div className="flex justify-between items-center text-[11px] bg-white p-2 rounded-lg border border-amber-300">
-                          <span className="font-mono font-bold text-amber-900">🎯 FEFO Target: {earliest.batch_number}</span>
-                          <span className="text-[10px] font-bold text-red-600">Expires: {earliest.expiry_date}</span>
+                        <div className="flex justify-between items-center text-[11px] bg-white p-2 rounded-lg border border-emerald-200 shadow-2xs">
+                          <span className="font-mono font-bold text-emerald-900 flex items-center gap-1">
+                            🎯 Next Target: <span className="text-slate-800">{earliest.batch_number}</span>
+                          </span>
+                          <span className="text-[10px] font-bold text-rose-600">Expires: {earliest.expiry_date}</span>
                         </div>
                       )}
                     </div>
@@ -987,6 +1000,38 @@ export const Pharmacy: React.FC = () => {
                 })}
               </div>
             </div>
+          </div>
+
+          {/* Quick Actions Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <button
+              onClick={() => setActiveTab('PRESCRIPTIONS')}
+              className="p-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-left font-bold text-slate-800 flex items-center justify-between transition shadow-2xs cursor-pointer"
+            >
+              <span>1. Dispense Prescriptions</span>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </button>
+            <button
+              onClick={() => setActiveTab('INVENTORY')}
+              className="p-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-left font-bold text-slate-800 flex items-center justify-between transition shadow-2xs cursor-pointer"
+            >
+              <span>2. Check Drug Stock Levels</span>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </button>
+            <button
+              onClick={() => setActiveTab('PURCHASE_ORDERS')}
+              className="p-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-left font-bold text-slate-800 flex items-center justify-between transition shadow-2xs cursor-pointer"
+            >
+              <span>3. Review Purchase Orders</span>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </button>
+            <button
+              onClick={() => setActiveTab('REPORTS')}
+              className="p-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-left font-bold text-slate-800 flex items-center justify-between transition shadow-2xs cursor-pointer"
+            >
+              <span>4. Export Consumption Report</span>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </button>
           </div>
         </div>
       )}
@@ -996,28 +1041,28 @@ export const Pharmacy: React.FC = () => {
         <div className="space-y-4">
           {/* Controls */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-            <div className="relative w-full sm:w-72">
+            <div className="relative w-full sm:w-80">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="Search patient or Rx ID..."
+                placeholder="Search patient, token, or Rx ID..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-medium">Status Filter:</span>
+            <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+              <span className="text-xs text-slate-500 font-medium">Filter Status:</span>
               <select
                 value={prescriptionStatusFilter}
                 onChange={(e) => setPrescriptionStatusFilter(e.target.value)}
-                className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-bold text-slate-700"
+                className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
-                <option value="ALL">All Statuses</option>
-                <option value="PENDING">PENDING</option>
-                <option value="PARTIALLY_DISPENSED">PARTIALLY DISPENSED</option>
-                <option value="DISPENSED">DISPENSED</option>
+                <option value="ALL">All Prescriptions ({prescriptions.length})</option>
+                <option value="PENDING">Waiting for Dispense ({pendingPrescriptionsCount})</option>
+                <option value="PARTIALLY_DISPENSED">Partially Dispensed</option>
+                <option value="DISPENSED">Completed & Dispensed</option>
               </select>
             </div>
           </div>
@@ -1025,12 +1070,12 @@ export const Pharmacy: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                <thead className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200">
                   <tr>
-                    <th className="p-4">Rx ID</th>
+                    <th className="p-4">Rx & Token</th>
                     <th className="p-4">Patient Name</th>
-                    <th className="p-4">Doctor</th>
-                    <th className="p-4">Prescribed Items</th>
+                    <th className="p-4">Consulting Doctor</th>
+                    <th className="p-4">Prescribed Medicines</th>
                     <th className="p-4">FEFO Target Batch</th>
                     <th className="p-4">Status</th>
                     <th className="p-4">Action</th>
@@ -1041,7 +1086,8 @@ export const Pharmacy: React.FC = () => {
                     const matchSearch =
                       !searchQuery ||
                       p.patient_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      String(p.id).includes(searchQuery);
+                      String(p.id).includes(searchQuery) ||
+                      String((p as any).token_number || '').includes(searchQuery);
                     const matchStatus =
                       prescriptionStatusFilter === 'ALL' ||
                       (prescriptionStatusFilter === 'PENDING'
@@ -1050,8 +1096,9 @@ export const Pharmacy: React.FC = () => {
                     return matchSearch && matchStatus;
                   }).length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400 font-medium">
-                        No prescriptions found matching search criteria.
+                      <td colSpan={7} className="p-10 text-center text-slate-400 font-medium">
+                        <PackageCheck className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        No prescriptions found matching your current filter.
                       </td>
                     </tr>
                   ) : (
@@ -1060,7 +1107,8 @@ export const Pharmacy: React.FC = () => {
                         const matchSearch =
                           !searchQuery ||
                           p.patient_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          String(p.id).includes(searchQuery);
+                          String(p.id).includes(searchQuery) ||
+                          String((p as any).token_number || '').includes(searchQuery);
                         const matchStatus =
                           prescriptionStatusFilter === 'ALL' ||
                           (prescriptionStatusFilter === 'PENDING'
@@ -1070,24 +1118,27 @@ export const Pharmacy: React.FC = () => {
                       })
                       .map((p) => (
                         <tr key={p.id} className="hover:bg-slate-50/80 transition">
-                          <td className="p-4 font-mono font-bold text-amber-700">
-                            <div>#RX-{String(p.id).padStart(4, '0')}</div>
+                          <td className="p-4 font-mono font-bold">
+                            <div className="text-emerald-800">#RX-{String(p.id).padStart(4, '0')}</div>
                             {(p as any).token_number && (
-                              <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 text-[10px] font-mono font-bold border border-emerald-200">
+                              <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-mono font-bold border border-emerald-200">
                                 Token #{(p as any).token_number}
                               </span>
                             )}
                           </td>
-                          <td className="p-4 font-bold text-slate-900">{p.patient_name}</td>
-                          <td className="p-4 text-slate-600">{p.doctor_name || 'Staff Doctor'}</td>
-                          <td className="p-4 space-y-1">
+                          <td className="p-4">
+                            <div className="font-bold text-slate-900 text-sm">{p.patient_name}</div>
+                            <span className="text-[10px] text-slate-400 font-mono">Patient #{p.patient}</span>
+                          </td>
+                          <td className="p-4 text-slate-600 font-medium">{p.doctor_name || 'Staff Doctor'}</td>
+                          <td className="p-4 space-y-1.5">
                             {p.items?.map((item, i) => (
-                              <div key={i} className="text-slate-800 text-[11px] flex items-center justify-between gap-2">
+                              <div key={i} className="text-slate-800 text-[11px] flex items-center justify-between gap-3 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200/60">
                                 <span>
-                                  <strong>{item.medicine_name}</strong> - {item.dosage} ({item.quantity} units)
+                                  <strong className="text-slate-900">{item.medicine_name}</strong> • {item.dosage} ({item.quantity} units)
                                 </span>
                                 <span
-                                  className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                                  className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase ${
                                     item.status === 'DISPENSED'
                                       ? 'bg-emerald-100 text-emerald-800'
                                       : 'bg-amber-100 text-amber-800'
@@ -1099,13 +1150,13 @@ export const Pharmacy: React.FC = () => {
                             ))}
                           </td>
                           <td className="p-4">
-                            <span className="px-2.5 py-1 rounded bg-amber-50 text-amber-900 border border-amber-200 font-mono text-[10px] font-bold block">
-                              🎯 FEFO Engine Auto-Selection Target
+                            <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-900 border border-emerald-200 font-mono text-[10px] font-bold inline-block">
+                              🎯 FEFO Auto-Selected
                             </span>
                           </td>
                           <td className="p-4">
                             <span
-                              className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 ${
                                 p.status === 'DISPENSED'
                                   ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                                   : p.status === 'PARTIALLY_DISPENSED'
@@ -1113,6 +1164,7 @@ export const Pharmacy: React.FC = () => {
                                   : 'bg-amber-100 text-amber-900 border border-amber-200'
                               }`}
                             >
+                              {p.status !== 'DISPENSED' && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>}
                               {p.status}
                             </span>
                           </td>
@@ -1120,16 +1172,17 @@ export const Pharmacy: React.FC = () => {
                             {p.status !== 'DISPENSED' ? (
                               <button
                                 onClick={() => openDispenseModal(p)}
-                                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition"
+                                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
                               >
-                                <PackageCheck className="w-3.5 h-3.5" /> Controlled Dispense
+                                <PackageCheck className="w-3.5 h-3.5" /> Dispense Rx
                               </button>
                             ) : (
                               <button
                                 onClick={() => navigate(`/patients/${p.patient}`)}
-                                className="text-emerald-700 font-bold text-[11px] hover:underline"
+                                className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-lg transition cursor-pointer"
                               >
-                                Dispensed & Logged
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Fulfilled</span>
                               </button>
                             )}
                           </td>
@@ -1146,69 +1199,111 @@ export const Pharmacy: React.FC = () => {
       {/* TAB 3: INVENTORY LEDGER */}
       {activeTab === 'INVENTORY' && (
         <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-              Essential Drug List (EDL) Master Inventory Ledger
-            </h2>
-            <span className="text-xs text-slate-500">{medicines.length} Medicines Registered</span>
+          {/* Search & Category Filter Bar */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+            <div className="relative w-full md:w-80">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search medicine name or code..."
+                value={medicineSearchQuery}
+                onChange={(e) => setMedicineSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 self-stretch md:self-auto">
+              <button
+                onClick={() => setMedicineCategoryFilter('ALL')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  medicineCategoryFilter === 'ALL'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                All Categories ({medicines.length})
+              </button>
+              {medicineCategories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setMedicineCategoryFilter(cat)}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    medicineCategoryFilter === cat
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                <thead className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200">
                   <tr>
                     <th className="p-4">Drug Code</th>
                     <th className="p-4">Generic Name</th>
                     <th className="p-4">Brand Name</th>
                     <th className="p-4">Category</th>
                     <th className="p-4">Form & Strength</th>
-                    <th className="p-4">Min Stock / Reorder</th>
+                    <th className="p-4">Min / Reorder</th>
                     <th className="p-4">Available Qty</th>
-                    <th className="p-4">Stock Status</th>
+                    <th className="p-4">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {medicines.map((m) => (
-                    <tr key={m.id} className="hover:bg-slate-50 transition">
-                      <td className="p-4 font-mono font-bold text-slate-600">{m.code}</td>
-                      <td className="p-4 font-bold text-slate-900">{m.generic_name}</td>
-                      <td className="p-4 text-slate-600">{m.brand_name || '-'}</td>
-                      <td className="p-4">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                          {m.category}
-                        </span>
-                      </td>
-                      <td className="p-4 text-slate-600">
-                        {m.dosage_form} ({m.strength})
-                      </td>
-                      <td className="p-4 font-mono text-slate-600">
-                        Min: {m.minimum_stock} | Reorder: {m.reorder_level}
-                      </td>
-                      <td className="p-4 font-mono font-bold text-slate-900">
-                        {m.total_available_stock ?? 0} {m.unit}s
-                      </td>
-                      <td className="p-4">
-                        <span
-                          className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
-                            m.stock_status === 'OUT_OF_STOCK'
-                              ? 'bg-red-100 text-red-800 border border-red-200'
-                              : m.stock_status === 'LOW_STOCK'
-                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                              : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                          }`}
-                        >
-                          {m.stock_status || 'NORMAL'}
-                        </span>
+                  {filteredMedicines.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-slate-400 font-medium">
+                        No medicines found matching the search criteria.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredMedicines.map((m) => (
+                      <tr key={m.id} className="hover:bg-slate-50/80 transition">
+                        <td className="p-4 font-mono font-bold text-slate-500">{m.code}</td>
+                        <td className="p-4 font-bold text-slate-900 text-sm">{m.generic_name}</td>
+                        <td className="p-4 text-slate-600 font-medium">{m.brand_name || '-'}</td>
+                        <td className="p-4">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                            {m.category}
+                          </span>
+                        </td>
+                        <td className="p-4 text-slate-600">
+                          {m.dosage_form} ({m.strength})
+                        </td>
+                        <td className="p-4 font-mono text-slate-600">
+                          Min: {m.minimum_stock} | Reorder: {m.reorder_level}
+                        </td>
+                        <td className="p-4 font-mono font-black text-slate-900 text-sm">
+                          {m.total_available_stock ?? 0} {m.unit}s
+                        </td>
+                        <td className="p-4">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              m.stock_status === 'OUT_OF_STOCK'
+                                ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                : m.stock_status === 'LOW_STOCK'
+                                ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            }`}
+                          >
+                            {m.stock_status || 'NORMAL'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
       )}
+
 
       {/* TAB 4: BATCHES LEDGER */}
       {activeTab === 'BATCHES' && (
@@ -1379,7 +1474,7 @@ export const Pharmacy: React.FC = () => {
             {!isReadOnly && (
               <button
                 onClick={() => setShowAddVendorModal(true)}
-                className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition self-start md:self-auto"
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition self-start md:self-auto cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" /> Register Vendor
               </button>
@@ -1576,7 +1671,7 @@ export const Pharmacy: React.FC = () => {
             {!isReadOnly && (
               <button
                 onClick={() => setShowCreatePOModal(true)}
-                className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition self-start md:self-auto"
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition self-start md:self-auto cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" /> Create New PO
               </button>
@@ -1968,19 +2063,19 @@ export const Pharmacy: React.FC = () => {
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-500">Total Active Batches:</span>
                   <span className="font-bold text-slate-900 font-mono">
-                    {reportSummary?.stock_valuation.total_batches ?? 0}
+                    {reportSummary?.stock_valuation?.total_batches ?? batches.length}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-500">Total Stock Quantity:</span>
                   <span className="font-bold text-slate-900 font-mono">
-                    {reportSummary?.stock_valuation.total_quantity ?? 0} Units
+                    {reportSummary?.stock_valuation?.total_quantity ?? kpis?.total_available_stock ?? 0} Units
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-sm pt-2 border-t border-slate-100">
                   <span className="font-bold text-slate-700">Total Stock Valuation:</span>
                   <span className="font-black text-emerald-700 font-mono text-base">
-                    ₹{Number(reportSummary?.stock_valuation.total_value ?? 0).toLocaleString()}
+                    ₹{Number(reportSummary?.stock_valuation?.total_value ?? totalValuation ?? 0).toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
@@ -1991,16 +2086,16 @@ export const Pharmacy: React.FC = () => {
                 Top Consumed Essential Medicines
               </h3>
               <div className="space-y-2">
-                {reportSummary?.consumption_summary.length === 0 ? (
+                {(!reportSummary?.consumption_summary || reportSummary.consumption_summary.length === 0) ? (
                   <p className="text-xs text-slate-400 italic">No consumption records available.</p>
                 ) : (
-                  reportSummary?.consumption_summary.map((item, idx) => (
+                  reportSummary.consumption_summary.map((item, idx) => (
                     <div key={idx} className="flex justify-between items-center p-2 rounded-xl bg-slate-50 text-xs">
                       <div>
                         <strong className="text-slate-900 font-bold block">{item.batch__medicine__generic_name}</strong>
                         <span className="text-[10px] text-slate-400">{item.batch__medicine__brand_name}</span>
                       </div>
-                      <span className="font-mono font-bold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded">
+                      <span className="font-mono font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded">
                         {item.total_consumed} Units Consumed
                       </span>
                     </div>

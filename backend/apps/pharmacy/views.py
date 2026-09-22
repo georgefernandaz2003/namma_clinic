@@ -1106,12 +1106,31 @@ class PharmacyReportsView(APIView):
             'reference': tx.reference_id
         } for tx in dispensing_logs]
 
-        # 2. Medicine Consumption Summary
-        consumption = tx_qs.filter(transaction_type='DISPENSED').values('medicine__generic_name', 'medicine__category').annotate(
-            total_dispensed=models.Sum('quantity')
-        ).order_by('-total_dispensed')[:15]
+        today = datetime.date.today()
+        dispensed_today_qty = tx_qs.filter(transaction_type='DISPENSED', created_at__date=today).aggregate(t=models.Sum('quantity'))['t'] or 0
+        dispensed_today_rx = tx_qs.filter(transaction_type='DISPENSED', created_at__date=today).values('reference_id').distinct().count()
 
-        # 3. Stock Status Summary
+        # 2. Stock Valuation
+        active_batches = batch_qs.filter(quantity__gt=0)
+        tot_batches_count = active_batches.count()
+        tot_qty_in_stock = active_batches.aggregate(q=models.Sum('quantity'))['q'] or 0
+        tot_val = sum(float(b.quantity) * float(b.unit_cost or 0.0) for b in active_batches)
+
+        # 3. Medicine Consumption Summary
+        consumption_summary = []
+        raw_consumption = tx_qs.filter(transaction_type='DISPENSED').values('medicine__generic_name', 'medicine__brand_name').annotate(
+            total_consumed=models.Sum('quantity')
+        ).order_by('-total_consumed')[:15]
+        for item in raw_consumption:
+            consumption_summary.append({
+                'batch__medicine__generic_name': item['medicine__generic_name'],
+                'batch__medicine__brand_name': item.get('medicine__brand_name') or '',
+                'medicine__generic_name': item['medicine__generic_name'],
+                'total_consumed': item['total_consumed'],
+                'total_dispensed': item['total_consumed']
+            })
+
+        # 4. Stock Status Summary
         stock_summary = []
         for m in MedicineMaster.objects.all():
             m_batches = batch_qs.filter(medicine=m)
@@ -1128,8 +1147,17 @@ class PharmacyReportsView(APIView):
             })
 
         return Response({
+            'dispensing_summary': {
+                'dispensed_today': dispensed_today_qty,
+                'prescriptions_count': dispensed_today_rx
+            },
+            'stock_valuation': {
+                'total_batches': tot_batches_count,
+                'total_quantity': tot_qty_in_stock,
+                'total_value': round(tot_val, 2)
+            },
             'daily_dispensing': dispensing_data,
-            'consumption_summary': list(consumption),
+            'consumption_summary': consumption_summary,
             'stock_summary': stock_summary,
             'total_batches': batch_qs.count(),
             'total_purchase_orders': po_qs.count()

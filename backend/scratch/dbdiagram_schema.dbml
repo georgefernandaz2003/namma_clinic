@@ -1,0 +1,875 @@
+// ==============================================================
+// NAMMA CLINIC - DBDiagram.io (DBML) Healthcare Database Schema
+// Generated from active Django production models
+// Copy and paste this directly into https://dbdiagram.io/d
+// ==============================================================
+
+Project namma_clinic {
+  database_type: 'SQLite'
+  Note: 'Namma Clinic Comprehensive Healthcare System Database Model'
+}
+
+// --------------------------------------------------------------
+// Table Group: Geographic_Hierarchy
+// --------------------------------------------------------------
+Table State {
+  id bigint [pk, increment]
+  name varchar [unique, not null]
+  code varchar [unique, not null]
+}
+
+Table District {
+  id bigint [pk, increment]
+  state_id bigint [not null]
+  name varchar [not null]
+  code varchar [unique, not null]
+}
+
+Table Zone {
+  id bigint [pk, increment]
+  district_id bigint [not null]
+  name varchar [not null]
+  code varchar [not null]
+}
+
+Table Ward {
+  id bigint [pk, increment]
+  zone_id bigint [not null]
+  ward_number integer [not null]
+  name varchar [not null]
+  population integer [not null]
+  slum_population integer [not null]
+}
+
+Table Facility {
+  id bigint [pk, increment]
+  facility_code varchar [unique, not null]
+  facility_name varchar [not null]
+  facility_type varchar [not null]
+  parent_facility_id bigint
+  state_id bigint [not null]
+  district_id bigint [not null]
+  zone_id bigint
+  ward_id bigint
+  city_or_ulb varchar [not null]
+  urban_rural varchar [not null]
+  address text [not null]
+  latitude decimal(10,2) [not null]
+  longitude decimal(10,2) [not null]
+  population_served integer [not null]
+  vulnerable_population integer [not null]
+  phone varchar [not null]
+  email varchar [not null]
+  opening_time varchar [not null]
+  closing_time varchar [not null]
+  emergency_available boolean [not null]
+  lab_available boolean [not null]
+  pharmacy_available boolean [not null]
+  teleconsultation_available boolean [not null]
+  bed_capacity integer [not null]
+  services text [not null]
+  specialists text [not null]
+  status varchar [not null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table FacilityRelationship {
+  id bigint [pk, increment]
+  source_facility_id bigint [not null]
+  destination_facility_id bigint [not null]
+  relationship_type varchar [not null]
+  service varchar [not null]
+  priority varchar [not null]
+  distance_km decimal(10,2) [not null]
+  active boolean [not null]
+  notes text [not null]
+  created_at datetime [not null]
+}
+
+// --------------------------------------------------------------
+// Table Group: Facility_Infrastructure
+// --------------------------------------------------------------
+Table FacilityOxygenSupply {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  oxygen_source varchar [not null]
+  total_cylinders integer [not null]
+  active_cylinders integer [not null]
+  empty_cylinders integer [not null]
+  current_pressure_psi integer [not null]
+  fill_percentage integer [not null]
+  status varchar [not null]
+  last_inspected datetime [not null]
+  notes text [not null]
+}
+
+Table FacilityConsumableInventory {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  item_name varchar [not null]
+  category varchar [not null]
+  unit_of_measure varchar [not null]
+  current_stock integer [not null]
+  min_threshold integer [not null]
+  reorder_status varchar [not null]
+  last_restocked date [not null]
+}
+
+Table FacilityMaintenanceTicket {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  ticket_number varchar [unique, not null]
+  category varchar [not null]
+  equipment_or_area varchar [not null]
+  priority varchar [not null]
+  description text [not null]
+  reported_by varchar [not null]
+  assigned_technician varchar [not null]
+  status varchar [not null]
+  created_at datetime [not null]
+  resolved_at datetime
+}
+
+Table FacilityBedCapacity {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  bed_category varchar [not null]
+  total_beds integer [not null]
+  occupied_beds integer [not null]
+  cleaning_in_progress integer [not null]
+  under_maintenance integer [not null]
+  notes text [not null]
+}
+
+Table FacilityBedAllocation {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  bed_number varchar [not null]
+  bed_category varchar [not null]
+  patient_id bigint
+  patient_name varchar [not null]
+  allocated_at datetime [not null]
+  discharged_at datetime
+  attending_doctor varchar [not null]
+  status varchar [not null]
+}
+
+// --------------------------------------------------------------
+// Table Group: Accounts_And_Patients
+// --------------------------------------------------------------
+Table User {
+  id bigint [pk, increment]
+  password varchar [not null]
+  last_login datetime
+  is_superuser boolean [not null]
+  username varchar [unique, not null]
+  first_name varchar [not null]
+  last_name varchar [not null]
+  email varchar [not null]
+  is_staff boolean [not null]
+  is_active boolean [not null]
+  date_joined datetime [not null]
+  full_name varchar [not null]
+  role varchar [not null]
+  assigned_facility_id bigint
+  assigned_district_id bigint
+  phone varchar [not null]
+}
+
+Table Patient {
+  id bigint [pk, increment]
+  patient_id varchar [unique, not null]
+  name varchar [not null]
+  date_of_birth date
+  age integer [not null]
+  gender varchar [not null]
+  mobile varchar [not null]
+  address text [not null]
+  ward_id bigint
+  district_id bigint
+  ABHA_ID_DEMO varchar [not null, note: 'Ayushman Bharat Digital Health ID']
+  emergency_contact varchar [not null]
+  vulnerability_information varchar [not null]
+  registration_date date [not null]
+  registered_at_facility_id bigint
+}
+
+Table Household {
+  id bigint [pk, increment]
+  household_id varchar [unique, not null]
+  head_name varchar [not null]
+  address text [not null]
+  ward_id bigint
+  members_count integer [not null]
+  vulnerable_category varchar [not null]
+  created_at date [not null]
+}
+
+Table PatientDocument {
+  id bigint [pk, increment]
+  patient_id bigint [not null]
+  facility_id bigint
+  title varchar [not null]
+  document_type varchar [not null]
+  file varchar [not null]
+  file_name varchar [not null]
+  file_size bigint [not null]
+  mime_type varchar [not null]
+  document_date date [not null]
+  uploaded_by_id bigint
+  uploaded_at datetime [not null]
+  description text [not null]
+  status varchar [not null]
+}
+
+// --------------------------------------------------------------
+// Table Group: OPD_Clinical_Engine
+// --------------------------------------------------------------
+Table Visit {
+  id bigint [pk, increment]
+  visit_id varchar [unique, not null]
+  patient_id bigint [not null]
+  facility_id bigint [not null]
+  visit_date datetime [not null]
+  opd_date date [not null]
+  visit_type varchar [not null]
+  priority varchar [not null]
+  current_queue varchar [not null]
+  status varchar [not null]
+  chief_complaint text [not null]
+  assigned_doctor_id bigint
+  arrival_time datetime [not null]
+  triage_start_time datetime
+  triage_end_time datetime
+  consultation_start_time datetime
+  consultation_end_time datetime
+  completed_time datetime
+}
+
+Table Token {
+  id bigint [pk, increment]
+  token_number integer [not null, note: 'Daily unique per facility']
+  visit_id bigint [unique, not null]
+  facility_id bigint [not null]
+  date date [not null]
+  priority varchar [not null]
+  status varchar [not null]
+}
+
+Table VisitStatusHistory {
+  id bigint [pk, increment]
+  visit_id bigint [not null]
+  from_status varchar [not null]
+  to_status varchar [not null]
+  queue varchar [not null]
+  performed_by_id bigint
+  performed_by_role varchar [not null]
+  timestamp datetime [not null]
+  notes text [not null]
+}
+
+Table TriageVitals {
+  id bigint [pk, increment]
+  visit_id bigint [unique, not null]
+  patient_id bigint [not null]
+  nurse_id bigint
+  blood_pressure_systolic integer [not null]
+  blood_pressure_diastolic integer [not null]
+  pulse_bpm integer [not null]
+  temperature_f decimal(10,2) [not null]
+  spo2_percent integer [not null]
+  respiratory_rate integer [not null]
+  height_cm decimal(10,2) [not null]
+  weight_kg decimal(10,2) [not null]
+  bmi decimal(10,2) [not null]
+  blood_glucose_mgdl integer [not null]
+  high_bp_flag boolean [not null]
+  high_glucose_flag boolean [not null]
+  fever_flag boolean [not null]
+  low_spo2_flag boolean [not null]
+  pregnancy_high_risk_flag boolean [not null]
+  emergency_flag boolean [not null]
+  ncd_risk_flag boolean [not null]
+  nurse_notes text [not null]
+  created_at datetime [not null]
+}
+
+Table Consultation {
+  id bigint [pk, increment]
+  visit_id bigint [unique, not null]
+  patient_id bigint [not null]
+  doctor_id bigint
+  facility_id bigint [not null]
+  chief_complaint text [not null]
+  clinical_history text [not null]
+  clinical_assessment text [not null]
+  diagnosis_code varchar [not null, note: 'ICD-10 Diagnostic Code']
+  diagnosis_name varchar [not null]
+  treatment_plan text [not null]
+  follow_up_date date
+  clinical_notes text [not null]
+  created_at datetime [not null]
+}
+
+Table Prescription {
+  id bigint [pk, increment]
+  consultation_id bigint [unique, not null]
+  patient_id bigint [not null]
+  doctor_id bigint
+  facility_id bigint [not null]
+  date date [not null]
+  status varchar [not null]
+  notes text [not null]
+}
+
+Table PrescriptionItem {
+  id bigint [pk, increment]
+  prescription_id bigint [not null]
+  medicine_name varchar [not null]
+  dosage varchar [not null]
+  frequency varchar [not null]
+  duration_days integer [not null]
+  quantity integer [not null]
+  status varchar [not null]
+}
+
+// --------------------------------------------------------------
+// Table Group: Laboratory_Diagnostics
+// --------------------------------------------------------------
+Table LabTestMaster {
+  id bigint [pk, increment]
+  code varchar [unique, not null]
+  name varchar [not null]
+  category varchar [not null]
+  reference_range varchar [not null]
+  unit varchar [not null]
+}
+
+Table LabOrder {
+  id bigint [pk, increment]
+  consultation_id bigint
+  patient_id bigint [not null]
+  doctor_id bigint
+  facility_id bigint [not null]
+  test_master_id bigint [not null]
+  order_date datetime [not null]
+  status varchar [not null]
+}
+
+Table LabSample {
+  id bigint [pk, increment]
+  lab_order_id bigint [unique, not null]
+  sample_type varchar [not null]
+  sample_code varchar [unique, not null]
+  collected_at datetime [not null]
+  collected_by_id bigint
+}
+
+Table LabResult {
+  id bigint [pk, increment]
+  lab_order_id bigint [unique, not null]
+  result_value varchar [not null]
+  unit varchar [not null]
+  reference_range varchar [not null]
+  interpretation_flag varchar [not null]
+  verified_by_id bigint
+  verified_at datetime [not null]
+  notes text [not null]
+}
+
+// --------------------------------------------------------------
+// Table Group: Pharmacy_And_Procurement
+// --------------------------------------------------------------
+Table MedicineMaster {
+  id bigint [pk, increment]
+  generic_name varchar [not null]
+  brand_name varchar [not null]
+  strength varchar [not null]
+  dosage_form varchar [not null]
+  unit varchar [not null]
+  category varchar [not null]
+  minimum_stock integer [not null]
+  reorder_level integer [not null]
+  description text [not null]
+}
+
+Table Vendor {
+  id bigint [pk, increment]
+  vendor_name varchar [not null]
+  contact_person varchar [not null]
+  phone varchar [not null]
+  email varchar [not null]
+  address text [not null]
+  gst_number varchar [not null]
+  status varchar [not null]
+  facility_id bigint
+  created_by_id bigint
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table MedicineBatch {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  medicine_id bigint [not null]
+  batch_number varchar [not null]
+  vendor_id bigint
+  supplier varchar [not null]
+  received_date date [not null]
+  mfg_date date
+  expiry_date date [not null, note: 'FEFO sorting key']
+  quantity integer [not null]
+  unit_cost decimal(10,2) [not null]
+  status varchar [not null]
+}
+
+Table PurchaseOrder {
+  id bigint [pk, increment]
+  po_number varchar [unique, not null]
+  vendor_id bigint [not null]
+  facility_id bigint [not null]
+  order_date date [not null]
+  expected_delivery_date date
+  status varchar [not null]
+  created_by_id bigint
+  approved_by_id bigint
+  approved_at datetime
+  rejected_by_id bigint
+  rejected_at datetime
+  rejection_reason text [not null]
+  total_amount decimal(10,2) [not null]
+  notes text [not null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table PurchaseOrderItem {
+  id bigint [pk, increment]
+  purchase_order_id bigint [not null]
+  medicine_id bigint [not null]
+  ordered_quantity integer [not null]
+  received_quantity integer [not null]
+  unit_price decimal(10,2) [not null]
+  total_price decimal(10,2) [not null]
+}
+
+Table InventoryTransaction {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  medicine_id bigint [not null]
+  batch_id bigint
+  transaction_type varchar [not null, note: 'PURCHASE_RECEIVED, DISPENSED, etc.']
+  quantity integer [not null]
+  reference_id varchar [not null]
+  created_at datetime [not null]
+  created_by_id bigint
+  notes text [not null]
+}
+
+// --------------------------------------------------------------
+// Table Group: Referrals_And_Outreach
+// --------------------------------------------------------------
+Table Referral {
+  id bigint [pk, increment]
+  referral_id varchar [unique, not null]
+  patient_id bigint [not null]
+  source_facility_id bigint [not null]
+  destination_facility_id bigint [not null]
+  referring_doctor_id bigint
+  reason text [not null]
+  clinical_summary text [not null]
+  required_service varchar [not null]
+  urgency varchar [not null]
+  referral_date datetime [not null]
+  status varchar [not null]
+}
+
+Table ReferralResponse {
+  id bigint [pk, increment]
+  referral_id bigint [unique, not null]
+  hospital_doctor_id bigint
+  specialist_findings text [not null]
+  treatment_summary text [not null]
+  return_advice text [not null]
+  responded_at datetime [not null]
+}
+
+Table FollowUp {
+  id bigint [pk, increment]
+  patient_id bigint [not null]
+  referral_id bigint
+  visit_id bigint
+  facility_id bigint [not null]
+  category varchar [not null]
+  due_date date [not null]
+  status varchar [not null]
+  notes text [not null]
+}
+
+Table Teleconsultation {
+  id bigint [pk, increment]
+  teleconsult_id varchar [unique, not null]
+  patient_id bigint [not null]
+  clinic_facility_id bigint [not null]
+  hub_facility_id bigint [not null]
+  requesting_doctor_id bigint
+  specialist_doctor_id bigint
+  specialty_required varchar [not null]
+  scheduled_time datetime [not null]
+  status varchar [not null]
+  clinical_notes text [not null]
+  specialist_advice text [not null]
+  created_at datetime [not null]
+}
+
+Table OutreachActivity {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  ward_id bigint
+  activity_type varchar [not null]
+  activity_date date [not null]
+  households_covered integer [not null]
+  persons_screened integer [not null]
+  vulnerable_identified integer [not null]
+  conducted_by varchar [not null]
+  summary_notes text [not null]
+}
+
+Table WellnessSession {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  session_type varchar [not null]
+  instructor_name varchar [not null]
+  session_date date [not null]
+  session_time varchar [not null]
+  venue varchar [not null]
+  participants_count integer [not null]
+  incentive_amount_rs decimal(10,2) [not null]
+  notes text [not null]
+}
+
+Table NCDRecord {
+  id bigint [pk, increment]
+  patient_id bigint [not null]
+  facility_id bigint [not null]
+  screening_date date [not null]
+  hypertension_screened boolean [not null]
+  hypertension_diagnosed boolean [not null]
+  diabetes_screened boolean [not null]
+  diabetes_diagnosed boolean [not null]
+  risk_level varchar [not null]
+  treatment_status varchar [not null]
+  control_status varchar [not null]
+  last_bp varchar [not null]
+  last_glucose integer [not null]
+  next_followup_due date
+}
+
+Table DiseaseCase {
+  id bigint [pk, increment]
+  disease_name varchar [not null]
+  patient_id bigint [not null]
+  facility_id bigint [not null]
+  ward_id bigint
+  report_date date [not null]
+  severity varchar [not null]
+  status varchar [not null]
+  notes text [not null]
+}
+
+// --------------------------------------------------------------
+// Table Group: Governance_And_Audit
+// --------------------------------------------------------------
+Table QualityChecklist {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  inspection_date date [not null]
+  cleanliness_score integer [not null]
+  infection_control_passed boolean [not null]
+  kayakalpa_audit_status varchar [not null]
+  corrective_actions text [not null]
+  inspected_by_id bigint
+}
+
+Table BiomedicalWasteLog {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  date date [not null]
+  yellow_bag_kg decimal(10,2) [not null]
+  red_bag_kg decimal(10,2) [not null]
+  white_translucent_sharp_kg decimal(10,2) [not null]
+  blue_box_glass_kg decimal(10,2) [not null]
+  disposal_agency varchar [not null]
+  handed_over_by_id bigint
+}
+
+Table ARSMember {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  name varchar [not null]
+  designation varchar [not null]
+  mobile varchar [not null]
+}
+
+Table ARSMeeting {
+  id bigint [pk, increment]
+  facility_id bigint [not null]
+  meeting_date date [not null]
+  chairperson_name varchar [not null]
+  attendees_count integer [not null]
+  agenda text [not null]
+  proceedings_summary text [not null]
+  untied_funds_spent_rs decimal(10,2) [not null]
+  signed_by_chairman boolean [not null]
+}
+
+Table ARSActionItem {
+  id bigint [pk, increment]
+  meeting_id bigint [not null]
+  task_description text [not null]
+  responsible_person varchar [not null]
+  due_date date [not null]
+  status varchar [not null]
+}
+
+Table ReportExportLog {
+  id bigint [pk, increment]
+  report_type varchar [not null]
+  generated_by_id bigint
+  facility_id bigint
+  generated_at datetime [not null]
+  records_count integer [not null]
+}
+
+Table Alert {
+  id bigint [pk, increment]
+  alert_type varchar [not null]
+  severity varchar [not null]
+  facility_id bigint [not null]
+  patient_id bigint
+  title varchar [not null]
+  description text [not null]
+  status varchar [not null]
+  created_at datetime [not null]
+  assigned_user_id bigint
+}
+
+Table IntegrationConfiguration {
+  id bigint [pk, increment]
+  system_name varchar [unique, not null]
+  display_name varchar [not null]
+  status varchar [not null]
+  last_sync_time datetime
+  sync_status varchar [not null]
+  notes text [not null]
+}
+
+Table ComplianceItem {
+  id bigint [pk, increment]
+  requirement_id varchar [unique, not null]
+  requirement_text text [not null]
+  source_document varchar [not null]
+  classification varchar [not null]
+  application_module varchar [not null]
+  status varchar [not null]
+  explanation text [not null]
+}
+
+Table AuditLog {
+  id bigint [pk, increment]
+  user_id bigint
+  username_snapshot varchar [not null]
+  action varchar [not null]
+  facility_id bigint
+  details text [not null]
+  ip_address varchar
+  timestamp datetime [not null]
+}
+
+// ==============================================================
+// RELATIONSHIPS (FOREIGN KEYS & INTEGRITY CONSTRAINTS)
+// ==============================================================
+Ref: District.state_id > State.id
+Ref: Zone.district_id > District.id
+Ref: Ward.zone_id > Zone.id
+Ref: Facility.parent_facility_id > Facility.id
+Ref: Facility.state_id > State.id
+Ref: Facility.district_id > District.id
+Ref: Facility.zone_id > Zone.id
+Ref: Facility.ward_id > Ward.id
+Ref: FacilityRelationship.source_facility_id > Facility.id
+Ref: FacilityRelationship.destination_facility_id > Facility.id
+Ref: FacilityOxygenSupply.facility_id > Facility.id
+Ref: FacilityConsumableInventory.facility_id > Facility.id
+Ref: FacilityMaintenanceTicket.facility_id > Facility.id
+Ref: FacilityBedCapacity.facility_id > Facility.id
+Ref: FacilityBedAllocation.facility_id > Facility.id
+Ref: FacilityBedAllocation.patient_id > Patient.id
+Ref: User.assigned_facility_id > Facility.id
+Ref: User.assigned_district_id > District.id
+Ref: Patient.ward_id > Ward.id
+Ref: Patient.district_id > District.id
+Ref: Patient.registered_at_facility_id > Facility.id
+Ref: Household.ward_id > Ward.id
+Ref: PatientDocument.patient_id > Patient.id
+Ref: PatientDocument.facility_id > Facility.id
+Ref: PatientDocument.uploaded_by_id > User.id
+Ref: Visit.patient_id > Patient.id
+Ref: Visit.facility_id > Facility.id
+Ref: Visit.assigned_doctor_id > User.id
+Ref: Token.visit_id - Visit.id
+Ref: Token.facility_id > Facility.id
+Ref: VisitStatusHistory.visit_id > Visit.id
+Ref: VisitStatusHistory.performed_by_id > User.id
+Ref: TriageVitals.visit_id - Visit.id
+Ref: TriageVitals.patient_id > Patient.id
+Ref: TriageVitals.nurse_id > User.id
+Ref: Consultation.visit_id - Visit.id
+Ref: Consultation.patient_id > Patient.id
+Ref: Consultation.doctor_id > User.id
+Ref: Consultation.facility_id > Facility.id
+Ref: Prescription.consultation_id - Consultation.id
+Ref: Prescription.patient_id > Patient.id
+Ref: Prescription.doctor_id > User.id
+Ref: Prescription.facility_id > Facility.id
+Ref: PrescriptionItem.prescription_id > Prescription.id
+Ref: LabOrder.consultation_id > Consultation.id
+Ref: LabOrder.patient_id > Patient.id
+Ref: LabOrder.doctor_id > User.id
+Ref: LabOrder.facility_id > Facility.id
+Ref: LabOrder.test_master_id > LabTestMaster.id
+Ref: LabSample.lab_order_id - LabOrder.id
+Ref: LabSample.collected_by_id > User.id
+Ref: LabResult.lab_order_id - LabOrder.id
+Ref: LabResult.verified_by_id > User.id
+Ref: Vendor.facility_id > Facility.id
+Ref: Vendor.created_by_id > User.id
+Ref: MedicineBatch.facility_id > Facility.id
+Ref: MedicineBatch.medicine_id > MedicineMaster.id
+Ref: MedicineBatch.vendor_id > Vendor.id
+Ref: PurchaseOrder.vendor_id > Vendor.id
+Ref: PurchaseOrder.facility_id > Facility.id
+Ref: PurchaseOrder.created_by_id > User.id
+Ref: PurchaseOrder.approved_by_id > User.id
+Ref: PurchaseOrder.rejected_by_id > User.id
+Ref: PurchaseOrderItem.purchase_order_id > PurchaseOrder.id
+Ref: PurchaseOrderItem.medicine_id > MedicineMaster.id
+Ref: InventoryTransaction.facility_id > Facility.id
+Ref: InventoryTransaction.medicine_id > MedicineMaster.id
+Ref: InventoryTransaction.batch_id > MedicineBatch.id
+Ref: InventoryTransaction.created_by_id > User.id
+Ref: Referral.patient_id > Patient.id
+Ref: Referral.source_facility_id > Facility.id
+Ref: Referral.destination_facility_id > Facility.id
+Ref: Referral.referring_doctor_id > User.id
+Ref: ReferralResponse.referral_id - Referral.id
+Ref: ReferralResponse.hospital_doctor_id > User.id
+Ref: FollowUp.patient_id > Patient.id
+Ref: FollowUp.referral_id > Referral.id
+Ref: FollowUp.visit_id > Visit.id
+Ref: FollowUp.facility_id > Facility.id
+Ref: Teleconsultation.patient_id > Patient.id
+Ref: Teleconsultation.clinic_facility_id > Facility.id
+Ref: Teleconsultation.hub_facility_id > Facility.id
+Ref: Teleconsultation.requesting_doctor_id > User.id
+Ref: Teleconsultation.specialist_doctor_id > User.id
+Ref: OutreachActivity.facility_id > Facility.id
+Ref: OutreachActivity.ward_id > Ward.id
+Ref: WellnessSession.facility_id > Facility.id
+Ref: NCDRecord.patient_id > Patient.id
+Ref: NCDRecord.facility_id > Facility.id
+Ref: DiseaseCase.patient_id > Patient.id
+Ref: DiseaseCase.facility_id > Facility.id
+Ref: DiseaseCase.ward_id > Ward.id
+Ref: QualityChecklist.facility_id > Facility.id
+Ref: QualityChecklist.inspected_by_id > User.id
+Ref: BiomedicalWasteLog.facility_id > Facility.id
+Ref: BiomedicalWasteLog.handed_over_by_id > User.id
+Ref: ARSMember.facility_id > Facility.id
+Ref: ARSMeeting.facility_id > Facility.id
+Ref: ARSActionItem.meeting_id > ARSMeeting.id
+Ref: ReportExportLog.generated_by_id > User.id
+Ref: ReportExportLog.facility_id > Facility.id
+Ref: Alert.facility_id > Facility.id
+Ref: Alert.patient_id > Patient.id
+Ref: Alert.assigned_user_id > User.id
+Ref: AuditLog.user_id > User.id
+Ref: AuditLog.facility_id > Facility.id
+
+// ==============================================================
+// TABLE GROUPS (ORGANIZED VISUAL CLUSTERS)
+// ==============================================================
+TableGroup Geographic_Hierarchy {
+  State
+  District
+  Zone
+  Ward
+  Facility
+  FacilityRelationship
+}
+
+TableGroup Facility_Infrastructure {
+  FacilityOxygenSupply
+  FacilityConsumableInventory
+  FacilityMaintenanceTicket
+  FacilityBedCapacity
+  FacilityBedAllocation
+}
+
+TableGroup Accounts_And_Patients {
+  User
+  Patient
+  Household
+  PatientDocument
+}
+
+TableGroup OPD_Clinical_Engine {
+  Visit
+  Token
+  VisitStatusHistory
+  TriageVitals
+  Consultation
+  Prescription
+  PrescriptionItem
+}
+
+TableGroup Laboratory_Diagnostics {
+  LabTestMaster
+  LabOrder
+  LabSample
+  LabResult
+}
+
+TableGroup Pharmacy_And_Procurement {
+  MedicineMaster
+  Vendor
+  MedicineBatch
+  PurchaseOrder
+  PurchaseOrderItem
+  InventoryTransaction
+}
+
+TableGroup Referrals_And_Outreach {
+  Referral
+  ReferralResponse
+  FollowUp
+  Teleconsultation
+  OutreachActivity
+  WellnessSession
+  NCDRecord
+  DiseaseCase
+}
+
+TableGroup Governance_And_Audit {
+  QualityChecklist
+  BiomedicalWasteLog
+  ARSMember
+  ARSMeeting
+  ARSActionItem
+  ReportExportLog
+  Alert
+  IntegrationConfiguration
+  ComplianceItem
+  AuditLog
+}
