@@ -255,7 +255,7 @@ export const Patients: React.FC = () => {
       {/* Register Modal */}
       {showRegisterModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl max-h-[92vh] overflow-y-auto">
             <h2 className="text-base font-bold text-slate-900">Register New Patient</h2>
 
             <form onSubmit={handleRegisterPatient} className="space-y-4 text-xs">
@@ -297,6 +297,45 @@ export const Patients: React.FC = () => {
                 </div>
               </div>
 
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-700 font-bold">Vulnerability Flag *</label>
+                  <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
+                    High Priority Tag
+                  </span>
+                </div>
+                <select
+                  value={vulnerability}
+                  onChange={(e) => setVulnerability(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium focus:border-emerald-600 focus:bg-white transition"
+                >
+                  <option value="Slum Resident / Low Income Group">Slum Resident / Low Income Group</option>
+                  <option value="Slum Household BPL">Slum Household BPL</option>
+                  <option value="Urban Slum Resident BPL">Urban Slum Resident BPL</option>
+                  <option value="Diabetic Elderly">Diabetic Elderly</option>
+                  <option value="Senior Citizen / Diabetic">Senior Citizen / Diabetic</option>
+                  <option value="Senior Citizen / Cardiac History">Senior Citizen / Cardiac History</option>
+                  <option value="High Risk Pregnancy ANC">High Risk Pregnancy ANC</option>
+                  <option value="Maternal ANC / Rural BPL">Maternal ANC / Rural BPL</option>
+                  <option value="Hypertension / General BPL">Hypertension / General BPL</option>
+                  <option value="Acute Febrile Illness / Slum BPL">Acute Febrile Illness / Slum BPL</option>
+                  <option value="Migrant / Daily Wage Worker">Migrant / Daily Wage Worker</option>
+                  <option value="Person with Disability (PwD)">Person with Disability (PwD)</option>
+                  <option value="General / Non-Vulnerable">General / Non-Vulnerable</option>
+                  <option value="OTHER">Other (Custom Vulnerability Flag)...</option>
+                </select>
+                {vulnerability === 'OTHER' && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom vulnerability flag..."
+                    value={customVulnerability}
+                    onChange={(e) => setCustomVulnerability(e.target.value)}
+                    required
+                    className="mt-2 w-full bg-white border border-amber-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium text-xs shadow-xs"
+                  />
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Mobile Number *</label>
@@ -330,40 +369,6 @@ export const Patients: React.FC = () => {
                   onChange={(e) => setAddress(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
                 />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Vulnerability Flag *</label>
-                <select
-                  value={vulnerability}
-                  onChange={(e) => setVulnerability(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
-                >
-                  <option value="Slum Resident / Low Income Group">Slum Resident / Low Income Group</option>
-                  <option value="Slum Household BPL">Slum Household BPL</option>
-                  <option value="Urban Slum Resident BPL">Urban Slum Resident BPL</option>
-                  <option value="Diabetic Elderly">Diabetic Elderly</option>
-                  <option value="Senior Citizen / Diabetic">Senior Citizen / Diabetic</option>
-                  <option value="Senior Citizen / Cardiac History">Senior Citizen / Cardiac History</option>
-                  <option value="High Risk Pregnancy ANC">High Risk Pregnancy ANC</option>
-                  <option value="Maternal ANC / Rural BPL">Maternal ANC / Rural BPL</option>
-                  <option value="Hypertension / General BPL">Hypertension / General BPL</option>
-                  <option value="Acute Febrile Illness / Slum BPL">Acute Febrile Illness / Slum BPL</option>
-                  <option value="Migrant / Daily Wage Worker">Migrant / Daily Wage Worker</option>
-                  <option value="Person with Disability (PwD)">Person with Disability (PwD)</option>
-                  <option value="General / Non-Vulnerable">General / Non-Vulnerable</option>
-                  <option value="OTHER">Other (Custom Vulnerability Flag)...</option>
-                </select>
-                {vulnerability === 'OTHER' && (
-                  <input
-                    type="text"
-                    placeholder="Enter custom vulnerability flag..."
-                    value={customVulnerability}
-                    onChange={(e) => setCustomVulnerability(e.target.value)}
-                    required
-                    className="mt-2 w-full bg-white border border-amber-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium text-xs shadow-xs"
-                  />
-                )}
               </div>
 
               <label className="flex items-center gap-2 p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 cursor-pointer">
