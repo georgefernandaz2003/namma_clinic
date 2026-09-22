@@ -205,10 +205,10 @@ class VisitViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             waiting_status_map = {
-                'TRIAGE': 'WAITING_FOR_TRIAGE',
-                'DOCTOR': 'WAITING_FOR_DOCTOR',
-                'LAB': 'LAB_PENDING',
-                'PHARMACY': 'WAITING_FOR_PHARMACY'
+                'TRIAGE': ['WAITING_FOR_TRIAGE', 'WAITING'],
+                'DOCTOR': ['WAITING_FOR_DOCTOR', 'WAITING', 'TRIAGED', 'DOCTOR_REVIEW', 'LAB_COMPLETED'],
+                'LAB': ['WAITING_FOR_LAB', 'LAB_PENDING'],
+                'PHARMACY': ['WAITING_FOR_PHARMACY']
             }
             active_status_map = {
                 'TRIAGE': ('IN_TRIAGE', 'TRIAGE'),
@@ -217,7 +217,7 @@ class VisitViewSet(viewsets.ModelViewSet):
                 'PHARMACY': ('IN_PHARMACY', 'PHARMACY')
             }
 
-            req_status = waiting_status_map.get(target_queue, 'WAITING_FOR_DOCTOR')
+            eligible_statuses = waiting_status_map.get(target_queue, ['WAITING_FOR_DOCTOR'])
             next_status, queue_code = active_status_map.get(target_queue, ('IN_CONSULTATION', 'DOCTOR'))
 
             priority_case = models.Case(
@@ -233,7 +233,7 @@ class VisitViewSet(viewsets.ModelViewSet):
                 facility_id=facility_id,
                 opd_date=today,
                 current_queue=target_queue,
-                status__in=[req_status, 'WAITING', 'TRIAGED']
+                status__in=eligible_statuses
             ).annotate(priority_weight=priority_case).order_by('priority_weight', 'arrival_time').first()
 
             if not next_visit:
@@ -281,10 +281,10 @@ class VisitViewSet(viewsets.ModelViewSet):
 
         # FND-09: Role validation for transitions
         user_role = getattr(request.user, 'role', '')
-        if to_status in ['TRIAGED', 'WAITING_FOR_DOCTOR'] and user_role not in ['NURSE', 'ADMIN', 'SYSTEM_ADMIN', 'DOCTOR']:
+        if to_status in ['TRIAGED', 'WAITING_FOR_DOCTOR', 'DOCTOR_REVIEW'] and user_role not in ['NURSE', 'ADMIN', 'SYSTEM_ADMIN', 'DOCTOR', 'LAB_TECHNICIAN']:
             return Response({'error': f"Role '{user_role}' is not authorized to transition visit to DOCTOR queue."}, status=status.HTTP_403_FORBIDDEN)
-        if to_status == 'IN_CONSULTATION' and user_role not in ['DOCTOR', 'ADMIN', 'SYSTEM_ADMIN']:
-            return Response({'error': f"Role '{user_role}' is not authorized to begin consultation."}, status=status.HTTP_403_FORBIDDEN)
+        if to_status in ['IN_CONSULTATION', 'DOCTOR_REVIEW'] and user_role not in ['DOCTOR', 'ADMIN', 'SYSTEM_ADMIN', 'LAB_TECHNICIAN']:
+            return Response({'error': f"Role '{user_role}' is not authorized to begin consultation or doctor review."}, status=status.HTTP_403_FORBIDDEN)
 
         # FND-09: Prevent transition to DOCTOR queue without recorded triage vitals
         if to_status in ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION'] or target_queue == 'DOCTOR':
@@ -304,6 +304,9 @@ class VisitViewSet(viewsets.ModelViewSet):
             visit.triage_end_time = now
             visit.current_queue = 'DOCTOR'
             visit.status = 'WAITING_FOR_DOCTOR'
+        elif to_status == 'DOCTOR_REVIEW':
+            visit.current_queue = 'DOCTOR'
+            visit.status = 'DOCTOR_REVIEW'
         elif to_status == 'COMPLETED' or target_queue == 'COMPLETED':
             visit.completed_time = now
             visit.current_queue = 'COMPLETED'

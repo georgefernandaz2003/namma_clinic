@@ -170,9 +170,9 @@ export const Queue: React.FC = () => {
   // Dynamic KPI Calculations based on selectedDate
   const totalOpdCount = visits.length;
   const waitingTriageCount = visits.filter(v => v.status === 'WAITING_FOR_TRIAGE' || (v.current_queue === 'TRIAGE' && v.status !== 'COMPLETED')).length;
-  const waitingDoctorCount = visits.filter(v => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED').length;
+  const waitingDoctorCount = visits.filter(v => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'DOCTOR_REVIEW' || (v.current_queue === 'DOCTOR' && v.status !== 'COMPLETED' && v.status !== 'IN_CONSULTATION')).length;
   const inConsultationCount = visits.filter(v => v.status === 'IN_CONSULTATION').length;
-  const labPendingCount = visits.filter(v => v.current_queue === 'LAB' || v.status.includes('LAB')).length;
+  const labPendingCount = visits.filter(v => v.current_queue === 'LAB' || v.status.includes('LAB') || v.status === 'WAITING_FOR_LAB').length;
   const waitingPharmacyCount = visits.filter(v => v.current_queue === 'PHARMACY' || v.status.includes('PHARMACY')).length;
   const completedCount = visits.filter(v => v.status === 'COMPLETED').length;
 
@@ -527,16 +527,22 @@ export const Queue: React.FC = () => {
                               )
                             )}
 
-                            {(v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'IN_CONSULTATION') && (
+                            {(v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'IN_CONSULTATION' || v.status === 'DOCTOR_REVIEW' || v.status === 'LAB_COMPLETED') && (
                               isPathAllowedForRole(user?.role, '/consultation') ? (
                                 <button
                                   onClick={() => navigate('/consultation', { state: { visitId: v.id } })}
-                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                  className={`px-3 py-1 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs ${
+                                    v.status === 'DOCTOR_REVIEW' || v.status === 'LAB_COMPLETED'
+                                      ? 'bg-purple-600 hover:bg-purple-500'
+                                      : 'bg-blue-600 hover:bg-blue-500'
+                                  }`}
                                 >
-                                  <span>Consult</span> <ArrowRight className="w-3 h-3" />
+                                  <span>{v.status === 'DOCTOR_REVIEW' || v.status === 'LAB_COMPLETED' ? 'Review' : 'Consult'}</span> <ArrowRight className="w-3 h-3" />
                                 </button>
                               ) : (
-                                <span className="text-[11px] text-slate-400 font-medium italic">Awaiting Doctor</span>
+                                <span className="text-[11px] text-slate-400 font-medium italic">
+                                  {v.status === 'DOCTOR_REVIEW' || v.status === 'LAB_COMPLETED' ? 'Awaiting Doctor Review' : 'Awaiting Doctor'}
+                                </span>
                               )
                             )}
 

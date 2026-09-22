@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Visit, TriageVitals } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { FileText, Pill, Share2, Plus, Trash2 } from 'lucide-react';
+import { FileText, Pill, Share2, Plus, Trash2, TestTube, CheckCircle2, Clock } from 'lucide-react';
 
 export const Consultation: React.FC = () => {
   const { activeFacility, allFacilities } = useAuth();
@@ -37,6 +37,9 @@ export const Consultation: React.FC = () => {
   // Diagnostic Tests (14 Essential Tests) State
   const [availableTests, setAvailableTests] = useState<any[]>([]);
   const [selectedTestIds, setSelectedTestIds] = useState<number[]>([]);
+
+  // Laboratory Orders & Verified Results for current encounter
+  const [visitLabOrders, setVisitLabOrders] = useState<any[]>([]);
 
   // Follow-up State
   const [followUpDate, setFollowUpDate] = useState<string>('');
@@ -142,9 +145,33 @@ export const Consultation: React.FC = () => {
         if (con.diagnosis_code) setDiagCode(con.diagnosis_code);
         if (con.diagnosis_name) setDiagName(con.diagnosis_name);
         if (con.clinical_notes) setNotes(con.clinical_notes);
+        if (con.treatment_plan && !notes) setNotes(con.treatment_plan);
+        if (con.prescription?.items && con.prescription.items.length > 0) {
+          setPrescriptions(con.prescription.items.map((it: any) => ({
+            medicine_id: it.medicine,
+            medicine_name: it.medicine_name,
+            dosage: it.dosage,
+            quantity: it.quantity
+          })));
+        }
       }
     } catch (e) {
       // ignore
+    }
+
+    try {
+      const labRes = await api.get(`lab/orders/?visit=${v.id}`);
+      const labList = labRes.data.results || labRes.data || [];
+      setVisitLabOrders(labList);
+      if (labList.length > 0) {
+        // Preselect ordered tests in UI if already ordered
+        setSelectedTestIds(labList.map((o: any) => o.test_master));
+      } else {
+        setSelectedTestIds([]);
+      }
+    } catch (e) {
+      setVisitLabOrders([]);
+      setSelectedTestIds([]);
     }
   };
 
@@ -209,6 +236,9 @@ export const Consultation: React.FC = () => {
     setSaving(true);
 
     try {
+      const isReviewFlow = selectedVisit.status === 'DOCTOR_REVIEW';
+      const willOrderTests = selectedTestIds.length > 0 && !isReviewFlow;
+
       // 1. Save Consultation & Prescription
       const consultRes = await api.post('consultations/', {
         visit: selectedVisit.id,
@@ -220,7 +250,9 @@ export const Consultation: React.FC = () => {
         diagnosis_code: diagCode,
         diagnosis_name: diagName,
         clinical_notes: notes,
-        prescription_items: prescriptions
+        prescription_items: prescriptions,
+        has_lab_orders: willOrderTests,
+        lab_test_ids: willOrderTests ? selectedTestIds : []
       });
 
       const consultationId = consultRes.data?.id;
@@ -240,17 +272,23 @@ export const Consultation: React.FC = () => {
         });
       }
 
-
       // 3. Save Diagnostic Lab Orders
-      for (const testId of selectedTestIds) {
+      let createdLabTokenCode = '';
+      if (willOrderTests) {
         try {
-          await api.post('lab/orders/', {
+          const labRes = await api.post('lab/orders/', {
             patient: selectedVisit.patient,
             facility: activeFacility.id,
-            test_master: testId
+            visit: selectedVisit.id,
+            consultation: consultationId,
+            test_ids: selectedTestIds
           });
+          const createdList = Array.isArray(labRes.data) ? labRes.data : [labRes.data];
+          if (createdList.length > 0 && createdList[0]?.lab_token_code) {
+            createdLabTokenCode = createdList[0].lab_token_code;
+          }
         } catch (err) {
-          console.error('Failed to order lab test', err);
+          console.error('Failed to order lab tests', err);
         }
       }
 
@@ -269,7 +307,12 @@ export const Consultation: React.FC = () => {
         }
       }
 
-      alert(`Consultation, Prescriptions, Lab Orders & Referrals saved for ${selectedVisit.patient_details?.name}!`);
+      if (willOrderTests) {
+        alert(`Laboratory Investigations Ordered!\n\nLAB Token: ${createdLabTokenCode || 'Generated'}\nEncounter Status: WAITING FOR LAB RESULTS\n\nPatient is routed to the diagnostic laboratory queue.`);
+      } else {
+        alert(`Consultation & Prescriptions finalized for ${selectedVisit.patient_details?.name || 'patient'}!`);
+      }
+
       loadQueue();
       navigate('/queue');
     } catch (e) {
@@ -330,6 +373,11 @@ export const Consultation: React.FC = () => {
                     <span className="text-[10px] font-mono text-teal-700 font-bold">Token #{v.token_details?.token_number || v.id}</span>
                   </div>
                   <span className="text-[10px] text-slate-500 block">{v.patient_details?.age} yrs • {v.chief_complaint}</span>
+                  {(v.status === 'DOCTOR_REVIEW' || v.status === 'LAB_COMPLETED') && (
+                    <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                      🔬 Lab Results Verified
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -388,6 +436,113 @@ export const Consultation: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Laboratory Investigation & Verified Results Section */}
+              {visitLabOrders.length > 0 && (
+                <div className="space-y-3">
+                  {/* Status Banner */}
+                  {(() => {
+                    const isAllVerified = visitLabOrders.every((o: any) => o.status === 'VERIFIED');
+                    const labTokenCode = visitLabOrders.find((o: any) => o.lab_token_code)?.lab_token_code || 'LAB-Active';
+                    return (
+                      <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                        isAllVerified ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs' : 'bg-amber-50 border-amber-300 text-amber-950 shadow-xs'
+                      }`}>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <TestTube className={`w-4 h-4 ${isAllVerified ? 'text-emerald-700' : 'text-amber-700'}`} />
+                            <span className="font-bold text-xs uppercase tracking-wider">Laboratory Investigation</span>
+                            <span className="px-2 py-0.5 rounded font-mono font-bold bg-white text-slate-900 border text-[11px] shadow-2xs">
+                              LAB Token: {labTokenCode}
+                            </span>
+                          </div>
+                          <p className="text-xs font-semibold">
+                            {isAllVerified ? (
+                              <span className="text-emerald-800">Status: VERIFIED — All ordered laboratory investigations completed and released.</span>
+                            ) : (
+                              <span className="text-amber-800">Status: WAITING FOR LAB RESULTS — Specimen processing in laboratory queue.</span>
+                            )}
+                          </p>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold self-start sm:self-auto uppercase tracking-wider border ${
+                          isAllVerified ? 'bg-emerald-100 text-emerald-900 border-emerald-300' : 'bg-amber-100 text-amber-900 border-amber-300'
+                        }`}>
+                          {isAllVerified ? 'RESULTS VERIFIED' : 'WAITING FOR LAB'}
+                        </span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Laboratory Results Table */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                        <TestTube className="w-4 h-4 text-purple-600" />
+                        Active Encounter Laboratory Results
+                      </h3>
+                      <span className="text-[10px] font-semibold text-slate-500">
+                        {visitLabOrders.filter((o: any) => o.status === 'VERIFIED').length} of {visitLabOrders.length} verified
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs">
+                        <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                          <tr>
+                            <th className="p-2.5">Test Name</th>
+                            <th className="p-2.5">Result</th>
+                            <th className="p-2.5">Unit</th>
+                            <th className="p-2.5">Reference Range</th>
+                            <th className="p-2.5">Flag</th>
+                            <th className="p-2.5">Verification Status</th>
+                            <th className="p-2.5">Result Timestamp</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-[11px]">
+                          {visitLabOrders.map((ord: any) => {
+                            const res = ord.result;
+                            const isVerified = ord.status === 'VERIFIED' && res;
+                            return (
+                              <tr key={ord.id} className="hover:bg-slate-50">
+                                <td className="p-2.5 font-bold text-slate-900">{ord.test_name}</td>
+                                <td className="p-2.5 font-mono font-bold text-slate-800">
+                                  {isVerified ? res.result_value : <span className="text-slate-400 italic">Processing in Lab</span>}
+                                </td>
+                                <td className="p-2.5 text-slate-600 font-mono">{isVerified ? (res.unit || '—') : '—'}</td>
+                                <td className="p-2.5 text-slate-600 font-mono">{isVerified ? (res.reference_range || '—') : '—'}</td>
+                                <td className="p-2.5">
+                                  {isVerified ? (
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                      res.interpretation_flag === 'CRITICAL' ? 'bg-rose-100 text-rose-800 border border-rose-300' :
+                                      res.interpretation_flag === 'HIGH' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
+                                      res.interpretation_flag === 'LOW' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
+                                      'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                    }`}>
+                                      {res.interpretation_flag}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 italic">—</span>
+                                  )}
+                                </td>
+                                <td className="p-2.5">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    isVerified ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                  }`}>
+                                    {ord.status.replace(/_/g, ' ')}
+                                  </span>
+                                </td>
+                                <td className="p-2.5 font-mono text-slate-500">
+                                  {isVerified && res.verified_at ? new Date(res.verified_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Chief Complaint, Diagnosis, History, Assessment, and Notes */}
               <div className="space-y-3">
@@ -669,9 +824,21 @@ export const Consultation: React.FC = () => {
               <button
                 type="submit"
                 disabled={saving}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-md transition"
+                className={`w-full py-3 text-white font-bold text-xs rounded-xl shadow-md transition ${
+                  selectedTestIds.length > 0 && selectedVisit.status !== 'DOCTOR_REVIEW'
+                    ? 'bg-gradient-to-r from-teal-600 to-purple-600 hover:from-teal-500 hover:to-purple-500'
+                    : selectedVisit.status === 'DOCTOR_REVIEW'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500'
+                }`}
               >
-                {saving ? 'Saving Consultation...' : 'Complete Consultation & Issue Orders'}
+                {saving
+                  ? 'Processing...'
+                  : selectedTestIds.length > 0 && selectedVisit.status !== 'DOCTOR_REVIEW'
+                  ? 'Order Lab Tests & Route to Laboratory Queue (Lab Token)'
+                  : selectedVisit.status === 'DOCTOR_REVIEW'
+                  ? 'Complete Doctor Review & Finalize Encounter'
+                  : 'Complete Consultation & Finalize'}
               </button>
             </form>
           ) : (

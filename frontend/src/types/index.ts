@@ -254,8 +254,25 @@ export interface LabResult {
   notes: string;
 }
 
+export interface LabToken {
+  id: number;
+  token_number: number;
+  token_code: string;
+  visit: number;
+  visit_id_str?: string;
+  facility: number;
+  facility_name?: string;
+  date: string;
+  status: 'ORDERED' | 'IN_PROGRESS' | 'COMPLETED';
+  created_at: string;
+}
+
 export interface LabOrder {
   id: number;
+  lab_token?: number | null;
+  lab_token_code?: string;
+  lab_token_status?: string;
+  visit?: number | null;
   consultation?: number | null;
   patient: number;
   patient_name?: string;

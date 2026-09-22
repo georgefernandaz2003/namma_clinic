@@ -243,7 +243,14 @@ export const Laboratory: React.FC = () => {
                 ) : (
                   orders.map((o) => (
                     <tr key={o.id} className="hover:bg-slate-50/80 transition">
-                      <td className="p-3.5 font-mono text-purple-700 font-bold">#LAB-{String(o.id).padStart(4, '0')}</td>
+                      <td className="p-3.5">
+                        <span className="font-mono text-purple-700 font-bold block text-xs">
+                          {o.lab_token_code || `LAB-${String(o.id).padStart(3, '0')}`}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          Order #{o.id}
+                        </span>
+                      </td>
                       <td className="p-3.5">
                         <span className="font-bold text-slate-900 block">{o.patient_name}</span>
                         <span className="text-[10px] text-slate-500 font-mono">{o.patient_mobile}</span>

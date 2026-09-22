@@ -10,7 +10,34 @@ class LabTestMaster(models.Model):
     def __str__(self):
         return f"{self.name} ({self.code})"
 
+import datetime
+
+class LabToken(models.Model):
+    token_number = models.IntegerField()
+    token_code = models.CharField(max_length=50)
+    visit = models.ForeignKey('visits.Visit', on_delete=models.CASCADE, related_name='lab_tokens')
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='lab_tokens')
+    date = models.DateField(default=datetime.date.today, db_index=True)
+    status = models.CharField(max_length=30, choices=[
+        ('ORDERED', 'Ordered'),
+        ('IN_PROGRESS', 'Sample Collected / In Progress'),
+        ('COMPLETED', 'Completed & Verified')
+    ], default='ORDERED')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date', 'token_number']
+        constraints = [
+            models.UniqueConstraint(fields=['facility', 'date', 'token_number'], name='unique_facility_lab_date_token')
+        ]
+
+    def __str__(self):
+        return f"{self.token_code} ({self.date}) - {self.facility.facility_name}"
+
+
 class LabOrder(models.Model):
+    lab_token = models.ForeignKey(LabToken, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
+    visit = models.ForeignKey('visits.Visit', on_delete=models.SET_NULL, null=True, blank=True, related_name='lab_orders')
     consultation = models.ForeignKey('consultations.Consultation', on_delete=models.SET_NULL, null=True, blank=True, related_name='lab_orders')
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='lab_orders')
     doctor = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)

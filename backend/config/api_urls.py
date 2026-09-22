@@ -15,7 +15,7 @@ from apps.patients.views import (
 from apps.visits.views import VisitViewSet
 from apps.triage.views import TriageVitalsViewSet
 from apps.consultations.views import ConsultationViewSet, PrescriptionViewSet
-from apps.laboratory.views import LabTestMasterViewSet, LabOrderViewSet
+from apps.laboratory.views import LabTestMasterViewSet, LabOrderViewSet, LabTokenViewSet
 from apps.pharmacy.views import (
     MedicineMasterViewSet, MedicineBatchViewSet, DispenseMedicineView,
     VendorViewSet, PurchaseOrderViewSet, InventoryTransactionViewSet,
@@ -56,6 +56,7 @@ router.register(r'prescriptions', PrescriptionViewSet, basename='prescription')
 router.register(r'pharmacy/prescriptions', PrescriptionViewSet, basename='pharmacyprescription')
 router.register(r'lab/tests', LabTestMasterViewSet, basename='labtest')
 router.register(r'lab/orders', LabOrderViewSet, basename='laborder')
+router.register(r'lab/tokens', LabTokenViewSet, basename='labtoken')
 router.register(r'pharmacy/medicines', MedicineMasterViewSet, basename='medicinemaster')
 router.register(r'pharmacy/batches', MedicineBatchViewSet, basename='medicinebatch')
 router.register(r'pharmacy/vendors', VendorViewSet, basename='pharmacyvendor')

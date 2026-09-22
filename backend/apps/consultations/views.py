@@ -1,4 +1,5 @@
 from django.utils import timezone
+from django.db import models
 from rest_framework import serializers, viewsets, permissions, status
 from rest_framework.response import Response
 from apps.consultations.models import Consultation, Prescription, PrescriptionItem
@@ -154,20 +155,102 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                     status='PENDING'
                 )
 
+        # Handle Lab Test Orders if provided directly
+        lab_test_ids = data.get('lab_test_ids', [])
+        has_lab_orders = bool(lab_test_ids) or data.get('has_lab_orders')
+
         # Update visit status & queue
         visit = consultation.visit
         if visit:
-            if prescription_items:
-                visit.current_queue = 'PHARMACY'
-                visit.status = 'WAITING_FOR_PHARMACY'
+            if lab_test_ids:
+                import datetime
+                from apps.laboratory.models import LabTestMaster, LabToken, LabOrder
+                today = datetime.date.today()
+                lab_token = LabToken.objects.filter(visit=visit, date=today).exclude(status='COMPLETED').first()
+                if not lab_token:
+                    max_tok = LabToken.objects.filter(facility_id=facility_id or consultation.facility_id, date=today).aggregate(models.Max('token_number'))['token_number__max'] or 0
+                    tok_num = max_tok + 1
+                    lab_token = LabToken.objects.create(
+                        token_number=tok_num,
+                        token_code=f"LAB-{tok_num:03d}",
+                        visit=visit,
+                        facility_id=facility_id or consultation.facility_id,
+                        date=today,
+                        status='ORDERED'
+                    )
+                for tid in lab_test_ids:
+                    tm = LabTestMaster.objects.filter(id=tid).first()
+                    if tm and not LabOrder.objects.filter(visit=visit, consultation=consultation, test_master=tm).exists():
+                        LabOrder.objects.create(
+                            lab_token=lab_token,
+                            visit=visit,
+                            consultation=consultation,
+                            patient_id=patient_id or consultation.patient_id,
+                            doctor=request.user,
+                            facility_id=facility_id or consultation.facility_id,
+                            test_master=tm,
+                            status='ORDERED'
+                        )
+
+            from apps.visits.models import VisitStatusHistory
+            from_stat = visit.status
+
+            # Check if visit currently has pending lab orders
+            if not has_lab_orders and hasattr(visit, 'lab_orders'):
+                has_lab_orders = visit.lab_orders.exclude(status='VERIFIED').exists()
+
+            if has_lab_orders and visit.status != 'DOCTOR_REVIEW':
+                # Move encounter to WAITING_FOR_LAB; do NOT mark COMPLETED; do NOT move directly to PHARMACY
+                visit.current_queue = 'LAB'
+                visit.status = 'WAITING_FOR_LAB'
+                visit.save()
+                if hasattr(visit, 'token'):
+                    visit.token.status = 'IN_PROGRESS'
+                    visit.token.save()
+                VisitStatusHistory.objects.create(
+                    visit=visit,
+                    from_status=from_stat,
+                    to_status='WAITING_FOR_LAB',
+                    queue='LAB',
+                    performed_by=request.user,
+                    performed_by_role=getattr(request.user, 'role', ''),
+                    notes="Consultation saved. Waiting for laboratory investigations."
+                )
             else:
-                visit.current_queue = 'COMPLETED'
-                visit.status = 'COMPLETED'
-                visit.completed_time = timezone.now()
-            visit.save()
-            if hasattr(visit, 'token'):
-                visit.token.status = 'COMPLETED' if visit.status == 'COMPLETED' else 'IN_PROGRESS'
-                visit.token.save()
+                # No pending lab tests (or finalizing encounter after DOCTOR_REVIEW)
+                if prescription_items:
+                    visit.current_queue = 'PHARMACY'
+                    visit.status = 'WAITING_FOR_PHARMACY'
+                    visit.save()
+                    if hasattr(visit, 'token'):
+                        visit.token.status = 'IN_PROGRESS'
+                        visit.token.save()
+                    VisitStatusHistory.objects.create(
+                        visit=visit,
+                        from_status=from_stat,
+                        to_status='WAITING_FOR_PHARMACY',
+                        queue='PHARMACY',
+                        performed_by=request.user,
+                        performed_by_role=getattr(request.user, 'role', ''),
+                        notes="Consultation finalized with prescription. Sent to Pharmacy."
+                    )
+                else:
+                    visit.current_queue = 'COMPLETED'
+                    visit.status = 'COMPLETED'
+                    visit.completed_time = timezone.now()
+                    visit.save()
+                    if hasattr(visit, 'token'):
+                        visit.token.status = 'COMPLETED'
+                        visit.token.save()
+                    VisitStatusHistory.objects.create(
+                        visit=visit,
+                        from_status=from_stat,
+                        to_status='COMPLETED',
+                        queue='COMPLETED',
+                        performed_by=request.user,
+                        performed_by_role=getattr(request.user, 'role', ''),
+                        notes="Consultation completed & finalized."
+                    )
 
         res_status = status.HTTP_200_OK if is_update else status.HTTP_201_CREATED
         return Response(ConsultationSerializer(consultation).data, status=res_status)
