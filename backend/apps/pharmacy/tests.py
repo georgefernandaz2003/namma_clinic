@@ -174,8 +174,8 @@ class MedicineMasterRBACSecurityTests(APITestCase):
         res = self.client.delete(f'/api/pharmacy/medicines/{self.medicine.id}/')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
-    # 5. Authorized role (PHARMACIST) can create, update, delete
-    def test_pharmacist_can_create_medicine(self):
+    # 5. PHARMACIST cannot mutate medicine master (read-only for medicine master)
+    def test_pharmacist_cannot_create_medicine(self):
         self.client.force_authenticate(user=self.pharmacist)
         res = self.client.post('/api/pharmacy/medicines/', {
             'generic_name': 'Metformin HCl',
@@ -187,30 +187,29 @@ class MedicineMasterRBACSecurityTests(APITestCase):
             'minimum_stock': 50,
             'reorder_level': 100
         })
-        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(MedicineMaster.objects.filter(generic_name='Metformin HCl').exists())
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(MedicineMaster.objects.filter(generic_name='Metformin HCl').exists())
 
-    def test_pharmacist_can_patch_medicine(self):
+    def test_pharmacist_cannot_patch_medicine(self):
         self.client.force_authenticate(user=self.pharmacist)
         res = self.client.patch(f'/api/pharmacy/medicines/{self.medicine.id}/', {
             'brand_name': 'Calpol 650',
             'reorder_level': 150
         })
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
         self.medicine.refresh_from_db()
-        self.assertEqual(self.medicine.brand_name, 'Calpol 650')
-        self.assertEqual(self.medicine.reorder_level, 150)
+        self.assertEqual(self.medicine.brand_name, 'Dolo 650')
 
-    def test_pharmacist_can_delete_medicine(self):
+    def test_pharmacist_cannot_delete_medicine(self):
         self.client.force_authenticate(user=self.pharmacist)
         res = self.client.delete(f'/api/pharmacy/medicines/{self.medicine.id}/')
-        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(MedicineMaster.objects.filter(id=self.medicine.id).exists())
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(MedicineMaster.objects.filter(id=self.medicine.id).exists())
 
-    # 5b. Authorized role (HOSPITAL_ADMIN) can create, update, delete
+    # 6. Authorized role (HOSPITAL_ADMIN ONLY) can create, update, delete
     def test_hospital_admin_can_manage_medicine(self):
         self.client.force_authenticate(user=self.hospital_admin)
-        # Create
+        # Create (POST -> 201)
         res_post = self.client.post('/api/pharmacy/medicines/', {
             'generic_name': 'Amlodipine',
             'brand_name': 'Amlopres',
@@ -223,20 +222,29 @@ class MedicineMasterRBACSecurityTests(APITestCase):
         })
         self.assertEqual(res_post.status_code, status.HTTP_201_CREATED)
         med_id = res_post.data['id']
+        self.assertTrue(MedicineMaster.objects.filter(id=med_id).exists())
 
-        # Patch
+        # Patch (PATCH -> 200)
         res_patch = self.client.patch(f'/api/pharmacy/medicines/{med_id}/', {
             'strength': '10 mg'
         })
         self.assertEqual(res_patch.status_code, status.HTTP_200_OK)
+        med = MedicineMaster.objects.get(id=med_id)
+        self.assertEqual(med.strength, '10 mg')
 
-        # Delete
+        # Delete (DELETE -> 204)
         res_del = self.client.delete(f'/api/pharmacy/medicines/{med_id}/')
         self.assertEqual(res_del.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(MedicineMaster.objects.filter(id=med_id).exists())
 
-    # 6. Unauthorized role (DISTRICT_OFFICER) direct object mutation is blocked
-    def test_district_officer_cannot_patch_or_delete_medicine(self):
+    # 7. Unauthorized role (DISTRICT_OFFICER) direct mutation is blocked
+    def test_district_officer_cannot_mutate_medicine(self):
         self.client.force_authenticate(user=self.district_officer)
+        res_post = self.client.post('/api/pharmacy/medicines/', {
+            'generic_name': 'DO Medicine'
+        })
+        self.assertEqual(res_post.status_code, status.HTTP_403_FORBIDDEN)
+
         res_patch = self.client.patch(f'/api/pharmacy/medicines/{self.medicine.id}/', {
             'generic_name': 'DO Mutated'
         })
@@ -245,7 +253,7 @@ class MedicineMasterRBACSecurityTests(APITestCase):
         res_delete = self.client.delete(f'/api/pharmacy/medicines/{self.medicine.id}/')
         self.assertEqual(res_delete.status_code, status.HTTP_403_FORBIDDEN)
 
-    # 7. Permission mapping verification
+    # 8. Permission mapping verification (create/update/delete exist ONLY for HOSPITAL_ADMIN)
     def test_medicine_master_permission_mapping(self):
         # View permission
         self.assertIn('medicine_master.view', ROLE_PERMISSIONS['DISTRICT_OFFICER'])
@@ -255,10 +263,10 @@ class MedicineMasterRBACSecurityTests(APITestCase):
         self.assertNotIn('medicine_master.view', ROLE_PERMISSIONS['NURSE'])
         self.assertNotIn('medicine_master.view', ROLE_PERMISSIONS['LAB_TECHNICIAN'])
 
-        # Create/Update/Delete permissions exist only for authorized roles
+        # Create/Update/Delete permissions exist ONLY for HOSPITAL_ADMIN
         for perm in ['medicine_master.create', 'medicine_master.update', 'medicine_master.delete']:
-            self.assertIn(perm, ROLE_PERMISSIONS['PHARMACIST'])
             self.assertIn(perm, ROLE_PERMISSIONS['HOSPITAL_ADMIN'])
+            self.assertNotIn(perm, ROLE_PERMISSIONS['PHARMACIST'])
             self.assertNotIn(perm, ROLE_PERMISSIONS['DISTRICT_OFFICER'])
             self.assertNotIn(perm, ROLE_PERMISSIONS['DOCTOR'])
             self.assertNotIn(perm, ROLE_PERMISSIONS['NURSE'])

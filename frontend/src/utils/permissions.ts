@@ -30,7 +30,7 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
   PHARMACIST: new Set([
     'prescription.view', 'pharmacy.view', 'pharmacy.dispense', 'inventory.view', 'inventory.create', 'inventory.update',
     'reports.view', 'reports.export', 'clinic.view', 'dashboard.view',
-    'medicine_master.view', 'medicine_master.create', 'medicine_master.update', 'medicine_master.delete'
+    'medicine_master.view'
   ])
 };
 

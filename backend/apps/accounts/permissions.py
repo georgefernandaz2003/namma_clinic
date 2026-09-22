@@ -40,7 +40,7 @@ ROLE_PERMISSIONS = {
         'prescription.view', 'pharmacy.view', 'pharmacy.dispense', 'inventory.view', 'inventory.create', 'inventory.update',
         'reports.view', 'reports.export', 'clinic.view', 'dashboard.view',
         'po.view', 'po.create', 'po.update', 'po.receive', 'vendor.view', 'vendor.create', 'vendor.update',
-        'medicine_master.view', 'medicine_master.create', 'medicine_master.update', 'medicine_master.delete'
+        'medicine_master.view'
     }
 }
 
