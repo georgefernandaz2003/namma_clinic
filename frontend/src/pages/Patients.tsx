@@ -19,7 +19,8 @@ export const Patients: React.FC = () => {
   const [mobile, setMobile] = useState('');
   const [address, setAddress] = useState('');
   const [abhaId, setAbhaId] = useState('');
-  const [vulnerability] = useState('Slum Resident BPL');
+  const [vulnerability, setVulnerability] = useState('Slum Resident / Low Income Group');
+  const [customVulnerability, setCustomVulnerability] = useState('');
   const [registerForOpd, setRegisterForOpd] = useState(true);
 
   // Token Modal State
@@ -52,6 +53,10 @@ export const Patients: React.FC = () => {
 
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault();
+    const finalVulnerability = vulnerability === 'OTHER'
+      ? (customVulnerability.trim() || 'General / Non-Vulnerable')
+      : vulnerability;
+
     try {
       const res = await api.post('patients/', {
         name,
@@ -60,7 +65,7 @@ export const Patients: React.FC = () => {
         mobile,
         address,
         ABHA_ID_DEMO: abhaId || `ABHA-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-        vulnerability_information: vulnerability,
+        vulnerability_information: finalVulnerability,
         registered_at_facility: activeFacility?.id
       });
       const newPat = res.data;
@@ -89,6 +94,8 @@ export const Patients: React.FC = () => {
       setMobile('');
       setAddress('');
       setAbhaId('');
+      setVulnerability('Slum Resident / Low Income Group');
+      setCustomVulnerability('');
       loadPatients();
     } catch (e: any) {
       let msg = 'Failed to register patient.';
@@ -148,7 +155,9 @@ export const Patients: React.FC = () => {
     (p) =>
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.patient_id.toLowerCase().includes(search.toLowerCase()) ||
-      p.mobile.includes(search)
+      p.mobile.includes(search) ||
+      (p.ABHA_ID_DEMO && p.ABHA_ID_DEMO.toLowerCase().includes(search.toLowerCase())) ||
+      (p.vulnerability_information && p.vulnerability_information.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -321,6 +330,40 @@ export const Patients: React.FC = () => {
                   onChange={(e) => setAddress(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
                 />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Vulnerability Flag *</label>
+                <select
+                  value={vulnerability}
+                  onChange={(e) => setVulnerability(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
+                >
+                  <option value="Slum Resident / Low Income Group">Slum Resident / Low Income Group</option>
+                  <option value="Slum Household BPL">Slum Household BPL</option>
+                  <option value="Urban Slum Resident BPL">Urban Slum Resident BPL</option>
+                  <option value="Diabetic Elderly">Diabetic Elderly</option>
+                  <option value="Senior Citizen / Diabetic">Senior Citizen / Diabetic</option>
+                  <option value="Senior Citizen / Cardiac History">Senior Citizen / Cardiac History</option>
+                  <option value="High Risk Pregnancy ANC">High Risk Pregnancy ANC</option>
+                  <option value="Maternal ANC / Rural BPL">Maternal ANC / Rural BPL</option>
+                  <option value="Hypertension / General BPL">Hypertension / General BPL</option>
+                  <option value="Acute Febrile Illness / Slum BPL">Acute Febrile Illness / Slum BPL</option>
+                  <option value="Migrant / Daily Wage Worker">Migrant / Daily Wage Worker</option>
+                  <option value="Person with Disability (PwD)">Person with Disability (PwD)</option>
+                  <option value="General / Non-Vulnerable">General / Non-Vulnerable</option>
+                  <option value="OTHER">Other (Custom Vulnerability Flag)...</option>
+                </select>
+                {vulnerability === 'OTHER' && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom vulnerability flag..."
+                    value={customVulnerability}
+                    onChange={(e) => setCustomVulnerability(e.target.value)}
+                    required
+                    className="mt-2 w-full bg-white border border-amber-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium text-xs shadow-xs"
+                  />
+                )}
               </div>
 
               <label className="flex items-center gap-2 p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 cursor-pointer">
