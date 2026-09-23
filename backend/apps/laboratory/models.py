@@ -127,6 +127,16 @@ class DiagnosticOrder(models.Model):
 
     class Meta:
         db_table = 'diagnostic_orders'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['facility', 'order_date', 'lab_token_number'],
+                condition=models.Q(lab_token_number__isnull=False),
+                name='unique_facility_lab_order_token'
+            )
+        ]
+        indexes = [
+            models.Index(fields=['facility', 'order_date', 'lab_token_number'], name='idx_diag_order_token')
+        ]
 
     def __str__(self):
         return f"DiagnosticOrder {self.order_number} ({self.status})"

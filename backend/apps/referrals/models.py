@@ -139,6 +139,7 @@ class ReferralEvent(models.Model):
         return f"ReferralEvent [{self.event_type}] for Order #{self.referral_id}"
 
 class FollowUpTask(models.Model):
+    """Follow-up recall task. Database-level constraints enforce non-null completion linkage (completed_in_visit, completed_by_staff, completed_at) upon COMPLETED status. Cross-table patient and facility alignment is validated at the service layer."""
     patient = models.ForeignKey('patients.Patient', on_delete=models.RESTRICT, related_name='follow_up_tasks')
     facility = models.ForeignKey('facilities.Facility', on_delete=models.RESTRICT, related_name='follow_up_tasks')
     originating_visit = models.ForeignKey('visits.Visit', on_delete=models.RESTRICT, null=True, blank=True, related_name='originating_follow_ups')

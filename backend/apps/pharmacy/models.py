@@ -323,6 +323,7 @@ class InventoryTransactionManager(models.Manager.from_queryset(InventoryTransact
 
 
 class InventoryTransaction(models.Model):
+    """LEGACY / HISTORICAL ONLY: Preserved for backwards compatibility with historical audit logs. Must NOT be used as active accounting source of truth."""
     TRANSACTION_TYPES = [
         ('PURCHASE_RECEIVED', 'Stock Received via Accepted GRN (+)'),
         ('DISPENSED', 'Medication Dispensed to Patient (-)'),
@@ -615,6 +616,7 @@ class DispensationItem(models.Model):
         return f"DispItem: {self.quantity_dispensed} from Batch #{self.batch_id}"
 
 class InventoryLedger(models.Model):
+    """Authoritative unified double-entry accounting source of truth for all inventory movements."""
     batch = models.ForeignKey('pharmacy.MedicineBatch', on_delete=models.RESTRICT, related_name='ledger_entries')
     facility = models.ForeignKey('facilities.Facility', on_delete=models.RESTRICT, related_name='inventory_ledger_entries')
     performed_by_staff = models.ForeignKey('accounts.StaffProfile', on_delete=models.RESTRICT, related_name='performed_inventory_movements')
