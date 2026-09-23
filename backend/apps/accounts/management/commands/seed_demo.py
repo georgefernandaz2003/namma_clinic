@@ -194,8 +194,12 @@ class Command(BaseCommand):
         lt_dengue = LabTestMaster.objects.create(code='L-DENGUE', name='Dengue NS1 Antigen Rapid Test Card', category='Serology', reference_range='Negative', unit='Result')
         lt_malaria = LabTestMaster.objects.create(code='L-MALARIA', name='Malaria Antigen (Pf/Pv) Rapid Test', category='Serology', reference_range='Negative', unit='Result')
         lt_u_prot = LabTestMaster.objects.create(code='L-URINE-PROT', name='Urine Albumin / Protein Test', category='Urinalysis', reference_range='Nil / Negative', unit='Grade')
+        lt_u_sugar = LabTestMaster.objects.create(code='L-URINE-SUGAR', name='Urine Sugar Test (Benedict / Strip)', category='Urinalysis', reference_range='Nil / Negative', unit='Grade')
         lt_tb = LabTestMaster.objects.create(code='L-TB-SPUTUM', name='Sputum Smear for AFB (Tuberculosis)', category='Microbiology', reference_range='Negative for AFB', unit='Result')
+        lt_hiv = LabTestMaster.objects.create(code='L-HIV', name='HIV 1 & 2 Rapid Screening Card', category='Serology', reference_range='Non-Reactive / Negative', unit='Result')
+        lt_hbsag = LabTestMaster.objects.create(code='L-HBSAG', name='Hepatitis B Surface Antigen (HBsAg Rapid)', category='Serology', reference_range='Non-Reactive / Negative', unit='Result')
         lt_upt = LabTestMaster.objects.create(code='L-PREG-RAPID', name='Urine Pregnancy Test (UPT Card)', category='Maternal RCH', reference_range='Negative', unit='Result')
+        lt_lft = LabTestMaster.objects.create(code='L-LFT', name='Liver Function Test (Bilirubin & LFT)', category='Biochemistry', reference_range='Bilirubin < 1.2 mg/dL, SGPT < 40 U/L', unit='mg/dL, U/L')
 
         med_met = MedicineMaster.objects.create(generic_name='Metformin HCl', brand_name='Glycomet', strength='500 mg', dosage_form='Tablet', category='Anti-Diabetic', minimum_stock=50, reorder_level=100)
         med_aml = MedicineMaster.objects.create(generic_name='Amlodipine Besylate', brand_name='Amlopres', strength='5 mg', dosage_form='Tablet', category='Anti-Hypertensive', minimum_stock=50, reorder_level=100)

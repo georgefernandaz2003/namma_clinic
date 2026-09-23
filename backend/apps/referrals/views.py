@@ -47,7 +47,7 @@ class ReferralViewSet(viewsets.ModelViewSet):
 
 
     def get_queryset(self):
-        queryset = Referral.objects.all().select_related('patient', 'source_facility', 'destination_facility', 'referring_doctor')
+        queryset = Referral.objects.all().select_related('patient', 'source_facility', 'destination_facility', 'referring_doctor').order_by('-id')
         from django.db.models import Q
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:

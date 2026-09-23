@@ -5,7 +5,7 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
     'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
     'audit_logs.view', 'dashboard.view', 'referrals.view', 'inventory.view', 'queue.view',
     'lab_orders.view', 'patients.view', 'po.view', 'vendor.view', 'staff.view', 'users.view',
-    'medicine_master.view'
+    'medicine_master.view', 'lab_test_master.view'
   ]),
   HOSPITAL_ADMIN: new Set([
     'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update', 'staff.delete',
@@ -24,13 +24,14 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
     'diagnosis.view', 'diagnosis.create', 'diagnosis.update', 'prescription.view', 'prescription.create', 'prescription.update',
     'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view',
     'referrals.view', 'referrals.create', 'clinic.view', 'queue.view', 'dashboard.view',
-    'medicine_master.view'
+    'medicine_master.view', 'lab_test_master.view'
   ]),
   NURSE: new Set([
     'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.update',
     'vitals.view', 'vitals.create', 'vitals.update', 'triage.view', 'triage.create', 'triage.update',
     'queue.view', 'queue.update', 'clinic.view', 'dashboard.view',
-    'lab_orders.view', 'lab_orders.update', 'lab_results.view'
+    'lab_orders.view', 'lab_orders.update', 'lab_results.view',
+    'lab_test_master.view'
   ]),
   LAB_TECHNICIAN: new Set([
     'patients.view', 'lab_orders.view', 'lab_orders.create', 'lab_orders.update',

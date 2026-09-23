@@ -41,7 +41,7 @@ from apps.audit.models import AuditLog
 import datetime
 
 class LabTestMasterViewSet(viewsets.ModelViewSet):
-    queryset = LabTestMaster.objects.all()
+    queryset = LabTestMaster.objects.all().order_by('id')
     serializer_class = LabTestMasterSerializer
     permission_classes = [
         permissions.IsAuthenticated,
