@@ -161,6 +161,10 @@ import datetime
 from apps.patients.models import Patient
 from apps.visits.models import Visit
 from apps.pharmacy.models import MedicineMaster, MedicineBatch
+from apps.laboratory.models import LabTestMaster, LabOrder
+from apps.consultations.models import Consultation, Prescription
+from apps.referrals.models import Referral
+from apps.alerts.models import Alert
 
 class DashboardSummaryViewTests(APITestCase):
     def setUp(self):
@@ -392,3 +396,216 @@ class DashboardSummaryViewTests(APITestCase):
         self.assertEqual(inv.get('low_stock'), 1)
         self.assertEqual(inv.get('expiring_soon'), 1)
         self.assertEqual(inv.get('expired_batches'), 1)
+
+    def test_unified_contract_structure(self):
+        """Verify the unified contract structure has all required top-level and nested keys."""
+        self.client.force_authenticate(user=self.hospital_admin)
+        res = self.client.get('/api/dashboard/summary/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.data
+
+        # Top-level keys
+        for key in ['scope', 'patients', 'visits_and_queue', 'laboratory', 'pharmacy', 'referrals', 'staff', 'alerts', 'action_required']:
+            self.assertIn(key, data, f"Missing key '{key}' in dashboard contract")
+
+        # Patients subkeys
+        for sub in ['total', 'registered_today', 'male', 'female', 'other', 'by_age_group']:
+            self.assertIn(sub, data['patients'])
+
+        # Visits and queue subkeys
+        for sub in ['todays_opd', 'completed_today', 'waiting_triage', 'waiting_doctor', 'in_consultation', 'avg_wait_time_minutes']:
+            self.assertIn(sub, data['visits_and_queue'])
+
+        # Laboratory subkeys
+        for sub in ['total_orders', 'ordered', 'sample_collected', 'in_progress', 'completed', 'verified', 'cancelled', 'pending_verification']:
+            self.assertIn(sub, data['laboratory'])
+
+        # Pharmacy subkeys
+        for sub in ['total_medicines', 'active_batches', 'low_stock_medicines', 'out_of_stock_medicines', 'expiring_soon_batches', 'expired_batches', 'prescriptions_pending', 'prescriptions_dispensed']:
+            self.assertIn(sub, data['pharmacy'])
+
+        # Referrals subkeys
+        for sub in ['total', 'pending', 'accepted', 'completed', 'rejected']:
+            self.assertIn(sub, data['referrals'])
+
+        # Staff subkeys
+        for sub in ['doctors', 'nurses', 'lab_technicians', 'pharmacists', 'admins', 'total_active_staff']:
+            self.assertIn(sub, data['staff'])
+            if sub != 'total_active_staff':
+                self.assertIn('active', data['staff'][sub])
+                self.assertIn('total', data['staff'][sub])
+
+        # Alerts subkeys
+        for sub in ['total', 'active', 'resolved', 'by_severity']:
+            self.assertIn(sub, data['alerts'])
+
+        # Action required
+        self.assertIsInstance(data['action_required'], list)
+
+    def test_zero_data_handling_empty_facility(self):
+        """Verify that an empty facility returns clean 0s with no exceptions, nulls, or NaNs."""
+        # fac_1b has no patients, visits, orders, or alerts
+        self.client.force_authenticate(user=self.district_officer)
+        res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1b.id}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.data
+
+        self.assertEqual(data['patients']['total'], 0)
+        self.assertEqual(data['patients']['registered_today'], 0)
+        self.assertEqual(data['visits_and_queue']['todays_opd'], 0)
+        self.assertEqual(data['visits_and_queue']['completed_today'], 0)
+        self.assertEqual(data['visits_and_queue']['avg_wait_time_minutes'], 0)
+        self.assertEqual(data['laboratory']['total_orders'], 0)
+        self.assertEqual(data['pharmacy']['low_stock_medicines'], 0)
+        self.assertEqual(data['pharmacy']['expired_batches'], 0)
+        self.assertEqual(data['referrals']['total'], 0)
+        self.assertEqual(data['alerts']['active'], 0)
+        self.assertEqual(len(data['action_required']), 0)
+
+    def test_historical_date_filtering(self):
+        """Verify that ?date= strictly filters metrics to the requested date."""
+        today = datetime.date.today()
+        yesterday = today - datetime.timedelta(days=1)
+
+        p = Patient.objects.create(
+            patient_id='P-HIST',
+            name='Hist Patient',
+            mobile='9111111111',
+            registered_at_facility=self.fac_1a
+        )
+        # Visit yesterday
+        Visit.objects.create(
+            visit_id='V-YEST',
+            patient=p,
+            facility=self.fac_1a,
+            opd_date=yesterday,
+            status='COMPLETED'
+        )
+        # Visit today
+        Visit.objects.create(
+            visit_id='V-TODAY',
+            patient=p,
+            facility=self.fac_1a,
+            opd_date=today,
+            status='WAITING_FOR_TRIAGE'
+        )
+
+        self.client.force_authenticate(user=self.hospital_admin)
+
+        # Query for yesterday
+        res_yest = self.client.get(f'/api/dashboard/summary/?date={yesterday.isoformat()}')
+        self.assertEqual(res_yest.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_yest.data['visits_and_queue']['todays_opd'], 1)
+        self.assertEqual(res_yest.data['visits_and_queue']['completed_today'], 1)
+        self.assertEqual(res_yest.data['visits_and_queue']['waiting_triage'], 0)
+
+        # Query for today
+        res_today = self.client.get(f'/api/dashboard/summary/?date={today.isoformat()}')
+        self.assertEqual(res_today.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_today.data['visits_and_queue']['todays_opd'], 1)
+        self.assertEqual(res_today.data['visits_and_queue']['completed_today'], 0)
+        self.assertEqual(res_today.data['visits_and_queue']['waiting_triage'], 1)
+
+    def test_cross_facility_isolation_all_roles(self):
+        """Verify district officer can see all facilities in district, but operational roles are locked to assigned facility."""
+        # Create a patient and visit in fac_1a, fac_1b, and fac_2
+        p1a = Patient.objects.create(patient_id='P1A', name='P1A', registered_at_facility=self.fac_1a)
+        p1b = Patient.objects.create(patient_id='P1B', name='P1B', registered_at_facility=self.fac_1b)
+        p2 = Patient.objects.create(patient_id='P2', name='P2', registered_at_facility=self.fac_2)
+
+        # 1. District Officer (District 1) sees fac_1a and fac_1b (total 2 patients), but NEVER fac_2
+        self.client.force_authenticate(user=self.district_officer)
+        res = self.client.get('/api/dashboard/summary/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['patients']['total'], 2)
+        self.assertEqual(res.data['total_facilities'], 2)
+
+        # District Officer querying fac_2 outside their district is clamped back to district 1
+        res_clamped = self.client.get(f'/api/dashboard/summary/?facility={self.fac_2.id}')
+        self.assertEqual(res_clamped.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_clamped.data['patients']['total'], 2)
+
+        # 2. Operational roles (Hospital Admin, Doctor, Nurse, Lab Tech, Pharmacist) see ONLY fac_1a (1 patient)
+        operational_users = [self.hospital_admin, self.doctor, self.nurse, self.lab_tech, self.pharmacist]
+        for u in operational_users:
+            self.client.force_authenticate(user=u)
+            # Normal call
+            res_op = self.client.get('/api/dashboard/summary/')
+            self.assertEqual(res_op.status_code, status.HTTP_200_OK)
+            self.assertEqual(res_op.data['patients']['total'], 1, f"Failed for role {u.role}")
+
+            # Tampering attempt with fac_1b or fac_2
+            res_tamper = self.client.get(f'/api/dashboard/summary/?facility={self.fac_2.id}')
+            self.assertEqual(res_tamper.status_code, status.HTTP_200_OK)
+            self.assertEqual(res_tamper.data['patients']['total'], 1, f"Tamper bypass succeeded for role {u.role}")
+
+    def test_table_by_table_reconciliation(self):
+        """Verify dashboard KPIs match the exact count from list endpoints."""
+        today = datetime.date.today()
+        p = Patient.objects.create(patient_id='PREC', name='Reconcile Pt', registered_at_facility=self.fac_1a)
+        v = Visit.objects.create(visit_id='VREC', patient=p, facility=self.fac_1a, opd_date=today, status='WAITING_FOR_TRIAGE')
+        test_m = LabTestMaster.objects.create(test_name='CBC', test_code='CBC', category='PATHOLOGY', cost=100)
+        lab_o = LabOrder.objects.create(visit=v, facility=self.fac_1a, test=test_m, status='ORDERED')
+        alert = Alert.objects.create(facility=self.fac_1a, title='Test Alert', alert_type='LOW_STOCK', severity='HIGH', status='NEW')
+        referral = Referral.objects.create(visit=v, referring_facility=self.fac_1a, reason='Specialist', referral_type='UPWARD', status='PENDING')
+
+        self.client.force_authenticate(user=self.hospital_admin)
+
+        # Get dashboard summary
+        dash_res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1a.id}&date={today.isoformat()}')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        dash = dash_res.data
+
+        # 1. Patients endpoint
+        pt_res = self.client.get('/api/patients/')
+        self.assertEqual(pt_res.status_code, status.HTTP_200_OK)
+        pt_count = pt_res.data['count'] if 'count' in pt_res.data else len(pt_res.data)
+        self.assertEqual(dash['patients']['total'], pt_count)
+
+        # 2. Visits endpoint
+        v_res = self.client.get(f'/api/visits/?opd_date={today.isoformat()}')
+        self.assertEqual(v_res.status_code, status.HTTP_200_OK)
+        v_count = v_res.data['count'] if 'count' in v_res.data else len(v_res.data)
+        self.assertEqual(dash['visits_and_queue']['todays_opd'], v_count)
+
+        # 3. Lab Orders endpoint
+        lab_res = self.client.get(f'/api/lab/orders/?order_date={today.isoformat()}')
+        self.assertEqual(lab_res.status_code, status.HTTP_200_OK)
+        lab_count = lab_res.data['count'] if 'count' in lab_res.data else len(lab_res.data)
+        self.assertEqual(dash['laboratory']['total_orders'], lab_count)
+
+        # 4. Alerts endpoint (Active)
+        al_res = self.client.get('/api/alerts/?status=ACTIVE')
+        self.assertEqual(al_res.status_code, status.HTTP_200_OK)
+        al_count = al_res.data['count'] if 'count' in al_res.data else len(al_res.data)
+        self.assertEqual(dash['alerts']['active'], al_count)
+
+        # 5. Referrals endpoint
+        ref_res = self.client.get('/api/referrals/')
+        self.assertEqual(ref_res.status_code, status.HTTP_200_OK)
+        ref_count = ref_res.data['count'] if 'count' in ref_res.data else len(ref_res.data)
+        self.assertEqual(dash['referrals']['total'], ref_count)
+
+    def test_alert_scoping_enforced(self):
+        """Verify AlertViewSet restricts access based on facility scope."""
+        al_1a = Alert.objects.create(facility=self.fac_1a, title='Alert 1A', alert_type='LOW_STOCK', severity='HIGH')
+        al_2 = Alert.objects.create(facility=self.fac_2, title='Alert 2', alert_type='LOW_STOCK', severity='HIGH')
+
+        # Hospital admin of 1A should only see Alert 1A
+        self.client.force_authenticate(user=self.hospital_admin)
+        res = self.client.get('/api/alerts/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ids = [item['id'] for item in (res.data['results'] if 'results' in res.data else res.data)]
+        self.assertIn(al_1a.id, ids)
+        self.assertNotIn(al_2.id, ids)
+
+    def test_facility_scoping_no_bypass(self):
+        """Verify ?all=true does not bypass district scoping for District Officer or facility scoping for Hospital Admin."""
+        self.client.force_authenticate(user=self.district_officer)
+        res = self.client.get('/api/facilities/?all=true')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        fac_ids = [item['id'] for item in (res.data['results'] if 'results' in res.data else res.data)]
+        self.assertIn(self.fac_1a.id, fac_ids)
+        self.assertIn(self.fac_1b.id, fac_ids)
+        self.assertNotIn(self.fac_2.id, fac_ids)
+

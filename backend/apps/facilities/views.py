@@ -22,9 +22,7 @@ class FacilityViewSet(viewsets.ModelViewSet):
     search_fields = ['facility_name', 'facility_code', 'city_or_ulb']
 
     def get_queryset(self):
-        queryset = Facility.objects.all().select_related('district', 'zone', 'ward', 'parent_facility')
-        if self.request.query_params.get('all') == 'true':
-            return queryset
+        queryset = Facility.objects.all().select_related('district', 'zone', 'ward', 'parent_facility').order_by('id')
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(id__in=accessible_ids)

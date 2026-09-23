@@ -75,12 +75,20 @@ export const Laboratory: React.FC = () => {
     setDateMode('DATE');
   };
 
+  const [labSummary, setLabSummary] = useState<any>(null);
+
   const loadData = async () => {
     if (!activeFacility) return;
     try {
       const dateParam = dateMode === 'DATE' ? `&date=${selectedDate}` : '';
-      const res = await api.get(`lab/orders/?facility=${activeFacility.id}${dateParam}`);
-      setOrders(res.data.results || res.data || []);
+      const [orderRes, summaryRes] = await Promise.all([
+        api.get(`lab/orders/?facility=${activeFacility.id}${dateParam}`),
+        dateMode === 'DATE'
+          ? api.get(`dashboard/summary/?facility=${activeFacility.id}&date=${selectedDate}`).catch(() => null)
+          : Promise.resolve(null)
+      ]);
+      setOrders(orderRes.data.results || orderRes.data || []);
+      if (summaryRes?.data) setLabSummary(summaryRes.data);
     } catch (e) {
       console.error('Failed to load lab orders', e);
     }
@@ -248,11 +256,11 @@ export const Laboratory: React.FC = () => {
     }
   };
 
-  // KPI calculations
-  const totalOrdersCount = orders.length;
-  const samplePendingCount = orders.filter(o => o.status === 'ORDERED').length;
-  const resultPendingCount = orders.filter(o => o.status === 'SAMPLE_COLLECTED').length;
-  const verifiedCount = orders.filter(o => o.status === 'VERIFIED').length;
+  // Authoritative KPI calculations from backend labSummary with table fallback
+  const totalOrdersCount = labSummary?.laboratory?.total_orders ?? orders.length;
+  const samplePendingCount = labSummary?.laboratory?.pending ?? orders.filter(o => o.status === 'ORDERED').length;
+  const resultPendingCount = labSummary?.laboratory?.sample_collected ?? orders.filter(o => o.status === 'SAMPLE_COLLECTED').length;
+  const verifiedCount = labSummary?.laboratory?.verified ?? orders.filter(o => o.status === 'VERIFIED').length;
 
   // Filtered orders for table
   const displayedOrders = activeTab === 'ALL'

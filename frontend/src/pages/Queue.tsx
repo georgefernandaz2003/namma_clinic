@@ -40,20 +40,22 @@ export const Queue: React.FC = () => {
   const canLab = user?.role === 'LAB_TECHNICIAN' || user?.role === 'HOSPITAL_ADMIN';
   const canDispense = user?.role === 'PHARMACIST' || user?.role === 'HOSPITAL_ADMIN';
 
+  const [queueSummary, setQueueSummary] = useState<any>(null);
+
   const loadQueue = async () => {
     if (!activeFacility) return;
     try {
-      // Always fetch all visits for the selected date to maintain accurate top KPI counters
-      const allRes = await api.get(`visits/?facility=${activeFacility.id}&date=${selectedDate}`);
-      const fullList: Visit[] = allRes.data.results || allRes.data || [];
-      setAllVisits(fullList);
-
-      // Populate table with filtered list
-      if (activeTab === 'ALL') {
-        setVisits(fullList);
-      } else {
-        const queueRes = await api.get(`visits/?facility=${activeFacility.id}&date=${selectedDate}&queue=${activeTab}`);
-        setVisits(queueRes.data.results || queueRes.data || []);
+      const [tableRes, summaryRes] = await Promise.all([
+        activeTab === 'ALL'
+          ? api.get(`visits/?facility=${activeFacility.id}&date=${selectedDate}`)
+          : api.get(`visits/?facility=${activeFacility.id}&date=${selectedDate}&queue=${activeTab}`),
+        api.get(`dashboard/summary/?facility=${activeFacility.id}&date=${selectedDate}`).catch(() => null)
+      ]);
+      const list: Visit[] = tableRes.data.results || tableRes.data || [];
+      setVisits(list);
+      setAllVisits(list);
+      if (summaryRes?.data) {
+        setQueueSummary(summaryRes.data);
       }
     } catch (e) {
       console.error('Failed to load date-based OPD queue', e);
@@ -177,14 +179,14 @@ export const Queue: React.FC = () => {
     }
   };
 
-  // Dynamic KPI Calculations based on allVisits for selectedDate
-  const totalOpdCount = allVisits.length;
-  const waitingTriageCount = allVisits.filter(v => v.status === 'WAITING_FOR_TRIAGE' || (v.current_queue === 'TRIAGE' && v.status !== 'COMPLETED')).length;
-  const waitingDoctorCount = allVisits.filter(v => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'LAB_COMPLETED').length;
-  const inConsultationCount = allVisits.filter(v => v.status === 'IN_CONSULTATION').length;
-  const labPendingCount = allVisits.filter(v => v.current_queue === 'LAB' || v.status === 'LAB_PENDING' || v.status === 'LAB_IN_PROGRESS').length;
-  const waitingPharmacyCount = allVisits.filter(v => v.current_queue === 'PHARMACY' || v.status.includes('PHARMACY')).length;
-  const completedCount = allVisits.filter(v => v.status === 'COMPLETED').length;
+  // Authoritative KPI Calculations from backend queueSummary with table fallback
+  const totalOpdCount = queueSummary?.todays_opd ?? queueSummary?.visits?.total ?? allVisits.length;
+  const waitingTriageCount = queueSummary?.queues?.triage_waiting ?? queueSummary?.kpis?.triage_waiting ?? allVisits.filter(v => v.current_queue === 'TRIAGE' && v.status !== 'COMPLETED').length;
+  const waitingDoctorCount = queueSummary?.queues?.doctor_waiting ?? queueSummary?.kpis?.doctor_waiting ?? allVisits.filter(v => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'LAB_COMPLETED').length;
+  const inConsultationCount = queueSummary?.queues?.doctor_in_consultation ?? queueSummary?.visits?.in_consultation ?? allVisits.filter(v => v.status === 'IN_CONSULTATION').length;
+  const labPendingCount = queueSummary?.queues?.lab_pending ?? queueSummary?.visits?.lab_pending ?? allVisits.filter(v => v.current_queue === 'LAB' || v.status === 'LAB_PENDING' || v.status === 'LAB_IN_PROGRESS').length;
+  const waitingPharmacyCount = queueSummary?.queues?.pharmacy_waiting ?? queueSummary?.visits?.pharmacy_waiting ?? allVisits.filter(v => v.current_queue === 'PHARMACY' || v.status.includes('PHARMACY')).length;
+  const completedCount = queueSummary?.visits?.completed ?? queueSummary?.kpis?.completed ?? allVisits.filter(v => v.status === 'COMPLETED').length;
 
   // Format Date for Header
   const formattedDate = new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-IN', {

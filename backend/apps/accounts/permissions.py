@@ -79,7 +79,10 @@ def can_access_facility(user, facility_id):
     if not user or not user.is_authenticated or not facility_id:
         return False
     if user.role == 'DISTRICT_OFFICER':
-        return True
+        if user.assigned_district_id:
+            from apps.facilities.models import Facility
+            return Facility.objects.filter(id=int(facility_id), district_id=user.assigned_district_id).exists()
+        return False
     return user.assigned_facility_id == int(facility_id)
 
 

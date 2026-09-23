@@ -14,6 +14,7 @@ from apps.consultations.models import Prescription, PrescriptionItem
 from apps.audit.models import AuditLog
 from apps.alerts.models import Alert
 from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
+from apps.reports.services import EXPIRING_SOON_DAYS
 
 # Serializers
 class MedicineMasterSerializer(serializers.ModelSerializer):
@@ -1009,7 +1010,7 @@ class PharmacyAlertsView(APIView):
 
         alerts = []
         today = datetime.date.today()
-        expiring_threshold = today + datetime.timedelta(days=30)
+        expiring_threshold = today + datetime.timedelta(days=EXPIRING_SOON_DAYS)
 
         # 1. Low stock & Out of stock alerts
         meds = MedicineMaster.objects.all()

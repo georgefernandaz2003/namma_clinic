@@ -23,12 +23,11 @@ class PatientViewSet(viewsets.ModelViewSet):
     }
 
     def get_queryset(self):
-        queryset = Patient.objects.all().select_related('ward', 'district', 'registered_at_facility')
+        queryset = Patient.objects.all().select_related('ward', 'district', 'registered_at_facility').order_by('-registration_date', '-id')
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         facility_param = self.request.query_params.get('facility')
         
         if accessible_ids is not None:
-            # Patients registered at user facility OR with active visits/referrals to user facility
             from django.db.models import Q
             user_fac_id = facility_param or self.request.user.assigned_facility_id
             queryset = queryset.filter(
@@ -44,6 +43,16 @@ class PatientViewSet(viewsets.ModelViewSet):
                 Q(visits__facility_id=facility_param) |
                 Q(referrals__destination_facility_id=facility_param)
             ).distinct()
+
+        # Support exact registration_date filtering for audit and reconciliation
+        req_reg_date = self.request.query_params.get('registration_date')
+        if req_reg_date and req_reg_date != 'all':
+            import datetime
+            try:
+                t_date = datetime.datetime.strptime(req_reg_date, '%Y-%m-%d').date()
+                queryset = queryset.filter(registration_date=t_date)
+            except ValueError:
+                pass
 
         return queryset
 
