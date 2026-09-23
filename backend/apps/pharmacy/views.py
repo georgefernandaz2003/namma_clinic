@@ -1096,15 +1096,11 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         return Response(counts)
 
 
-class InventoryTransactionViewSet(viewsets.ModelViewSet):
+class InventoryTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = InventoryTransactionSerializer
     permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
     required_permissions = {
         'GET': 'inventory.view',
-        'POST': 'inventory.create',
-        'PUT': 'inventory.update',
-        'PATCH': 'inventory.update',
-        'DELETE': 'inventory.update'
     }
 
     def get_queryset(self):
@@ -1358,59 +1354,71 @@ class DispensationReturnViewSet(viewsets.ModelViewSet):
         """Phase 1: Log patient return as PENDING_ASSESSMENT (Usable stock delta is zero)."""
         data = request.data
         p_item_id = data.get('prescription_item') or data.get('prescription_item_id')
-        qty = int(data.get('returned_quantity', 0))
+        try:
+            qty = int(data.get('returned_quantity', 0))
+        except (ValueError, TypeError):
+            return Response({'error': 'Returned quantity must be a valid integer.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if not p_item_id or qty <= 0:
             return Response({'error': 'Valid prescription item and returned quantity > 0 are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            p_item = PrescriptionItem.objects.get(pk=p_item_id)
-        except PrescriptionItem.DoesNotExist:
-            return Response({'error': 'Prescription Item not found.'}, status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            try:
+                p_item = PrescriptionItem.objects.select_for_update().get(pk=p_item_id)
+            except PrescriptionItem.DoesNotExist:
+                return Response({'error': 'Prescription Item not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Cumulative return cap check
-        approved_returns = DispensationReturn.objects.filter(
-            prescription_item=p_item, disposition='APPROVED_FOR_STOCK'
-        ).aggregate(t=models.Sum('returned_quantity'))['t'] or 0
+            # Cumulative return cap check: include all non-rejected quantities that reserve/consume the dispensed quantity:
+            # PENDING, APPROVED_FOR_STOCK, QUARANTINE, DISPOSAL
+            existing_reserved = DispensationReturn.objects.filter(
+                prescription_item=p_item,
+                disposition__in=['PENDING', 'APPROVED_FOR_STOCK', 'QUARANTINE', 'DISPOSAL']
+            ).exclude(
+                assessment_status__in=['REJECTED', 'CANCELLED']
+            ).exclude(
+                disposition__in=['REJECTED', 'CANCELLED']
+            ).aggregate(
+                t=models.Sum('returned_quantity')
+            )['t'] or 0
 
-        if approved_returns + qty > p_item.dispensed_quantity:
-            return Response({
-                'error': f"Cumulative returned quantity ({approved_returns + qty}) cannot exceed dispensed quantity ({p_item.dispensed_quantity})."
-            }, status=status.HTTP_400_BAD_REQUEST)
+            if existing_reserved + qty > p_item.dispensed_quantity:
+                return Response({
+                    'error': f"Cumulative returned quantity ({existing_reserved + qty}) cannot exceed dispensed quantity ({p_item.dispensed_quantity})."
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-        batch_id = data.get('batch') or data.get('batch_id')
-        batch = MedicineBatch.objects.filter(pk=batch_id).first() if batch_id else None
-        if not batch and p_item.medicine:
-            batch = p_item.medicine.batches.filter(facility=p_item.prescription.facility).first()
+            batch_id = data.get('batch') or data.get('batch_id')
+            batch = MedicineBatch.objects.filter(pk=batch_id).first() if batch_id else None
+            if not batch and p_item.medicine:
+                batch = p_item.medicine.batches.filter(facility=p_item.prescription.facility).first()
 
-        if not batch:
-            return Response({'error': 'Valid medicine batch is required for return.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not batch:
+                return Response({'error': 'Valid medicine batch is required for return.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        import uuid
-        ret_number = f"RET-{p_item.prescription.facility.facility_code if p_item.prescription.facility else 'FAC'}-{timezone.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6].upper()}"
+            import uuid
+            ret_number = f"RET-{p_item.prescription.facility.facility_code if p_item.prescription.facility else 'FAC'}-{timezone.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6].upper()}"
 
-        ret = DispensationReturn.objects.create(
-            return_number=ret_number,
-            prescription=p_item.prescription,
-            prescription_item=p_item,
-            batch=batch,
-            facility=p_item.prescription.facility,
-            returned_quantity=qty,
-            return_reason=data.get('return_reason', 'Patient return'),
-            returned_by=request.user,
-            assessment_status='PENDING_ASSESSMENT',
-            disposition='PENDING'
-        )
+            ret = DispensationReturn.objects.create(
+                return_number=ret_number,
+                prescription=p_item.prescription,
+                prescription_item=p_item,
+                batch=batch,
+                facility=p_item.prescription.facility,
+                returned_quantity=qty,
+                return_reason=data.get('return_reason', 'Patient return'),
+                returned_by=request.user,
+                assessment_status='PENDING_ASSESSMENT',
+                disposition='PENDING'
+            )
 
-        AuditLog.objects.create(
-            user=request.user,
-            username_snapshot=request.user.username,
-            action='RETURN_LOGGED',
-            facility=ret.facility,
-            details=f"Logged Return #{ret.return_number} for {qty} units. Pending pharmacist assessment."
-        )
+            AuditLog.objects.create(
+                user=request.user,
+                username_snapshot=request.user.username,
+                action='RETURN_LOGGED',
+                facility=ret.facility,
+                details=f"Logged Return #{ret.return_number} for {qty} units. Pending pharmacist assessment."
+            )
 
-        return Response(DispensationReturnSerializer(ret).data, status=status.HTTP_201_CREATED)
+            return Response(DispensationReturnSerializer(ret).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
     def assess(self, request, pk=None):
@@ -1418,27 +1426,63 @@ class DispensationReturnViewSet(viewsets.ModelViewSet):
         if request.user.role != 'PHARMACIST':
             return Response({'error': 'Only pharmacists are authorized to assess returned medication.'}, status=status.HTTP_403_FORBIDDEN)
 
-        ret = self.get_object()
-        if ret.assessment_status == 'ASSESSED':
-            return Response({'error': 'Return has already been assessed.'}, status=status.HTTP_400_BAD_REQUEST)
-
         disposition = request.data.get('disposition') or request.data.get('status')
-        if disposition not in ['APPROVED_FOR_STOCK', 'QUARANTINE', 'DISPOSAL']:
+        if disposition not in ['APPROVED_FOR_STOCK', 'QUARANTINE', 'DISPOSAL', 'REJECTED']:
             return Response({'error': f"Invalid disposition '{disposition}'."}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            batch = MedicineBatch.objects.select_for_update().get(pk=ret.batch_id)
+            try:
+                ret = DispensationReturn.objects.select_for_update().get(pk=pk)
+            except DispensationReturn.DoesNotExist:
+                return Response({'error': 'Return record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+            if ret.assessment_status in ['ASSESSED', 'REJECTED']:
+                return Response({'error': 'Return has already been assessed.'}, status=status.HTTP_400_BAD_REQUEST)
+
             p_item = PrescriptionItem.objects.select_for_update().get(pk=ret.prescription_item_id)
+            batch = MedicineBatch.objects.select_for_update().get(pk=ret.batch_id)
+
+            if disposition == 'REJECTED':
+                ret.assessment_status = 'REJECTED'
+                ret.disposition = 'REJECTED'
+                ret.condition_intact = request.data.get('condition_intact')
+                ret.packaging_sealed = request.data.get('packaging_sealed')
+                ret.storage_valid = request.data.get('storage_valid')
+                ret.assessed_by = request.user
+                ret.assessed_at = timezone.now()
+                ret.assessment_notes = request.data.get('assessment_notes', '')
+                ret.save()
+
+                AuditLog.objects.create(
+                    user=request.user,
+                    username_snapshot=request.user.username,
+                    action='RETURN_ASSESSED',
+                    facility=ret.facility,
+                    details=f"Assessed Return #{ret.return_number}. Disposition: REJECTED."
+                )
+                return Response(DispensationReturnSerializer(ret).data)
+
+            # For APPROVED_FOR_STOCK, QUARANTINE, DISPOSAL:
+            # Enforce cumulative cap holding lock, excluding ret.pk so as not to double count
+            existing_reserved = DispensationReturn.objects.filter(
+                prescription_item=p_item,
+                disposition__in=['PENDING', 'APPROVED_FOR_STOCK', 'QUARANTINE', 'DISPOSAL']
+            ).exclude(
+                assessment_status__in=['REJECTED', 'CANCELLED']
+            ).exclude(
+                disposition__in=['REJECTED', 'CANCELLED']
+            ).exclude(
+                pk=ret.pk
+            ).aggregate(
+                t=models.Sum('returned_quantity')
+            )['t'] or 0
+
+            if existing_reserved + ret.returned_quantity > p_item.dispensed_quantity:
+                return Response({
+                    'error': f"Assessing return would exceed cumulative dispensed quantity ({p_item.dispensed_quantity})."
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             if disposition == 'APPROVED_FOR_STOCK':
-                # Enforce cumulative cap before restoring to usable stock
-                approved_returns = DispensationReturn.objects.filter(
-                    prescription_item=p_item, disposition='APPROVED_FOR_STOCK'
-                ).exclude(pk=ret.pk).aggregate(t=models.Sum('returned_quantity'))['t'] or 0
-
-                if approved_returns + ret.returned_quantity > p_item.dispensed_quantity:
-                    return Response({'error': 'Approved returns would exceed cumulative dispensed quantity.'}, status=status.HTTP_400_BAD_REQUEST)
-
                 dest_before = batch.available_quantity
                 batch.available_quantity += ret.returned_quantity
                 batch.save()

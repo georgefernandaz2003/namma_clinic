@@ -302,6 +302,22 @@ class PurchaseOrderItem(models.Model):
         return f"{self.medicine.generic_name}: {self.ordered_quantity} ordered (rec: {self.received_quantity}, acc: {self.accepted_quantity}, rej: {self.rejected_quantity})"
 
 
+class InventoryTransactionQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise ValidationError("Inventory transactions are immutable and cannot be updated via QuerySet.")
+
+    def delete(self):
+        raise ValidationError("Inventory transactions are immutable and cannot be deleted via QuerySet.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Inventory transactions are immutable and cannot be bulk-updated.")
+
+
+class InventoryTransactionManager(models.Manager.from_queryset(InventoryTransactionQuerySet)):
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Inventory transactions are immutable and cannot be bulk-updated.")
+
+
 class InventoryTransaction(models.Model):
     TRANSACTION_TYPES = [
         ('PURCHASE_RECEIVED', 'Stock Received via Accepted GRN (+)'),
@@ -358,20 +374,27 @@ class InventoryTransaction(models.Model):
     created_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)
     notes = models.TextField(blank=True)
 
+    objects = InventoryTransactionManager()
+
     def clean(self):
         super().clean()
         is_intra_transfer = (
-            self.source_bucket and self.destination_bucket and
-            self.source_bucket not in ['external_vendor', 'patient_return'] and
-            self.destination_bucket not in ['patient_dispensed', 'disposed_quantity']
+            bool(self.source_bucket and self.destination_bucket) and
+            self.source_bucket not in ['external_vendor', 'patient_return', 'audit_adjustment', 'opening_stock'] and
+            self.destination_bucket not in ['patient_dispensed', 'disposed_quantity', 'audit_adjustment']
         )
         if is_intra_transfer:
-            decrement = self.source_before_qty - self.source_after_qty
-            increment = self.destination_after_qty - self.destination_before_qty
+            src_before = self.source_before_qty if self.source_before_qty is not None else 0
+            src_after = self.source_after_qty if self.source_after_qty is not None else 0
+            dest_before = self.destination_before_qty if self.destination_before_qty is not None else 0
+            dest_after = self.destination_after_qty if self.destination_after_qty is not None else 0
+
+            decrement = src_before - src_after
+            increment = dest_after - dest_before
             if decrement != self.quantity:
-                raise ValidationError("Source bucket decrement must equal transaction quantity.")
+                raise ValidationError(f"Source bucket decrement ({decrement}) must equal transaction quantity ({self.quantity}).")
             if increment != self.quantity:
-                raise ValidationError("Destination bucket increment must equal transaction quantity.")
+                raise ValidationError(f"Destination bucket increment ({increment}) must equal transaction quantity ({self.quantity}).")
 
     def save(self, *args, **kwargs):
         if self.pk is not None:
@@ -381,6 +404,7 @@ class InventoryTransaction(models.Model):
             self.before_quantity = self.source_before_qty
         if not self.after_quantity and self.source_after_qty:
             self.after_quantity = self.source_after_qty
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
