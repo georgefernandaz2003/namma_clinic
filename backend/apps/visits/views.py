@@ -91,10 +91,16 @@ class VisitViewSet(viewsets.ModelViewSet):
         # Status filter
         if req_status:
             req_status_upper = req_status.upper()
-            if req_status_upper == 'WAITING':
-                queryset = queryset.filter(status__in=['WAITING', 'WAITING_FOR_TRIAGE', 'IN_TRIAGE'])
-            elif req_status_upper == 'TRIAGED':
-                queryset = queryset.filter(status__in=['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION'])
+            if req_status_upper in ['WAITING', 'WAITING_FOR_TRIAGE']:
+                queryset = queryset.filter(status__in=['WAITING', 'WAITING_FOR_TRIAGE'])
+            elif req_status_upper == 'IN_TRIAGE':
+                queryset = queryset.filter(status='IN_TRIAGE')
+            elif req_status_upper in ['TRIAGED', 'WAITING_FOR_DOCTOR', 'DOCTOR_WAITING']:
+                queryset = queryset.filter(status__in=['WAITING_FOR_DOCTOR', 'TRIAGED', 'LAB_COMPLETED'])
+            elif req_status_upper == 'IN_CONSULTATION':
+                queryset = queryset.filter(status='IN_CONSULTATION')
+            elif req_status_upper == 'LAB_COMPLETED':
+                queryset = queryset.filter(status='LAB_COMPLETED')
             else:
                 queryset = queryset.filter(status=req_status_upper)
 

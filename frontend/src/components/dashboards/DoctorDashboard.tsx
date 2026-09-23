@@ -107,7 +107,9 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-bold text-slate-500 uppercase">My OPD Today</p>
+              <p className="text-xs font-bold text-slate-500 uppercase">
+                {isToday ? 'My OPD Today' : `My OPD — ${date}`}
+              </p>
               <h3 className="text-2xl font-black text-slate-900 mt-1">{summary?.todays_opd || 0}</h3>
               <p className="text-[10px] text-blue-700 font-medium mt-1">Total Assigned Visits</p>
             </div>

@@ -257,10 +257,10 @@ export const Laboratory: React.FC = () => {
   };
 
   // Authoritative KPI calculations from backend labSummary with table fallback
-  const totalOrdersCount = labSummary?.laboratory?.total_orders ?? orders.length;
-  const samplePendingCount = labSummary?.laboratory?.pending ?? orders.filter(o => o.status === 'ORDERED').length;
-  const resultPendingCount = labSummary?.laboratory?.sample_collected ?? orders.filter(o => o.status === 'SAMPLE_COLLECTED').length;
-  const verifiedCount = labSummary?.laboratory?.verified ?? orders.filter(o => o.status === 'VERIFIED').length;
+  const totalOrdersCount = labSummary?.lab_summary?.total_orders ?? labSummary?.laboratory?.total_orders ?? orders.length;
+  const samplePendingCount = labSummary?.lab_summary?.ordered ?? labSummary?.laboratory?.ordered ?? labSummary?.laboratory?.pending ?? orders.filter(o => o.status === 'ORDERED').length;
+  const resultPendingCount = labSummary?.lab_summary?.sample_collected ?? labSummary?.laboratory?.sample_collected ?? orders.filter(o => o.status === 'SAMPLE_COLLECTED').length;
+  const verifiedCount = labSummary?.lab_summary?.verified ?? labSummary?.laboratory?.verified ?? orders.filter(o => o.status === 'VERIFIED').length;
 
   // Filtered orders for table
   const displayedOrders = activeTab === 'ALL'

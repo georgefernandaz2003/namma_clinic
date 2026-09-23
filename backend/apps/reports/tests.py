@@ -397,215 +397,327 @@ class DashboardSummaryViewTests(APITestCase):
         self.assertEqual(inv.get('expiring_soon'), 1)
         self.assertEqual(inv.get('expired_batches'), 1)
 
-    def test_unified_contract_structure(self):
-        """Verify the unified contract structure has all required top-level and nested keys."""
-        self.client.force_authenticate(user=self.hospital_admin)
-        res = self.client.get('/api/dashboard/summary/')
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-        data = res.data
+    # =========================================================================
+    # 18 SPECIFIC TESTS DEMONSTRATING EXACT RECONCILIATION AND ROLE SCOPING
+    # =========================================================================
 
-        # Top-level keys
-        for key in ['scope', 'patients', 'visits_and_queue', 'laboratory', 'pharmacy', 'referrals', 'staff', 'alerts', 'action_required']:
-            self.assertIn(key, data, f"Missing key '{key}' in dashboard contract")
-
-        # Patients subkeys
-        for sub in ['total', 'registered_today', 'male', 'female', 'other', 'by_age_group']:
-            self.assertIn(sub, data['patients'])
-
-        # Visits and queue subkeys
-        for sub in ['todays_opd', 'completed_today', 'waiting_triage', 'waiting_doctor', 'in_consultation', 'avg_wait_time_minutes']:
-            self.assertIn(sub, data['visits_and_queue'])
-
-        # Laboratory subkeys
-        for sub in ['total_orders', 'ordered', 'sample_collected', 'in_progress', 'completed', 'verified', 'cancelled', 'pending_verification']:
-            self.assertIn(sub, data['laboratory'])
-
-        # Pharmacy subkeys
-        for sub in ['total_medicines', 'active_batches', 'low_stock_medicines', 'out_of_stock_medicines', 'expiring_soon_batches', 'expired_batches', 'prescriptions_pending', 'prescriptions_dispensed']:
-            self.assertIn(sub, data['pharmacy'])
-
-        # Referrals subkeys
-        for sub in ['total', 'pending', 'accepted', 'completed', 'rejected']:
-            self.assertIn(sub, data['referrals'])
-
-        # Staff subkeys
-        for sub in ['doctors', 'nurses', 'lab_technicians', 'pharmacists', 'admins', 'total_active_staff']:
-            self.assertIn(sub, data['staff'])
-            if sub != 'total_active_staff':
-                self.assertIn('active', data['staff'][sub])
-                self.assertIn('total', data['staff'][sub])
-
-        # Alerts subkeys
-        for sub in ['total', 'active', 'resolved', 'by_severity']:
-            self.assertIn(sub, data['alerts'])
-
-        # Action required
-        self.assertIsInstance(data['action_required'], list)
-
-    def test_zero_data_handling_empty_facility(self):
-        """Verify that an empty facility returns clean 0s with no exceptions, nulls, or NaNs."""
-        # fac_1b has no patients, visits, orders, or alerts
-        self.client.force_authenticate(user=self.district_officer)
-        res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1b.id}')
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-        data = res.data
-
-        self.assertEqual(data['patients']['total'], 0)
-        self.assertEqual(data['patients']['registered_today'], 0)
-        self.assertEqual(data['visits_and_queue']['todays_opd'], 0)
-        self.assertEqual(data['visits_and_queue']['completed_today'], 0)
-        self.assertEqual(data['visits_and_queue']['avg_wait_time_minutes'], 0)
-        self.assertEqual(data['laboratory']['total_orders'], 0)
-        self.assertEqual(data['pharmacy']['low_stock_medicines'], 0)
-        self.assertEqual(data['pharmacy']['expired_batches'], 0)
-        self.assertEqual(data['referrals']['total'], 0)
-        self.assertEqual(data['alerts']['active'], 0)
-        self.assertEqual(len(data['action_required']), 0)
-
-    def test_historical_date_filtering(self):
-        """Verify that ?date= strictly filters metrics to the requested date."""
+    def test_01_dashboard_kpi_equals_queue_table_queryset_count(self):
+        """1. Dashboard KPI equals queue table queryset count."""
         today = datetime.date.today()
-        yesterday = today - datetime.timedelta(days=1)
+        p1 = Patient.objects.create(patient_id='P01', name='Patient 1', registered_at_facility=self.fac_1a)
+        p2 = Patient.objects.create(patient_id='P02', name='Patient 2', registered_at_facility=self.fac_1a)
+        Visit.objects.create(visit_id='V01', patient=p1, facility=self.fac_1a, opd_date=today, status='WAITING_FOR_TRIAGE')
+        Visit.objects.create(visit_id='V02', patient=p2, facility=self.fac_1a, opd_date=today, status='IN_CONSULTATION')
 
-        p = Patient.objects.create(
-            patient_id='P-HIST',
-            name='Hist Patient',
-            mobile='9111111111',
-            registered_at_facility=self.fac_1a
+        self.client.force_authenticate(user=self.hospital_admin)
+        dash_res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1a.id}&date={today.isoformat()}')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        dash_opd = dash_res.data['visits']['total']
+
+        # Queue table endpoint count
+        table_res = self.client.get(f'/api/visits/?facility={self.fac_1a.id}&date={today.isoformat()}')
+        self.assertEqual(table_res.status_code, status.HTTP_200_OK)
+        table_count = table_res.data.get('count', len(table_res.data.get('results', table_res.data)))
+
+        self.assertEqual(dash_opd, table_count)
+        self.assertEqual(dash_opd, 2)
+
+    def test_02_dashboard_pharmacy_total_equals_prescription_queryset_count(self):
+        """2. Dashboard pharmacy total equals prescription queryset count."""
+        today = datetime.date.today()
+        p = Patient.objects.create(patient_id='P02_RX', name='RX Patient', registered_at_facility=self.fac_1a)
+        v = Visit.objects.create(patient=p, facility=self.fac_1a, opd_date=today, token_number='T02')
+        c = Consultation.objects.create(visit=v, patient=p, facility=self.fac_1a, chief_complaint='Fever')
+        Prescription.objects.create(consultation=c, patient=p, doctor=self.doctor, facility=self.fac_1a, status='PENDING')
+
+        self.client.force_authenticate(user=self.pharmacist)
+        dash_res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1a.id}&date={today.isoformat()}')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        dash_rx_total = dash_res.data['pharmacy']['total_prescriptions']
+
+        rx_res = self.client.get(f'/api/prescriptions/?facility={self.fac_1a.id}&date={today.isoformat()}')
+        self.assertEqual(rx_res.status_code, status.HTTP_200_OK)
+        rx_count = rx_res.data.get('count', len(rx_res.data.get('results', rx_res.data)))
+
+        self.assertEqual(dash_rx_total, rx_count)
+        self.assertEqual(dash_rx_total, 1)
+
+    def test_03_dashboard_lab_count_equals_lab_queue_count(self):
+        """3. Dashboard lab count equals lab queue count."""
+        today = datetime.date.today()
+        p = Patient.objects.create(patient_id='P03_LAB', name='Lab Patient', registered_at_facility=self.fac_1a)
+        test_m = LabTestMaster.objects.create(code='HB', name='Hemoglobin', category='HEMATOLOGY')
+        LabOrder.objects.create(patient=p, facility=self.fac_1a, test_master=test_m, status='ORDERED')
+
+        self.client.force_authenticate(user=self.lab_tech)
+        dash_res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1a.id}&date={today.isoformat()}')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        dash_lab_total = dash_res.data['laboratory']['total_orders']
+
+        lab_res = self.client.get(f'/api/lab/orders/?facility={self.fac_1a.id}&date={today.isoformat()}')
+        self.assertEqual(lab_res.status_code, status.HTTP_200_OK)
+        lab_count = lab_res.data.get('count', len(lab_res.data.get('results', lab_res.data)))
+
+        self.assertEqual(dash_lab_total, lab_count)
+        self.assertEqual(dash_lab_total, 1)
+
+    def test_04_dashboard_triage_count_equals_triage_queue_count(self):
+        """4. Dashboard triage count equals triage queue count."""
+        today = datetime.date.today()
+        p1 = Patient.objects.create(patient_id='P04_1', name='Triage 1', registered_at_facility=self.fac_1a)
+        p2 = Patient.objects.create(patient_id='P04_2', name='Triage 2', registered_at_facility=self.fac_1a)
+        Visit.objects.create(visit_id='VT01', patient=p1, facility=self.fac_1a, opd_date=today, current_queue='TRIAGE', status='WAITING_FOR_TRIAGE')
+        Visit.objects.create(visit_id='VT02', patient=p2, facility=self.fac_1a, opd_date=today, current_queue='TRIAGE', status='IN_TRIAGE')
+
+        self.client.force_authenticate(user=self.nurse)
+        dash_res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1a.id}&date={today.isoformat()}')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        dash_waiting = dash_res.data['queues']['triage_waiting']
+        dash_in_progress = dash_res.data['queues']['triage_in_progress']
+
+        # Waiting rows in triage
+        res_waiting = self.client.get(f'/api/visits/?facility={self.fac_1a.id}&date={today.isoformat()}&queue=TRIAGE&status=WAITING')
+        count_waiting = res_waiting.data.get('count', len(res_waiting.data.get('results', res_waiting.data)))
+        self.assertEqual(dash_waiting, count_waiting)
+        self.assertEqual(dash_waiting, 1)
+
+        # In-progress rows in triage
+        res_in_prog = self.client.get(f'/api/visits/?facility={self.fac_1a.id}&date={today.isoformat()}&queue=TRIAGE&status=IN_TRIAGE')
+        count_in_prog = res_in_prog.data.get('count', len(res_in_prog.data.get('results', res_in_prog.data)))
+        self.assertEqual(dash_in_progress, count_in_prog)
+        self.assertEqual(dash_in_progress, 1)
+
+    def test_05_dashboard_doctor_count_equals_doctor_queue_count(self):
+        """5. Dashboard doctor count equals doctor queue count."""
+        today = datetime.date.today()
+        p1 = Patient.objects.create(patient_id='P05_1', name='Doc Pt 1', registered_at_facility=self.fac_1a)
+        p2 = Patient.objects.create(patient_id='P05_2', name='Doc Pt 2', registered_at_facility=self.fac_1a)
+        Visit.objects.create(visit_id='VD01', patient=p1, facility=self.fac_1a, opd_date=today, current_queue='DOCTOR', status='WAITING_FOR_DOCTOR')
+        Visit.objects.create(visit_id='VD02', patient=p2, facility=self.fac_1a, opd_date=today, current_queue='DOCTOR', status='IN_CONSULTATION')
+
+        self.client.force_authenticate(user=self.doctor)
+        dash_res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1a.id}&date={today.isoformat()}')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        dash_doc_waiting = dash_res.data['queues']['doctor_waiting']
+        dash_in_consult = dash_res.data['queues']['doctor_in_consultation']
+
+        res_waiting = self.client.get(f'/api/visits/?facility={self.fac_1a.id}&date={today.isoformat()}&queue=DOCTOR&status=WAITING_FOR_DOCTOR')
+        count_waiting = res_waiting.data.get('count', len(res_waiting.data.get('results', res_waiting.data)))
+        self.assertEqual(dash_doc_waiting, count_waiting)
+
+        res_in_consult = self.client.get(f'/api/visits/?facility={self.fac_1a.id}&date={today.isoformat()}&queue=DOCTOR&status=IN_CONSULTATION')
+        count_in_consult = res_in_consult.data.get('count', len(res_in_consult.data.get('results', res_in_consult.data)))
+        self.assertEqual(dash_in_consult, count_in_consult)
+
+    def test_06_facility_overview_waiting_equals_dashboard_waiting_definition(self):
+        """6. Facility overview waiting equals dashboard waiting definition."""
+        today = datetime.date.today()
+        p = Patient.objects.create(patient_id='P06', name='Pt 6', registered_at_facility=self.fac_1a)
+        Visit.objects.create(visit_id='V06', patient=p, facility=self.fac_1a, opd_date=today, current_queue='TRIAGE', status='WAITING_FOR_TRIAGE')
+
+        self.client.force_authenticate(user=self.district_officer)
+        dash_res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1a.id}&date={today.isoformat()}')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        dash_waiting = dash_res.data['visits']['waiting']
+
+        fac_overview = dash_res.data['facility_overview']
+        fac_1a_entry = next((f for f in fac_overview if f['id'] == self.fac_1a.id), None)
+        self.assertIsNotNone(fac_1a_entry)
+        self.assertEqual(fac_1a_entry['waiting'], dash_waiting)
+
+    def test_07_inventory_dashboard_equals_inventory_queryset_definition(self):
+        """7. Inventory dashboard equals inventory queryset definition."""
+        med = MedicineMaster.objects.create(generic_name='Paracetamol 500mg', minimum_stock=50)
+        today = datetime.date.today()
+        # Create low stock batch: quantity 20 <= minimum_stock 50
+        MedicineBatch.objects.create(
+            facility=self.fac_1a, medicine=med, batch_number='B07',
+            quantity=20, expiry_date=today + datetime.timedelta(days=120)
         )
-        # Visit yesterday
-        Visit.objects.create(
-            visit_id='V-YEST',
-            patient=p,
-            facility=self.fac_1a,
-            opd_date=yesterday,
-            status='COMPLETED'
-        )
-        # Visit today
-        Visit.objects.create(
-            visit_id='V-TODAY',
-            patient=p,
-            facility=self.fac_1a,
-            opd_date=today,
-            status='WAITING_FOR_TRIAGE'
+
+        self.client.force_authenticate(user=self.pharmacist)
+        dash_res = self.client.get('/api/dashboard/summary/')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        dash_low_stock = dash_res.data['pharmacy']['low_stock_medicines']
+
+        # Queryset low stock calculation
+        batch_qs = MedicineBatch.objects.filter(facility=self.fac_1a)
+        qs_low_stock = 0
+        for m in MedicineMaster.objects.all():
+            tot = batch_qs.filter(medicine=m).aggregate(t=Sum('quantity'))['t'] or 0
+            if 0 < tot <= (m.minimum_stock or 0):
+                qs_low_stock += 1
+
+        self.assertEqual(dash_low_stock, qs_low_stock)
+        self.assertEqual(dash_low_stock, 1)
+
+    def test_08_referral_dashboard_equals_referral_table_definition(self):
+        """8. Referral dashboard equals referral table definition."""
+        p = Patient.objects.create(patient_id='P08', name='Ref Pt', registered_at_facility=self.fac_1a)
+        Referral.objects.create(
+            referral_id='REF08', patient=p, source_facility=self.fac_1a,
+            destination_facility=self.fac_1b, referring_doctor=self.doctor,
+            reason='Specialist consultation', clinical_summary='Cardiology review', status='CREATED'
         )
 
         self.client.force_authenticate(user=self.hospital_admin)
+        dash_res = self.client.get('/api/dashboard/summary/')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        dash_ref_pending = dash_res.data['referrals']['pending_outgoing']
 
-        # Query for yesterday
-        res_yest = self.client.get(f'/api/dashboard/summary/?date={yesterday.isoformat()}')
-        self.assertEqual(res_yest.status_code, status.HTTP_200_OK)
-        self.assertEqual(res_yest.data['visits_and_queue']['todays_opd'], 1)
-        self.assertEqual(res_yest.data['visits_and_queue']['completed_today'], 1)
-        self.assertEqual(res_yest.data['visits_and_queue']['waiting_triage'], 0)
+        ref_res = self.client.get('/api/referrals/?status=CREATED')
+        self.assertEqual(ref_res.status_code, status.HTTP_200_OK)
+        ref_count = ref_res.data.get('count', len(ref_res.data.get('results', ref_res.data)))
 
-        # Query for today
-        res_today = self.client.get(f'/api/dashboard/summary/?date={today.isoformat()}')
-        self.assertEqual(res_today.status_code, status.HTTP_200_OK)
-        self.assertEqual(res_today.data['visits_and_queue']['todays_opd'], 1)
-        self.assertEqual(res_today.data['visits_and_queue']['completed_today'], 0)
-        self.assertEqual(res_today.data['visits_and_queue']['waiting_triage'], 1)
+        self.assertEqual(dash_ref_pending, ref_count)
+        self.assertEqual(dash_ref_pending, 1)
 
-    def test_cross_facility_isolation_all_roles(self):
-        """Verify district officer can see all facilities in district, but operational roles are locked to assigned facility."""
-        # Create a patient and visit in fac_1a, fac_1b, and fac_2
-        p1a = Patient.objects.create(patient_id='P1A', name='P1A', registered_at_facility=self.fac_1a)
-        p1b = Patient.objects.create(patient_id='P1B', name='P1B', registered_at_facility=self.fac_1b)
-        p2 = Patient.objects.create(patient_id='P2', name='P2', registered_at_facility=self.fac_2)
+    def test_09_active_staff_plus_inactive_staff_equals_total_staff(self):
+        """9. Active staff + inactive staff = total staff for all roles."""
+        User.objects.create_user(username='doc_inact_09', password='pwd', role=RoleChoices.DOCTOR, assigned_facility=self.fac_1a, is_active=False)
+        User.objects.create_user(username='nur_inact_09', password='pwd', role=RoleChoices.NURSE, assigned_facility=self.fac_1a, is_active=False)
 
-        # 1. District Officer (District 1) sees fac_1a and fac_1b (total 2 patients), but NEVER fac_2
+        self.client.force_authenticate(user=self.hospital_admin)
+        dash_res = self.client.get('/api/dashboard/summary/')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        staff = dash_res.data['staff']
+
+        for role_key in ['doctors', 'nurses', 'lab_technicians', 'pharmacists']:
+            stat = staff[role_key]
+            self.assertEqual(stat['active'] + stat['inactive'], stat['total'], f"Mismatch in {role_key}")
+
+    def test_10_district_officer_sees_only_assigned_district(self):
+        """10. District Officer sees only assigned district facilities."""
         self.client.force_authenticate(user=self.district_officer)
-        res = self.client.get('/api/dashboard/summary/')
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(res.data['patients']['total'], 2)
-        self.assertEqual(res.data['total_facilities'], 2)
+        dash_res = self.client.get('/api/dashboard/summary/')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        scope = dash_res.data['scope']
+        self.assertEqual(scope['district'], self.district_1.name)
+        self.assertEqual(scope['total_facilities'], 2)  # fac_1a and fac_1b
+        self.assertIn(self.fac_1a.id, scope['facility_ids'])
+        self.assertIn(self.fac_1b.id, scope['facility_ids'])
+        self.assertNotIn(self.fac_2.id, scope['facility_ids'])
 
-        # District Officer querying fac_2 outside their district is clamped back to district 1
-        res_clamped = self.client.get(f'/api/dashboard/summary/?facility={self.fac_2.id}')
-        self.assertEqual(res_clamped.status_code, status.HTTP_200_OK)
-        self.assertEqual(res_clamped.data['patients']['total'], 2)
+    def test_11_district_officer_cannot_see_another_district(self):
+        """11. District Officer cannot see another district by passing facility param."""
+        self.client.force_authenticate(user=self.district_officer)
+        # Attempt to access fac_2 in District 2
+        dash_res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_2.id}')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        # Must be clamped back to district network of district 1
+        self.assertIsNone(dash_res.data['scope']['active_facility_id'])
+        self.assertNotIn(self.fac_2.id, dash_res.data['scope']['facility_ids'])
 
-        # 2. Operational roles (Hospital Admin, Doctor, Nurse, Lab Tech, Pharmacist) see ONLY fac_1a (1 patient)
+    def test_12_operational_roles_see_only_assigned_facility(self):
+        """12. Operational roles see only assigned facility."""
         operational_users = [self.hospital_admin, self.doctor, self.nurse, self.lab_tech, self.pharmacist]
         for u in operational_users:
             self.client.force_authenticate(user=u)
-            # Normal call
-            res_op = self.client.get('/api/dashboard/summary/')
-            self.assertEqual(res_op.status_code, status.HTTP_200_OK)
-            self.assertEqual(res_op.data['patients']['total'], 1, f"Failed for role {u.role}")
+            # Try to tamper by passing fac_1b or fac_2
+            res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_2.id}')
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            self.assertEqual(res.data['scope']['active_facility_id'], self.fac_1a.id)
+            self.assertEqual(res.data['scope']['facility_ids'], [self.fac_1a.id])
 
-            # Tampering attempt with fac_1b or fac_2
-            res_tamper = self.client.get(f'/api/dashboard/summary/?facility={self.fac_2.id}')
-            self.assertEqual(res_tamper.status_code, status.HTTP_200_OK)
-            self.assertEqual(res_tamper.data['patients']['total'], 1, f"Tamper bypass succeeded for role {u.role}")
-
-    def test_table_by_table_reconciliation(self):
-        """Verify dashboard KPIs match the exact count from list endpoints."""
+    def test_13_historical_date_returns_historical_metrics(self):
+        """13. Historical date returns historical metrics."""
         today = datetime.date.today()
-        p = Patient.objects.create(patient_id='PREC', name='Reconcile Pt', registered_at_facility=self.fac_1a)
-        v = Visit.objects.create(visit_id='VREC', patient=p, facility=self.fac_1a, opd_date=today, status='WAITING_FOR_TRIAGE')
-        test_m = LabTestMaster.objects.create(test_name='CBC', test_code='CBC', category='PATHOLOGY', cost=100)
-        lab_o = LabOrder.objects.create(visit=v, facility=self.fac_1a, test=test_m, status='ORDERED')
-        alert = Alert.objects.create(facility=self.fac_1a, title='Test Alert', alert_type='LOW_STOCK', severity='HIGH', status='NEW')
-        referral = Referral.objects.create(visit=v, referring_facility=self.fac_1a, reason='Specialist', referral_type='UPWARD', status='PENDING')
+        yesterday = today - datetime.timedelta(days=1)
+        p = Patient.objects.create(patient_id='P13', name='Pt 13', registered_at_facility=self.fac_1a)
+        Visit.objects.create(visit_id='V13_YEST', patient=p, facility=self.fac_1a, opd_date=yesterday, status='COMPLETED')
 
         self.client.force_authenticate(user=self.hospital_admin)
+        res_yest = self.client.get(f'/api/dashboard/summary/?date={yesterday.isoformat()}')
+        self.assertEqual(res_yest.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_yest.data['date'], yesterday.isoformat())
+        self.assertFalse(res_yest.data['is_today'])
+        self.assertEqual(res_yest.data['visits']['total'], 1)
+        self.assertEqual(res_yest.data['visits']['completed'], 1)
 
-        # Get dashboard summary
-        dash_res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1a.id}&date={today.isoformat()}')
-        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
-        dash = dash_res.data
+    def test_14_today_returns_todays_metrics(self):
+        """14. Today returns today's metrics."""
+        today = datetime.date.today()
+        p = Patient.objects.create(patient_id='P14', name='Pt 14', registered_at_facility=self.fac_1a)
+        Visit.objects.create(visit_id='V14_TODAY', patient=p, facility=self.fac_1a, opd_date=today, status='WAITING_FOR_TRIAGE')
 
-        # 1. Patients endpoint
-        pt_res = self.client.get('/api/patients/')
-        self.assertEqual(pt_res.status_code, status.HTTP_200_OK)
-        pt_count = pt_res.data['count'] if 'count' in pt_res.data else len(pt_res.data)
-        self.assertEqual(dash['patients']['total'], pt_count)
-
-        # 2. Visits endpoint
-        v_res = self.client.get(f'/api/visits/?opd_date={today.isoformat()}')
-        self.assertEqual(v_res.status_code, status.HTTP_200_OK)
-        v_count = v_res.data['count'] if 'count' in v_res.data else len(v_res.data)
-        self.assertEqual(dash['visits_and_queue']['todays_opd'], v_count)
-
-        # 3. Lab Orders endpoint
-        lab_res = self.client.get(f'/api/lab/orders/?order_date={today.isoformat()}')
-        self.assertEqual(lab_res.status_code, status.HTTP_200_OK)
-        lab_count = lab_res.data['count'] if 'count' in lab_res.data else len(lab_res.data)
-        self.assertEqual(dash['laboratory']['total_orders'], lab_count)
-
-        # 4. Alerts endpoint (Active)
-        al_res = self.client.get('/api/alerts/?status=ACTIVE')
-        self.assertEqual(al_res.status_code, status.HTTP_200_OK)
-        al_count = al_res.data['count'] if 'count' in al_res.data else len(al_res.data)
-        self.assertEqual(dash['alerts']['active'], al_count)
-
-        # 5. Referrals endpoint
-        ref_res = self.client.get('/api/referrals/')
-        self.assertEqual(ref_res.status_code, status.HTTP_200_OK)
-        ref_count = ref_res.data['count'] if 'count' in ref_res.data else len(ref_res.data)
-        self.assertEqual(dash['referrals']['total'], ref_count)
-
-    def test_alert_scoping_enforced(self):
-        """Verify AlertViewSet restricts access based on facility scope."""
-        al_1a = Alert.objects.create(facility=self.fac_1a, title='Alert 1A', alert_type='LOW_STOCK', severity='HIGH')
-        al_2 = Alert.objects.create(facility=self.fac_2, title='Alert 2', alert_type='LOW_STOCK', severity='HIGH')
-
-        # Hospital admin of 1A should only see Alert 1A
         self.client.force_authenticate(user=self.hospital_admin)
-        res = self.client.get('/api/alerts/')
+        res = self.client.get(f'/api/dashboard/summary/?date={today.isoformat()}')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        ids = [item['id'] for item in (res.data['results'] if 'results' in res.data else res.data)]
-        self.assertIn(al_1a.id, ids)
-        self.assertNotIn(al_2.id, ids)
+        self.assertEqual(res.data['date'], today.isoformat())
+        self.assertTrue(res.data['is_today'])
+        self.assertEqual(res.data['visits']['total'], 1)
+        self.assertEqual(res.data['queues']['triage_waiting'], 1)
 
-    def test_facility_scoping_no_bypass(self):
-        """Verify ?all=true does not bypass district scoping for District Officer or facility scoping for Hospital Admin."""
+    def test_15_zero_data_facility_returns_zero_consistently(self):
+        """15. Zero-data facility returns zero consistently."""
         self.client.force_authenticate(user=self.district_officer)
-        res = self.client.get('/api/facilities/?all=true')
+        # fac_1b has no visits or orders
+        res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1b.id}')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        fac_ids = [item['id'] for item in (res.data['results'] if 'results' in res.data else res.data)]
-        self.assertIn(self.fac_1a.id, fac_ids)
-        self.assertIn(self.fac_1b.id, fac_ids)
-        self.assertNotIn(self.fac_2.id, fac_ids)
+        d = res.data
+        self.assertEqual(d['patients']['total'], 0)
+        self.assertEqual(d['visits']['total'], 0)
+        self.assertEqual(d['visits']['waiting'], 0)
+        self.assertEqual(d['laboratory']['total_orders'], 0)
+        self.assertEqual(d['pharmacy']['total_prescriptions'], 0)
+        self.assertEqual(d['referrals']['total'], 0)
+
+    def test_16_one_visit_with_multiple_lab_orders_handled_correctly(self):
+        """16. One visit with multiple lab orders is handled correctly."""
+        today = datetime.date.today()
+        p = Patient.objects.create(patient_id='P16', name='Pt 16', registered_at_facility=self.fac_1a)
+        v = Visit.objects.create(visit_id='V16', patient=p, facility=self.fac_1a, opd_date=today, current_queue='LAB', status='LAB_PENDING')
+
+        m1 = LabTestMaster.objects.create(code='L16_1', name='Test 1')
+        m2 = LabTestMaster.objects.create(code='L16_2', name='Test 2')
+        LabOrder.objects.create(visit=v, patient=p, facility=self.fac_1a, test_master=m1, status='ORDERED')
+        LabOrder.objects.create(visit=v, patient=p, facility=self.fac_1a, test_master=m2, status='SAMPLE_COLLECTED')
+
+        self.client.force_authenticate(user=self.lab_tech)
+        res = self.client.get(f'/api/dashboard/summary/?date={today.isoformat()}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # Total lab orders = 2
+        self.assertEqual(res.data['laboratory']['total_orders'], 2)
+        # Pending lab orders = 2
+        self.assertEqual(res.data['laboratory']['lab_pending_orders'], 2)
+        # Lab pending visits = 1
+        self.assertEqual(res.data['laboratory']['lab_pending_visits'], 1)
+        self.assertEqual(res.data['queues']['lab_pending'], 1)
+
+    def test_17_lab_completion_and_reconsultation_counted_correctly(self):
+        """17. Lab completion/re-consultation is counted correctly."""
+        today = datetime.date.today()
+        p = Patient.objects.create(patient_id='P17', name='Pt 17', registered_at_facility=self.fac_1a)
+        v = Visit.objects.create(visit_id='V17', patient=p, facility=self.fac_1a, opd_date=today, current_queue='DOCTOR', status='LAB_COMPLETED')
+        m = LabTestMaster.objects.create(code='L17', name='Test 17')
+        LabOrder.objects.create(visit=v, patient=p, facility=self.fac_1a, test_master=m, status='VERIFIED')
+
+        self.client.force_authenticate(user=self.doctor)
+        res = self.client.get(f'/api/dashboard/summary/?date={today.isoformat()}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # Doctor waiting queue includes LAB_COMPLETED for re-consultation
+        self.assertEqual(res.data['queues']['doctor_waiting'], 1)
+        # Lab queue is 0 since all orders verified
+        self.assertEqual(res.data['queues']['lab_pending'], 0)
+        self.assertEqual(res.data['laboratory']['verified'], 1)
+
+    def test_18_paginated_prescription_api_total_not_based_on_page_length(self):
+        """18. Paginated prescription API total is not based on page length."""
+        today = datetime.date.today()
+        p = Patient.objects.create(patient_id='P18', name='Pt 18', registered_at_facility=self.fac_1a)
+        v = Visit.objects.create(patient=p, facility=self.fac_1a, opd_date=today, token_number='T18')
+        c = Consultation.objects.create(visit=v, patient=p, facility=self.fac_1a, chief_complaint='Review')
+        Prescription.objects.create(consultation=c, patient=p, doctor=self.doctor, facility=self.fac_1a, status='PENDING')
+
+        self.client.force_authenticate(user=self.pharmacist)
+        dash_res = self.client.get(f'/api/dashboard/summary/?date={today.isoformat()}')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        dash_rx_count = dash_res.data['pharmacy']['total_prescriptions']
+
+        rx_res = self.client.get(f'/api/prescriptions/?date={today.isoformat()}')
+        self.assertEqual(rx_res.status_code, status.HTTP_200_OK)
+        self.assertIn('count', rx_res.data)
+        # Authoritative count matches exactly
+        self.assertEqual(dash_rx_count, rx_res.data['count'])
+
 

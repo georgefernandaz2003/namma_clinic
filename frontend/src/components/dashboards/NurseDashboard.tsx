@@ -9,7 +9,7 @@ interface NurseDashboardProps {
   isToday: boolean;
 }
 
-export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date }) => {
+export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date, isToday = true }) => {
   const navigate = useNavigate();
   const kpis = summary?.kpis || {};
   const [triageQueue, setTriageQueue] = useState<any[]>([]);
@@ -63,13 +63,13 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date })
         </div>
       </div>
 
-      {/* 4 KPI Cards: 1. Total Patients Today OPD, 2. New Patients in OPD, 3. Triage Waiting, 4. Emergency & Red Flags */}
+      {/* 4 KPI Cards: 1. Total Patients OPD, 2. New Patients in OPD, 3. Triage Waiting, 4. Emergency & Red Flags */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Card 1: Total Patients Today OPD */}
         <div className="bg-white p-4 rounded-xl border border-purple-200 bg-purple-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-purple-800 uppercase flex items-center gap-1.5">
             <Users className="w-3.5 h-3.5 text-purple-600" />
-            Total Patients Today OPD
+            {isToday ? 'Total Patients Today OPD' : `OPD Patients — ${date}`}
           </p>
           <h3 className="text-xl font-black text-purple-900 mt-1">{summary?.todays_opd || 0}</h3>
           <p className="text-[10px] text-purple-700 font-medium mt-0.5">Total OPD Visits</p>

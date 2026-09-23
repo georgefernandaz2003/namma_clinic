@@ -39,18 +39,24 @@ def get_facility_scope(user, requested_facility_id=None):
             district_id = None
 
         if requested_facility_id:
-            selected_fac = district_fac_qs.filter(id=requested_facility_id).first()
-            if selected_fac:
-                return {
-                    'target_fac_ids': [selected_fac.id],
-                    'active_facility_id': selected_fac.id,
-                    'active_fac_name': selected_fac.facility_name,
-                    'active_fac_type': selected_fac.get_facility_type_display(),
-                    'district_name': district_name,
-                    'district_id': district_id,
-                    'fac_qs': district_fac_qs.filter(id=selected_fac.id),
-                    'total_facilities': 1
-                }
+            try:
+                fac_id_int = int(requested_facility_id)
+            except (ValueError, TypeError):
+                fac_id_int = None
+
+            if fac_id_int:
+                selected_fac = district_fac_qs.filter(id=fac_id_int).first()
+                if selected_fac:
+                    return {
+                        'target_fac_ids': [selected_fac.id],
+                        'active_facility_id': selected_fac.id,
+                        'active_fac_name': selected_fac.facility_name,
+                        'active_fac_type': selected_fac.get_facility_type_display(),
+                        'district_name': district_name,
+                        'district_id': district_id,
+                        'fac_qs': district_fac_qs.filter(id=selected_fac.id),
+                        'total_facilities': 1
+                    }
 
         # District-wide default
         target_fac_ids = list(district_fac_qs.values_list('id', flat=True))
@@ -92,36 +98,58 @@ def get_facility_scope(user, requested_facility_id=None):
 
 
 def get_patient_metrics(target_fac_ids, target_date):
-    """Authoritative patient metric calculations."""
+    """
+    Authoritative patient metric calculations:
+    - total: all registered patients at facility scope
+    - registered_today: patients registered on the target_date
+    - new_opd: distinct patients registered on target_date who attended OPD
+    """
     total = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids).count()
     registered_today = Patient.objects.filter(
         registered_at_facility_id__in=target_fac_ids,
         registration_date=target_date
     ).count()
 
-    # New OPD patients: distinct patients whose registration date equals target_date and who attended OPD
     new_opd = Visit.objects.filter(
         facility_id__in=target_fac_ids,
         opd_date=target_date,
         patient__registration_date=target_date
     ).values('patient').distinct().count()
 
+    male_count = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids, gender__iexact='MALE').count()
+    female_count = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids, gender__iexact='FEMALE').count()
+    other_count = total - (male_count + female_count)
+
     return {
         'total': total,
         'registered_today': registered_today,
-        'new_opd': new_opd
+        'new_opd': new_opd,
+        'male': male_count,
+        'female': female_count,
+        'other': max(0, other_count)
     }
 
 
 def get_visit_and_queue_metrics(target_fac_ids, target_date):
-    """Authoritative OPD visits and stage queue metrics."""
+    """
+    Authoritative OPD visits and stage queue metrics:
+    Single source of truth for:
+    - TRIAGE_WAITING (WAITING_FOR_TRIAGE, WAITING)
+    - IN_TRIAGE
+    - DOCTOR_WAITING (WAITING_FOR_DOCTOR, TRIAGED, LAB_COMPLETED)
+    - IN_CONSULTATION
+    - LAB_WAITING (LAB_PENDING, LAB_IN_PROGRESS)
+    - PHARMACY_WAITING (WAITING_FOR_PHARMACY, IN_PHARMACY)
+    - COMPLETED
+    """
     opd_visits_qs = Visit.objects.filter(facility_id__in=target_fac_ids, opd_date=target_date)
 
     total = opd_visits_qs.count()
     emergency = opd_visits_qs.filter(priority='EMERGENCY').count()
-    completed = opd_visits_qs.filter(status='COMPLETED').count()
+    completed = opd_visits_qs.filter(
+        Q(status='COMPLETED') | Q(current_queue='COMPLETED')
+    ).count()
 
-    # Queues:
     # 1. Triage Queue
     triage_waiting = opd_visits_qs.filter(
         current_queue='TRIAGE',
@@ -132,7 +160,7 @@ def get_visit_and_queue_metrics(target_fac_ids, target_date):
         status='IN_TRIAGE'
     ).count()
 
-    # 2. Doctor Queue
+    # 2. Doctor Queue (includes LAB_COMPLETED for re-consultation)
     doctor_waiting = opd_visits_qs.filter(
         current_queue='DOCTOR',
         status__in=['WAITING_FOR_DOCTOR', 'TRIAGED', 'LAB_COMPLETED']
@@ -143,26 +171,28 @@ def get_visit_and_queue_metrics(target_fac_ids, target_date):
     ).count()
 
     # 3. Lab Queue (Visits in LAB stage)
-    lab_pending = opd_visits_qs.filter(
+    lab_pending_visits = opd_visits_qs.filter(
         current_queue='LAB',
         status__in=['LAB_PENDING', 'LAB_IN_PROGRESS']
     ).count()
 
     # 4. Pharmacy Queue (Visits in PHARMACY stage)
-    pharmacy_waiting = opd_visits_qs.filter(
+    pharmacy_waiting_visits = opd_visits_qs.filter(
         current_queue='PHARMACY',
         status__in=['WAITING_FOR_PHARMACY', 'IN_PHARMACY']
     ).count()
 
-    total_waiting = triage_waiting + doctor_waiting + lab_pending + pharmacy_waiting
+    total_waiting = triage_waiting + doctor_waiting + lab_pending_visits + pharmacy_waiting_visits
 
     return {
         'visits': {
             'total': total,
             'waiting': total_waiting,
             'in_consultation': doctor_in_consultation,
-            'lab_pending': lab_pending,
-            'pharmacy_waiting': pharmacy_waiting,
+            'lab_pending': lab_pending_visits,
+            'lab_pending_visits': lab_pending_visits,
+            'pharmacy_waiting': pharmacy_waiting_visits,
+            'pharmacy_waiting_visits': pharmacy_waiting_visits,
             'completed': completed,
             'emergency': emergency
         },
@@ -171,68 +201,100 @@ def get_visit_and_queue_metrics(target_fac_ids, target_date):
             'triage_in_progress': triage_in_progress,
             'doctor_waiting': doctor_waiting,
             'doctor_in_consultation': doctor_in_consultation,
-            'lab_pending': lab_pending,
-            'pharmacy_waiting': pharmacy_waiting
+            'lab_pending': lab_pending_visits,
+            'lab_pending_visits': lab_pending_visits,
+            'pharmacy_waiting': pharmacy_waiting_visits,
+            'pharmacy_waiting_visits': pharmacy_waiting_visits
         }
     }
 
 
 def get_laboratory_metrics(target_fac_ids, target_date):
-    """Authoritative laboratory order and diagnostic test metrics."""
+    """
+    Authoritative laboratory order and diagnostic test metrics:
+    Explicitly distinguishes between Lab Orders and Lab Visits.
+    """
     lab_orders_qs = LabOrder.objects.filter(
         facility_id__in=target_fac_ids,
         order_date__date=target_date
     )
 
     total_orders = lab_orders_qs.count()
-    pending = lab_orders_qs.filter(status='ORDERED').count()
+    ordered = lab_orders_qs.filter(status='ORDERED').count()
     sample_collected = lab_orders_qs.filter(status='SAMPLE_COLLECTED').count()
-    result_pending = pending + sample_collected
+    result_pending = ordered + sample_collected
     verified = lab_orders_qs.filter(status='VERIFIED').count()
+
+    # Laboratory Visits in queue
+    lab_pending_visits = Visit.objects.filter(
+        facility_id__in=target_fac_ids,
+        opd_date=target_date,
+        current_queue='LAB',
+        status__in=['LAB_PENDING', 'LAB_IN_PROGRESS']
+    ).count()
 
     return {
         'total_orders': total_orders,
-        'pending': pending,
+        'ordered': ordered,
         'sample_collected': sample_collected,
         'result_pending': result_pending,
+        'pending': ordered,
+        'in_progress': sample_collected,
         'completed': verified,
-        'verified': verified
+        'verified': verified,
+        'lab_pending_orders': result_pending,
+        'lab_pending_visits': lab_pending_visits
     }
 
 
 def get_pharmacy_and_inventory_metrics(target_fac_ids, target_date):
-    """Authoritative pharmacy prescription orders and facility drug inventory metrics."""
-    # Prescriptions
+    """
+    Authoritative pharmacy prescription orders and facility drug inventory metrics.
+    Standardized:
+    - Real-time inventory as of today (documented via inventory_as_of)
+    - 60-day expiry window (EXPIRING_SOON_DAYS = 60)
+    - Low-stock rule: facility medicine total quantity <= MedicineMaster.minimum_stock
+    - Distinct master vs facility stock counts
+    """
+    # 1. Prescriptions for target_date
     rx_qs = Prescription.objects.filter(
         facility_id__in=target_fac_ids,
         date=target_date
     )
     total_prescriptions = rx_qs.count()
-    waiting = rx_qs.filter(status__in=['PENDING', 'ACTIVE', 'PARTIALLY_DISPENSED']).count()
-    dispensed = rx_qs.filter(status='DISPENSED').count()
+    pending_prescriptions = rx_qs.filter(status__in=['PENDING', 'ACTIVE']).count()
+    partially_dispensed = rx_qs.filter(status='PARTIALLY_DISPENSED').count()
+    dispensed_prescriptions = rx_qs.filter(status='DISPENSED').count()
 
-    # Inventory
-    inventory_batches = MedicineBatch.objects.filter(facility_id__in=target_fac_ids)
-    all_master_meds = MedicineMaster.objects.all()
-    medicine_master_total = all_master_meds.count()
+    pharmacy_waiting_visits = Visit.objects.filter(
+        facility_id__in=target_fac_ids,
+        opd_date=target_date,
+        current_queue='PHARMACY',
+        status__in=['WAITING_FOR_PHARMACY', 'IN_PHARMACY']
+    ).count()
 
-    stocked_medicines_ids = inventory_batches.values_list('medicine_id', flat=True).distinct()
-    stocked_medicines = len(stocked_medicines_ids)
-
+    # 2. Inventory (Real-time snapshot as of current date)
     today = datetime.date.today()
     expiring_threshold = today + datetime.timedelta(days=EXPIRING_SOON_DAYS)
 
-    low_stock_count = 0
-    out_of_stock_count = 0
+    inventory_batches = MedicineBatch.objects.filter(facility_id__in=target_fac_ids)
+    all_master_meds = MedicineMaster.objects.all()
+    total_medicine_master_records = all_master_meds.count()
+
+    stocked_medicines_ids = set(inventory_batches.values_list('medicine_id', flat=True).distinct())
+    total_medicines_stocked_at_facility = len(stocked_medicines_ids)
+
+    low_stock_medicines = 0
+    out_of_stock_medicines = 0
 
     for m in all_master_meds:
         m_batches = inventory_batches.filter(medicine=m)
         tot_qty = m_batches.aggregate(t=Sum('quantity'))['t'] or 0
         threshold = m.minimum_stock or m.reorder_level or 0
         if tot_qty == 0:
-            out_of_stock_count += 1
+            out_of_stock_medicines += 1
         elif threshold > 0 and tot_qty <= threshold:
-            low_stock_count += 1
+            low_stock_medicines += 1
 
     low_stock_batches = 0
     for b in inventory_batches.filter(quantity__gt=0).select_related('medicine'):
@@ -240,58 +302,84 @@ def get_pharmacy_and_inventory_metrics(target_fac_ids, target_date):
         if threshold > 0 and b.quantity <= threshold:
             low_stock_batches += 1
 
-    expiring_soon_count = inventory_batches.filter(
+    expiring_soon_batches = inventory_batches.filter(
         quantity__gt=0,
-        expiry_date__gt=today,
+        expiry_date__gte=today,
         expiry_date__lte=expiring_threshold
     ).count()
 
-    expired_count = inventory_batches.filter(
-        Q(expiry_date__lte=today) | Q(status='EXPIRED')
+    expired_batches = inventory_batches.filter(
+        Q(expiry_date__lt=today) | Q(status='EXPIRED')
     ).count()
 
     return {
+        # Prescription metrics
         'total_prescriptions': total_prescriptions,
-        'waiting': waiting,
-        'dispensed': dispensed,
-        'medicine_master_total': medicine_master_total,
-        'stocked_medicines': stocked_medicines,
-        'low_stock': low_stock_count,
-        'low_stock_medicines': low_stock_count,
+        'pending_prescriptions': pending_prescriptions,
+        'partially_dispensed': partially_dispensed,
+        'dispensed_prescriptions': dispensed_prescriptions,
+        'waiting': pending_prescriptions + partially_dispensed,
+        'dispensed': dispensed_prescriptions,
+        'pharmacy_waiting_visits': pharmacy_waiting_visits,
+
+        # Real-time inventory metrics
+        'inventory_as_of': today.isoformat(),
+        'total_medicine_master_records': total_medicine_master_records,
+        'total_medicines_stocked_at_facility': total_medicines_stocked_at_facility,
+        'total_medicines': total_medicine_master_records,
+        'stocked_medicines': total_medicines_stocked_at_facility,
+        'out_of_stock_medicines': out_of_stock_medicines,
+        'out_of_stock': out_of_stock_medicines,
+        'low_stock_medicines': low_stock_medicines,
+        'low_stock': low_stock_medicines,
         'low_stock_batches': low_stock_batches,
-        'out_of_stock': out_of_stock_count,
-        'expiring_soon': expiring_soon_count,
-        'expired': expired_count
+        'expiring_soon_batches': expiring_soon_batches,
+        'expiring_soon': expiring_soon_batches,
+        'expired_batches': expired_batches,
+        'expired': expired_batches
     }
 
 
 def get_referral_metrics(target_fac_ids):
     """
-    Authoritative cross-facility referral metrics.
-    A referral belongs to the facility scope if the facility is either the source or destination.
+    Authoritative cross-facility referral metrics with clear source vs destination semantics:
+    - pending_outgoing: source facility = current scope AND status in pending statuses
+    - incoming: destination facility = current scope AND status in active/incoming statuses
+    - completed: source or destination in scope AND status completed
+    - total: total referrals involving the facility scope
     """
     ref_qs = Referral.objects.filter(
         Q(source_facility_id__in=target_fac_ids) | Q(destination_facility_id__in=target_fac_ids)
     ).distinct()
 
-    pending = ref_qs.filter(status__in=['CREATED', 'IN_TRANSIT']).count()
+    pending_outgoing = Referral.objects.filter(
+        source_facility_id__in=target_fac_ids,
+        status__in=['CREATED', 'IN_TRANSIT']
+    ).count()
+
+    incoming = Referral.objects.filter(
+        destination_facility_id__in=target_fac_ids,
+        status__in=['CREATED', 'ACCEPTED', 'IN_TRANSIT', 'REACHED', 'UNDER_TREATMENT']
+    ).count()
+
     accepted = ref_qs.filter(status='ACCEPTED').count()
-    in_transit = ref_qs.filter(status='IN_TRANSIT').count()
-    under_treatment = ref_qs.filter(status='UNDER_TREATMENT').count()
     completed = ref_qs.filter(status__in=['COMPLETED', 'CLOSED']).count()
 
     return {
-        'pending': pending,
+        'pending_outgoing': pending_outgoing,
+        'incoming': incoming,
+        'pending': pending_outgoing,
         'accepted': accepted,
-        'in_transit': in_transit,
-        'under_treatment': under_treatment,
         'completed': completed,
         'total': ref_qs.count()
     }
 
 
 def get_staff_metrics(target_fac_ids):
-    """Authoritative staff count metrics partitioned by role and is_active."""
+    """
+    Authoritative staff count metrics partitioned by role and is_active.
+    Enforces active + inactive == total for every role.
+    """
     staff_qs = User.objects.filter(assigned_facility_id__in=target_fac_ids)
 
     def _role_stat(role_code):
@@ -304,11 +392,21 @@ def get_staff_metrics(target_fac_ids):
             'total': active + inactive
         }
 
+    doctors = _role_stat('DOCTOR')
+    nurses = _role_stat('NURSE')
+    lab_techs = _role_stat('LAB_TECHNICIAN')
+    pharmacists = _role_stat('PHARMACIST')
+    admins = _role_stat('HOSPITAL_ADMIN')
+
+    total_active = doctors['active'] + nurses['active'] + lab_techs['active'] + pharmacists['active'] + admins['active']
+
     return {
-        'doctors': _role_stat('DOCTOR'),
-        'nurses': _role_stat('NURSE'),
-        'lab_technicians': _role_stat('LAB_TECHNICIAN'),
-        'pharmacists': _role_stat('PHARMACIST')
+        'doctors': doctors,
+        'nurses': nurses,
+        'lab_technicians': lab_techs,
+        'pharmacists': pharmacists,
+        'admins': admins,
+        'total_active_staff': total_active
     }
 
 
@@ -324,6 +422,7 @@ def get_alert_metrics(target_fac_ids):
         'new': new_count,
         'acknowledged': ack_count,
         'resolved': resolved_count,
+        'active': new_count + ack_count,
         'total': alert_qs.count()
     }
 
@@ -331,20 +430,15 @@ def get_alert_metrics(target_fac_ids):
 def get_facility_overview(fac_qs, target_date):
     """
     Facility Operation Overview: Evaluates each healthcare facility using
-    identical backend business rules.
+    the EXACT same shared metric calculations used by the rest of the dashboard.
     """
     facility_overview = []
     for fac in fac_qs:
-        fac_opd = Visit.objects.filter(facility=fac, opd_date=target_date)
-        pats = fac_opd.count()
-        wait = fac_opd.filter(
-            status__in=['WAITING_FOR_TRIAGE', 'WAITING_FOR_DOCTOR', 'WAITING_FOR_PHARMACY', 'WAITING', 'TRIAGED']
-        ).count()
-        refs = Referral.objects.filter(
-            Q(source_facility=fac) | Q(destination_facility=fac),
-            status__in=['CREATED', 'IN_TRANSIT']
-        ).count()
-        alerts_cnt = Alert.objects.filter(facility=fac, status='NEW').count()
+        v_met = get_visit_and_queue_metrics([fac.id], target_date)
+        pats = v_met['visits']['total']
+        wait = v_met['visits']['waiting']
+        refs = get_referral_metrics([fac.id])['pending_outgoing']
+        alerts_cnt = get_alert_metrics([fac.id])['new']
 
         if wait > 5 or alerts_cnt > 0:
             op_status = 'Attention Required'
@@ -456,7 +550,7 @@ def get_action_required(role, v_metrics, lab_metrics, pharm_metrics, ref_metrics
         if lab_pending > 0:
             action_required.append({
                 'id': 'act-lab-1',
-                'title': f'{lab_pending} Lab Samples Pending Result Verification',
+                'title': f'{lab_pending} Lab Orders Pending Sample or Result Verification',
                 'severity': 'HIGH',
                 'module': 'Laboratory'
             })
@@ -535,6 +629,40 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
         'facility_overview': facility_overview,
         'action_required': action_required,
 
+        # Role-specific summary contracts
+        'pharmacy_summary': {
+            'total_prescriptions': pharmacy['total_prescriptions'],
+            'pending_prescriptions': pharmacy['pending_prescriptions'],
+            'partially_dispensed': pharmacy['partially_dispensed'],
+            'dispensed_prescriptions': pharmacy['dispensed_prescriptions'],
+            'low_stock': pharmacy['low_stock'],
+            'out_of_stock': pharmacy['out_of_stock'],
+            'expiring_soon': pharmacy['expiring_soon'],
+            'expired': pharmacy['expired']
+        },
+        'lab_summary': {
+            'total_orders': laboratory['total_orders'],
+            'ordered': laboratory['ordered'],
+            'sample_collected': laboratory['sample_collected'],
+            'result_pending': laboratory['result_pending'],
+            'verified': laboratory['verified'],
+            'completed': laboratory['completed'],
+            'lab_pending_orders': laboratory['lab_pending_orders'],
+            'lab_pending_visits': laboratory['lab_pending_visits']
+        },
+        'queue_summary': {
+            'todays_opd': v_metrics['visits']['total'],
+            'waiting': v_metrics['visits']['waiting'],
+            'triage_waiting': v_metrics['queues']['triage_waiting'],
+            'triage_in_progress': v_metrics['queues']['triage_in_progress'],
+            'doctor_waiting': v_metrics['queues']['doctor_waiting'],
+            'doctor_in_consultation': v_metrics['queues']['doctor_in_consultation'],
+            'lab_pending': v_metrics['queues']['lab_pending'],
+            'pharmacy_waiting': v_metrics['queues']['pharmacy_waiting'],
+            'completed': v_metrics['visits']['completed'],
+            'emergency': v_metrics['visits']['emergency']
+        },
+
         # Backward-compatible top-level keys
         'active_facility_id': scope['active_facility_id'],
         'active_facility': scope['active_fac_name'],
@@ -556,16 +684,20 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
         },
         'staff_status': staff,
         'inventory_summary': {
-            'total_medicines': pharmacy['medicine_master_total'],
-            'stocked_medicines': pharmacy['stocked_medicines'],
-            'low_stock': pharmacy['low_stock'],
+            'inventory_as_of': pharmacy['inventory_as_of'],
+            'total_medicines': pharmacy['total_medicine_master_records'],
+            'total_medicine_master_records': pharmacy['total_medicine_master_records'],
+            'total_medicines_stocked_at_facility': pharmacy['total_medicines_stocked_at_facility'],
+            'stocked_medicines': pharmacy['total_medicines_stocked_at_facility'],
+            'low_stock': pharmacy['low_stock_medicines'],
             'low_stock_medicines': pharmacy['low_stock_medicines'],
             'low_stock_batches': pharmacy['low_stock_batches'],
-            'out_of_stock': pharmacy['out_of_stock'],
-            'expiring_soon': pharmacy['expiring_soon'],
-            'expiring_soon_batches': pharmacy['expiring_soon'],
-            'expired': pharmacy['expired'],
-            'expired_batches': pharmacy['expired']
+            'out_of_stock': pharmacy['out_of_stock_medicines'],
+            'out_of_stock_medicines': pharmacy['out_of_stock_medicines'],
+            'expiring_soon': pharmacy['expiring_soon_batches'],
+            'expiring_soon_batches': pharmacy['expiring_soon_batches'],
+            'expired': pharmacy['expired_batches'],
+            'expired_batches': pharmacy['expired_batches']
         },
         'referrals_summary': {
             'pending': referrals['pending'],
@@ -584,8 +716,8 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
             'emergency': v_metrics['visits']['emergency'],
             'registered_today': patients['registered_today'],
             'new_opd_patients': patients['new_opd'],
-            'low_stock': pharmacy['low_stock'],
-            'expiring_soon': pharmacy['expiring_soon'],
-            'expired': pharmacy['expired']
+            'low_stock': pharmacy['low_stock_medicines'],
+            'expiring_soon': pharmacy['expiring_soon_batches'],
+            'expired': pharmacy['expired_batches']
         }
     }

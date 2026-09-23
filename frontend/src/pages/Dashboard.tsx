@@ -134,9 +134,9 @@ export const Dashboard: React.FC = () => {
       {(() => {
         switch (user?.role) {
           case 'DISTRICT_OFFICER':
-            return <DistrictOfficerDashboard summary={summary} />;
+            return <DistrictOfficerDashboard summary={summary} date={selectedDate} isToday={isToday} />;
           case 'HOSPITAL_ADMIN':
-            return <HospitalAdminDashboard summary={summary} />;
+            return <HospitalAdminDashboard summary={summary} date={selectedDate} isToday={isToday} />;
           case 'DOCTOR':
             return <DoctorDashboard summary={summary} date={selectedDate} isToday={isToday} />;
           case 'NURSE':

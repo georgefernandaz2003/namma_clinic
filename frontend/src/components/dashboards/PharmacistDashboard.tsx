@@ -89,7 +89,7 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <p className="text-[11px] font-bold text-slate-500 uppercase">Prescriptions</p>
           <h3 className="text-xl font-black text-slate-900 mt-1">
-            {summary?.pharmacy?.total_prescriptions ?? prescriptions.length}
+            {summary?.pharmacy_summary?.total_prescriptions ?? summary?.pharmacy?.total_prescriptions ?? 0}
           </h3>
           <p className="text-[10px] text-amber-700 font-medium mt-0.5">Total EMR Orders</p>
         </div>
@@ -97,7 +97,7 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
         <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-amber-800 uppercase">Waiting</p>
           <h3 className="text-xl font-black text-amber-900 mt-1">
-            {summary?.pharmacy?.waiting ?? summary?.kpis?.pharmacy_waiting ?? prescriptions.filter(p => p.status === 'PENDING' || p.status === 'ACTIVE' || p.status === 'PARTIALLY_DISPENSED').length}
+            {summary?.pharmacy_summary?.pending_prescriptions ?? summary?.pharmacy?.waiting ?? summary?.kpis?.pharmacy_waiting ?? 0}
           </h3>
           <p className="text-[10px] text-amber-700 font-medium mt-0.5">Dispense Queue</p>
         </div>
@@ -105,9 +105,11 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
         <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-emerald-800 uppercase">Dispensed</p>
           <h3 className="text-xl font-black text-emerald-900 mt-1">
-            {summary?.pharmacy?.dispensed ?? prescriptions.filter(p => p.status === 'DISPENSED').length}
+            {summary?.pharmacy_summary?.dispensed_prescriptions ?? summary?.pharmacy?.dispensed ?? 0}
           </h3>
-          <p className="text-[10px] text-emerald-700 font-medium mt-0.5">Completed Today</p>
+          <p className="text-[10px] text-emerald-700 font-medium mt-0.5">
+            {isToday ? 'Completed Today' : `Completed on ${date}`}
+          </p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/30 shadow-xs">
@@ -115,7 +117,9 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
           <h3 className="text-xl font-black text-rose-900 mt-1">
             {summary?.pharmacy?.low_stock ?? inventory.low_stock ?? 0}
           </h3>
-          <p className="text-[10px] text-rose-700 font-medium mt-0.5">Below Threshold</p>
+          <p className="text-[10px] text-rose-700 font-medium mt-0.5">
+            Stocked Medicines &le; Min
+          </p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-orange-200 bg-orange-50/30 shadow-xs">
@@ -123,7 +127,9 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
           <h3 className="text-xl font-black text-orange-900 mt-1">
             {summary?.pharmacy?.expiring_soon ?? inventory.expiring_soon ?? 0}
           </h3>
-          <p className="text-[10px] text-orange-700 font-medium mt-0.5">FEFO Action Required</p>
+          <p className="text-[10px] text-orange-700 font-medium mt-0.5">
+            Next 60 Days (As of {summary?.inventory_summary?.inventory_as_of || 'Today'})
+          </p>
         </div>
       </div>
 
@@ -198,7 +204,7 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
             <div>
               <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-600" />
-                Pharmacy Queue
+                Pharmacy Queue ({date})
               </h2>
               <p className="text-xs text-slate-500">Prescriptions waiting for drug issue</p>
             </div>

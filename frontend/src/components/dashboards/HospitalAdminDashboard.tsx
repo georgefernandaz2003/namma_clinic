@@ -4,15 +4,18 @@ import { Link } from 'react-router-dom';
 
 interface HospitalAdminDashboardProps {
   summary: any;
+  date?: string;
+  isToday?: boolean;
 }
 
-export const HospitalAdminDashboard: React.FC<HospitalAdminDashboardProps> = ({ summary }) => {
+export const HospitalAdminDashboard: React.FC<HospitalAdminDashboardProps> = ({ summary, date, isToday = true }) => {
   const kpis = summary?.kpis || {};
   const stageFlow = summary?.opd_stage_flow || {};
   const staff = summary?.staff_status || {};
   const inventory = summary?.inventory_summary || {};
   const referrals = summary?.referrals_summary || {};
   const actionRequired = summary?.action_required || [];
+  const activeDate = date || summary?.date || '';
 
   return (
     <div className="space-y-6">
@@ -37,7 +40,9 @@ export const HospitalAdminDashboard: React.FC<HospitalAdminDashboardProps> = ({ 
       {/* 6 Primary KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <p className="text-[11px] font-bold text-slate-500 uppercase">Patients Today</p>
+          <p className="text-[11px] font-bold text-slate-500 uppercase">
+            {isToday ? 'Patients Today' : `Patients — ${activeDate}`}
+          </p>
           <h3 className="text-xl font-black text-slate-900 mt-1">{summary?.todays_opd || 0}</h3>
           <p className="text-[10px] text-emerald-700 font-medium mt-0.5">Facility Footfall</p>
         </div>
@@ -69,7 +74,9 @@ export const HospitalAdminDashboard: React.FC<HospitalAdminDashboardProps> = ({ 
         <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-emerald-800 uppercase">Completed</p>
           <h3 className="text-xl font-black text-emerald-900 mt-1">{kpis.completed || 0}</h3>
-          <p className="text-[10px] text-emerald-700 font-medium mt-0.5">Discharged Today</p>
+          <p className="text-[10px] text-emerald-700 font-medium mt-0.5">
+            {isToday ? 'Discharged Today' : `Completed on ${activeDate}`}
+          </p>
         </div>
       </div>
 

@@ -4,11 +4,14 @@ import { Link } from 'react-router-dom';
 
 interface DistrictOfficerDashboardProps {
   summary: any;
+  date?: string;
+  isToday?: boolean;
 }
 
-export const DistrictOfficerDashboard: React.FC<DistrictOfficerDashboardProps> = ({ summary }) => {
+export const DistrictOfficerDashboard: React.FC<DistrictOfficerDashboardProps> = ({ summary, date, isToday = true }) => {
   const facilityOverview = summary?.facility_overview || [];
   const actionRequired = summary?.action_required || [];
+  const activeDate = date || summary?.date || '';
 
   return (
     <div className="space-y-6">
@@ -59,9 +62,13 @@ export const DistrictOfficerDashboard: React.FC<DistrictOfficerDashboardProps> =
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">OPD Patients Today</p>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                {isToday ? 'OPD Patients Today' : `OPD Patients — ${activeDate}`}
+              </p>
               <h3 className="text-2xl font-black text-slate-900 mt-1">{summary?.todays_opd?.toLocaleString() || 0}</h3>
-              <p className="text-[10px] text-blue-700 font-semibold mt-1">Date OPD Footfall</p>
+              <p className="text-[10px] text-blue-700 font-semibold mt-1">
+                {isToday ? 'Today Footfall' : `Footfall on ${activeDate}`}
+              </p>
             </div>
             <div className="p-3 bg-blue-50 rounded-xl text-blue-700 border border-blue-100">
               <Activity className="w-5 h-5" />
