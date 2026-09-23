@@ -6,6 +6,7 @@ import { Shield, KeyRound, UserCheck } from 'lucide-react';
 const demoUsers = [
   { role: 'District Officer', username: 'district', password: 'district123', desc: 'District-Wide Operations & Monitoring Scope' },
   { role: 'Hospital Admin (DH)', username: 'dh_admin', password: 'dh123', desc: 'District Hospital Facilities & Operations' },
+  { role: 'Hospital Admin (Varthur)', username: 'varthur_admin', password: 'varthur123', desc: 'Varthur Rural Primary Clinic A4 Operations & Facilities' },
   { role: 'Doctor (VH1 MO)', username: 'vh1_doctor', password: 'vh1doc123', desc: 'Village Hospital 1 Clinical & OPD Queue' },
   { role: 'Doctor (SDH Specialist)', username: 'sdh_doctor', password: 'sdhdoc123', desc: 'Sub-District Hospital Clinical Operations' },
   { role: 'Doctor (DH Specialist)', username: 'dh_doctor', password: 'dhdoc123', desc: 'District Hospital Tertiary Consultations' },

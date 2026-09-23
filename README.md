@@ -144,6 +144,7 @@ The `seed_demo` command automatically populates the system with pre-configured a
 | **Super Admin** | `admin` | `admin123` | System-wide full administrative access |
 | **District Admin** | `district` | `district123` | District Health Officer (BBMP Central) |
 | **Hospital Admin** | `hospital` | `hospital123` | KC General Secondary Hospital |
+| **Hospital Admin** | `varthur_admin` | `varthur123` | Varthur Rural Primary Clinic A4 |
 | **Medical Officer** | `doctor` | `doctor123` | Varthur Rural Primary Clinic A4 |
 | **Staff Nurse** | `nurse` | `nurse123` | Varthur Rural Primary Clinic A4 |
 | **Lab Technician** | `lab` | `lab123` | Varthur Rural Primary Clinic A4 |

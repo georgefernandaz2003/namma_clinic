@@ -162,6 +162,7 @@ class Command(BaseCommand):
         u_hosp = User.objects.create_user('hospital', 'hospital@nammaclinic.gov.in', 'hospital123', full_name='Dr. K. V. Sharma (District Hospital Supt)', role='HOSPITAL_ADMIN', assigned_facility=hosp_a)
         u_sdh_admin = User.objects.create_user('sdh_admin', 'sdh_admin@nammaclinic.gov.in', 'sdh123', full_name='Dr. Meena Swamy (Sub-District Admin)', role='HOSPITAL_ADMIN', assigned_facility=nc_a1)
         u_vh1_admin = User.objects.create_user('vh1_admin', 'vh1_admin@nammaclinic.gov.in', 'vh1123', full_name='Dr. Ramesh Rao (Village Hospital 1 Admin)', role='HOSPITAL_ADMIN', assigned_facility=rc_a4)
+        u_varthur_admin = User.objects.create_user('varthur_admin', 'varthur_admin@nammaclinic.gov.in', 'varthur123', full_name='Dr. Anita Desai (Varthur Clinic Admin)', role='HOSPITAL_ADMIN', assigned_facility=rc_a4)
         u_vh2_admin = User.objects.create_user('vh2_admin', 'vh2_admin@nammaclinic.gov.in', 'vh2123', full_name='Dr. Anand Kumar (Village Hospital 2 Admin)', role='HOSPITAL_ADMIN', assigned_facility=vc_a4_1)
 
         # Doctors for ALL 4 Facilities
