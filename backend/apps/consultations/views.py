@@ -71,9 +71,9 @@ class ConsultationViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         data = request.data
-        visit_id = data.get('visit')
-        patient_id = data.get('patient')
-        facility_id = data.get('facility')
+        visit_id = data.get('visit') or data.get('visit_id')
+        patient_id = data.get('patient') or data.get('patient_id')
+        facility_id = data.get('facility') or data.get('facility_id')
         
         consultation = Consultation.objects.filter(visit_id=visit_id).first()
         if consultation:

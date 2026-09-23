@@ -5,20 +5,18 @@ import { Shield, KeyRound, UserCheck } from 'lucide-react';
 
 const demoUsers = [
   { role: 'District Officer', username: 'district', password: 'district123', desc: 'District-Wide Operations & Monitoring Scope' },
-  { role: 'Hospital Admin (DH)', username: 'dh_admin', password: 'dh123', desc: 'District Hospital Facilities & Operations' },
-  { role: 'Doctor (VH1 MO)', username: 'vh1_doctor', password: 'vh1doc123', desc: 'Village Hospital 1 Clinical & OPD Queue' },
-  { role: 'Doctor (SDH Specialist)', username: 'sdh_doctor', password: 'sdhdoc123', desc: 'Sub-District Hospital Clinical Operations' },
-  { role: 'Doctor (DH Specialist)', username: 'dh_doctor', password: 'dhdoc123', desc: 'District Hospital Tertiary Consultations' },
-  { role: 'Staff Nurse (VH1)', username: 'nurse', password: 'nurse123', desc: 'Patient Registration & Vitals Triage' },
-  { role: 'Lab Technician (SDH)', username: 'lab', password: 'lab123', desc: 'Diagnostic Lab Test Processing' },
-  { role: 'Pharmacist (VH1)', username: 'pharmacy', password: 'pharmacy123', desc: 'FEFO Drug Dispensing & Stock Management' }
+  { role: 'Hospital Admin', username: 'vh1_admin', password: 'vh1admin123', desc: 'VH1 Hospital Administration' },
+  { role: 'Doctor', username: 'vh1_doctor', password: 'vh1doc123', desc: 'VH1 Clinical & OPD Queue' },
+  { role: 'Staff Nurse', username: 'vh1_nurse', password: 'vh1nurse123', desc: 'VH1 Patient Registration & Vitals Triage' },
+  { role: 'Lab Technician', username: 'vh1_lab', password: 'vh1lab123', desc: 'VH1 Diagnostic Lab Processing' },
+  { role: 'Pharmacist', username: 'vh1_pharmacy', password: 'vh1pharm123', desc: 'VH1 FEFO Drug Dispensing & Stock Management' }
 ];
 
 export const Login: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState('vh1_doctor');
-  const [password, setPassword] = useState('vh1doc123');
+  const [username, setUsername] = useState('vh1_nurse');
+  const [password, setPassword] = useState('vh1nurse123');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 

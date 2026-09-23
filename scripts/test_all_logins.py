@@ -6,11 +6,17 @@ BASE_URL = "http://127.0.0.1:8000/api"
 
 roles_to_test = [
     {"role": "District Officer", "username": "district", "password": "district123", "expected_role": "DISTRICT_OFFICER"},
-    {"role": "Hospital Admin", "username": "hospital", "password": "hospital123", "expected_role": "HOSPITAL_ADMIN"},
-    {"role": "Doctor", "username": "doctor", "password": "doctor123", "expected_role": "DOCTOR"},
-    {"role": "Staff Nurse", "username": "nurse", "password": "nurse123", "expected_role": "NURSE"},
-    {"role": "Lab Technician", "username": "lab", "password": "lab123", "expected_role": "LAB_TECHNICIAN"},
-    {"role": "Pharmacist", "username": "pharmacy", "password": "pharmacy123", "expected_role": "PHARMACIST"},
+    {"role": "Hospital Admin (VH1)", "username": "vh1_admin", "password": "vh1admin123", "expected_role": "HOSPITAL_ADMIN"},
+    {"role": "Doctor (VH1)", "username": "vh1_doctor", "password": "vh1doc123", "expected_role": "DOCTOR"},
+    {"role": "Staff Nurse (VH1)", "username": "vh1_nurse", "password": "vh1nurse123", "expected_role": "NURSE"},
+    {"role": "Lab Technician (VH1)", "username": "vh1_lab", "password": "vh1lab123", "expected_role": "LAB_TECHNICIAN"},
+    {"role": "Pharmacist (VH1)", "username": "vh1_pharmacy", "password": "vh1pharm123", "expected_role": "PHARMACIST"},
+    # Legacy alias users
+    {"role": "Hospital Admin (Legacy)", "username": "hospital", "password": "hospital123", "expected_role": "HOSPITAL_ADMIN"},
+    {"role": "Doctor (Legacy)", "username": "doctor", "password": "doctor123", "expected_role": "DOCTOR"},
+    {"role": "Staff Nurse (Legacy)", "username": "nurse", "password": "nurse123", "expected_role": "NURSE"},
+    {"role": "Lab Technician (Legacy)", "username": "lab", "password": "lab123", "expected_role": "LAB_TECHNICIAN"},
+    {"role": "Pharmacist (Legacy)", "username": "pharmacy", "password": "pharmacy123", "expected_role": "PHARMACIST"},
 ]
 
 def make_req(endpoint, method="GET", data=None, token=None):

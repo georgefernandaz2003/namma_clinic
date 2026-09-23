@@ -161,7 +161,7 @@ class Command(BaseCommand):
         u_dh_admin = User.objects.create_user('dh_admin', 'dh_admin@nammaclinic.gov.in', 'dh123', full_name='Dr. K. V. Sharma (District Hospital Supt)', role='HOSPITAL_ADMIN', assigned_facility=hosp_a)
         u_hosp = User.objects.create_user('hospital', 'hospital@nammaclinic.gov.in', 'hospital123', full_name='Dr. K. V. Sharma (District Hospital Supt)', role='HOSPITAL_ADMIN', assigned_facility=hosp_a)
         u_sdh_admin = User.objects.create_user('sdh_admin', 'sdh_admin@nammaclinic.gov.in', 'sdh123', full_name='Dr. Meena Swamy (Sub-District Admin)', role='HOSPITAL_ADMIN', assigned_facility=nc_a1)
-        u_vh1_admin = User.objects.create_user('vh1_admin', 'vh1_admin@nammaclinic.gov.in', 'vh1123', full_name='Dr. Ramesh Rao (Village Hospital 1 Admin)', role='HOSPITAL_ADMIN', assigned_facility=rc_a4)
+        u_vh1_admin = User.objects.create_user('vh1_admin', 'vh1_admin@nammaclinic.gov.in', 'vh1admin123', full_name='Dr. Ramesh Rao (Village Hospital 1 Admin)', role='HOSPITAL_ADMIN', assigned_facility=rc_a4)
         u_vh2_admin = User.objects.create_user('vh2_admin', 'vh2_admin@nammaclinic.gov.in', 'vh2123', full_name='Dr. Anand Kumar (Village Hospital 2 Admin)', role='HOSPITAL_ADMIN', assigned_facility=vc_a4_1)
 
         # Doctors for ALL 4 Facilities
@@ -172,13 +172,16 @@ class Command(BaseCommand):
         u_vh2_doc = User.objects.create_user('vh2_doctor', 'vh2_doctor@nammaclinic.gov.in', 'vh2doc123', full_name='Dr. Suresh V. (Village Hospital 2 MO)', role='DOCTOR', assigned_facility=vc_a4_1)
 
         # Clinical Staff for ALL 4 Facilities
+        u_vh1_nurse = User.objects.create_user('vh1_nurse', 'vh1_nurse@nammaclinic.gov.in', 'vh1nurse123', full_name='Sister Priya Nair (VH1 Staff Nurse)', role='NURSE', assigned_facility=rc_a4)
         u_nurse = User.objects.create_user('nurse', 'nurse@nammaclinic.gov.in', 'nurse123', full_name='Sister Priya Nair', role='NURSE', assigned_facility=rc_a4)
         u_sdh_nurse = User.objects.create_user('sdh_nurse', 'sdh_nurse@nammaclinic.gov.in', 'sdhnurse123', full_name='Sister Kavitha R.', role='NURSE', assigned_facility=nc_a1)
         u_dh_nurse = User.objects.create_user('dh_nurse', 'dh_nurse@nammaclinic.gov.in', 'dhnurse123', full_name='Sister Mary Joseph', role='NURSE', assigned_facility=hosp_a)
 
+        u_vh1_lab = User.objects.create_user('vh1_lab', 'vh1_lab@nammaclinic.gov.in', 'vh1lab123', full_name='Mr. Suresh Gowda (VH1 Lab Technician)', role='LAB_TECHNICIAN', assigned_facility=rc_a4)
         u_lab = User.objects.create_user('lab', 'lab@nammaclinic.gov.in', 'lab123', full_name='Mr. Suresh Gowda', role='LAB_TECHNICIAN', assigned_facility=rc_a4)
         u_dh_lab = User.objects.create_user('dh_lab', 'dh_lab@nammaclinic.gov.in', 'dhlab123', full_name='Mr. Chethan M.', role='LAB_TECHNICIAN', assigned_facility=hosp_a)
 
+        u_vh1_pharm = User.objects.create_user('vh1_pharmacy', 'vh1_pharmacy@nammaclinic.gov.in', 'vh1pharm123', full_name='Mrs. Lakshmi Devi (VH1 Pharmacist)', role='PHARMACIST', assigned_facility=rc_a4)
         u_pharm = User.objects.create_user('pharmacy', 'pharmacy@nammaclinic.gov.in', 'pharmacy123', full_name='Mrs. Lakshmi Devi', role='PHARMACIST', assigned_facility=rc_a4)
         u_dh_pharm = User.objects.create_user('dh_pharmacy', 'dh_pharmacy@nammaclinic.gov.in', 'dhpharm123', full_name='Mr. Mahesh Babu', role='PHARMACIST', assigned_facility=hosp_a)
 
