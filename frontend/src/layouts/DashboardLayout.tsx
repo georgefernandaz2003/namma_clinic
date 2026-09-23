@@ -99,7 +99,6 @@ const ROLE_NAV_SECTIONS: Record<Role, NavSection[]> = {
       title: 'DIAGNOSTICS',
       items: [
         { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-purple-600" /> },
-        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-purple-600" /> },
         { name: 'Diagnostics Lab', path: '/lab', icon: <TestTube className="w-4 h-4 text-purple-600" /> },
       ],
     },
@@ -115,7 +114,6 @@ const ROLE_NAV_SECTIONS: Record<Role, NavSection[]> = {
       title: 'PHARMACY & DRUG LEDGER',
       items: [
         { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-amber-600" /> },
-        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-amber-600" /> },
         { name: 'Pharmacy & FEFO', path: '/pharmacy', icon: <Pill className="w-4 h-4 text-amber-600" /> },
         { name: 'Clinic Infra & Maintenance', path: '/infrastructure', icon: <Wrench className="w-4 h-4 text-amber-600" /> },
       ],
