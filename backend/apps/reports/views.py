@@ -371,7 +371,7 @@ class ResetDemoView(APIView):
 
     def post(self, request):
         try:
-            call_command('seed_demo')
+            call_command('reset_demo_data', confirm_demo_reset=True)
             return Response({'status': 'SUCCESS', 'message': 'Demo dataset reset to pristine demonstration state!'})
         except Exception as e:
             return Response({'status': 'ERROR', 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
