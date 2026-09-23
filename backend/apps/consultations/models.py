@@ -2,9 +2,11 @@ from django.db import models
 from django.core.exceptions import ValidationError
 
 class Consultation(models.Model):
-    visit = models.OneToOneField('visits.Visit', on_delete=models.CASCADE, related_name='consultation')
+    visit = models.ForeignKey('visits.Visit', on_delete=models.CASCADE, related_name='consultations')
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='consultations')
     doctor = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)
+    doctor_staff = models.ForeignKey('accounts.StaffProfile', on_delete=models.RESTRICT, null=True, blank=True, related_name='conducted_consultations')
+    consultation_sequence = models.IntegerField(default=1)
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE)
     
     chief_complaint = models.TextField()
@@ -26,6 +28,8 @@ class Prescription(models.Model):
     consultation = models.OneToOneField(Consultation, on_delete=models.CASCADE, related_name='prescription')
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE)
     doctor = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)
+    doctor_staff = models.ForeignKey('accounts.StaffProfile', on_delete=models.RESTRICT, null=True, blank=True, related_name='authored_prescriptions')
+    consultation_sequence = models.IntegerField(default=1)
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE)
     date = models.DateField(auto_now_add=True)
     
@@ -91,3 +95,39 @@ class PrescriptionItem(models.Model):
 
     def __str__(self):
         return f"{self.medicine_name} ({self.dispensed_quantity}/{self.quantity} dispensed) - {self.status}"
+
+class DiagnosisMaster(models.Model):
+    icd10_code = models.CharField(max_length=20, unique=True)
+    description = models.TextField()
+    category = models.CharField(max_length=100, blank=True, default='')
+    is_notifiable = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'diagnosis_masters'
+
+    def __str__(self):
+        return f"{self.icd10_code} - {self.description}"
+
+class Diagnosis(models.Model):
+    consultation = models.ForeignKey(Consultation, on_delete=models.CASCADE, related_name='diagnoses')
+    diagnosis_master = models.ForeignKey(DiagnosisMaster, on_delete=models.RESTRICT, related_name='diagnoses')
+    diagnosis_type = models.CharField(max_length=20, default='WORKING', choices=[
+        ('ADMISSION', 'Admission'),
+        ('WORKING', 'Working'),
+        ('DISCHARGE', 'Discharge')
+    ])
+    certainty = models.CharField(max_length=20, default='PROVISIONAL', choices=[
+        ('PROVISIONAL', 'Provisional'),
+        ('CONFIRMED', 'Confirmed')
+    ])
+    is_primary = models.BooleanField(default=False)
+    notes = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'diagnoses'
+
+    def __str__(self):
+        return f"{self.diagnosis_master.icd10_code} [{self.certainty}] for Consultation #{self.consultation_id}"

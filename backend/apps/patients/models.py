@@ -2,6 +2,7 @@ from django.db import models
 
 class Patient(models.Model):
     patient_id = models.CharField(max_length=50, unique=True)
+    person = models.ForeignKey('accounts.Person', on_delete=models.RESTRICT, null=True, blank=True, related_name='registered_patients')
     name = models.CharField(max_length=150)
     date_of_birth = models.DateField(null=True, blank=True)
     age = models.IntegerField(default=30)

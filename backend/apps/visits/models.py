@@ -131,3 +131,18 @@ class VisitStatusHistory(models.Model):
 
     def __str__(self):
         return f"{self.visit.visit_id}: {self.from_status} -> {self.to_status} at {self.timestamp}"
+
+# Phase 11 Target Physical Model: FacilityDailyCounter
+class FacilityDailyCounter(models.Model):
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.RESTRICT, related_name='daily_counters')
+    counter_date = models.DateField(default=datetime.date.today)
+    counter_type = models.CharField(max_length=20, default='OPD') # 'OPD', 'LAB'
+    last_token_number = models.IntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'facility_daily_counters'
+        unique_together = [('facility', 'counter_date', 'counter_type')]
+
+    def __str__(self):
+        return f"{self.facility.facility_name} [{self.counter_type}] on {self.counter_date}: {self.last_token_number}"

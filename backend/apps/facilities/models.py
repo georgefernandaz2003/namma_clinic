@@ -213,3 +213,43 @@ class FacilityBedAllocation(models.Model):
     def __str__(self):
         return f"{self.bed_number} - {self.patient_name or 'Unassigned'} ({self.status})"
 
+# Phase 11 Target Physical Models: Organization
+class Department(models.Model):
+    facility = models.ForeignKey(Facility, on_delete=models.RESTRICT, related_name='departments')
+    code = models.CharField(max_length=50)
+    name = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'departments'
+        unique_together = [('facility', 'code')]
+
+    def __str__(self):
+        return f"{self.name} [{self.code}] @ {self.facility.facility_name}"
+
+class ServiceMaster(models.Model):
+    code = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=150)
+    category = models.CharField(max_length=50)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'service_masters'
+
+    def __str__(self):
+        return f"{self.name} [{self.code}]"
+
+class FacilityService(models.Model):
+    facility = models.ForeignKey(Facility, on_delete=models.CASCADE, related_name='facility_services')
+    service = models.ForeignKey(ServiceMaster, on_delete=models.RESTRICT, related_name='facility_services')
+    is_available = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'facility_services'
+        unique_together = [('facility', 'service')]
+
+    def __str__(self):
+        return f"{self.facility.facility_name} - {self.service.name}"

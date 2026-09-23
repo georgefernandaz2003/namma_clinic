@@ -158,6 +158,10 @@ class MedicineBatch(models.Model):
         return 'EXHAUSTED'
 
     def save(self, *args, **kwargs):
+        if self.pk is None and self.quantity > 0 and self.available_quantity == 0 and (
+            self.quarantined_quantity == 0 and self.recalled_quantity == 0 and self.damaged_quantity == 0
+        ):
+            self.available_quantity = self.quantity
         # Update legacy quantity to reflect current remaining physical stock on site
         self.quantity = (
             self.available_quantity +
@@ -580,3 +584,77 @@ class ColdChainLog(models.Model):
 
     def __str__(self):
         return f"ColdChainLog {self.recorded_temp_celsius}°C at {self.storage_location} ({self.status})"
+
+class Dispensation(models.Model):
+    prescription = models.ForeignKey('consultations.Prescription', on_delete=models.RESTRICT, related_name='dispensations')
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.RESTRICT, related_name='dispensations')
+    dispensed_by_staff = models.ForeignKey('accounts.StaffProfile', on_delete=models.RESTRICT, related_name='dispensations')
+    dispensation_number = models.CharField(max_length=50, unique=True)
+    dispensed_at = models.DateTimeField(auto_now_add=True)
+    remarks = models.TextField(blank=True, default='')
+
+    class Meta:
+        db_table = 'dispensations'
+
+    def __str__(self):
+        return f"Dispensation {self.dispensation_number} for Rx #{self.prescription_id}"
+
+class DispensationItem(models.Model):
+    dispensation = models.ForeignKey(Dispensation, on_delete=models.CASCADE, related_name='items')
+    prescription_item = models.ForeignKey('consultations.PrescriptionItem', on_delete=models.RESTRICT, related_name='dispensation_items')
+    batch = models.ForeignKey('pharmacy.MedicineBatch', on_delete=models.RESTRICT, related_name='dispensation_items')
+    quantity_dispensed = models.IntegerField()
+
+    class Meta:
+        db_table = 'dispensation_items'
+        constraints = [
+            models.CheckConstraint(check=models.Q(quantity_dispensed__gt=0), name='chk_disp_items_qty')
+        ]
+
+    def __str__(self):
+        return f"DispItem: {self.quantity_dispensed} from Batch #{self.batch_id}"
+
+class InventoryLedger(models.Model):
+    batch = models.ForeignKey('pharmacy.MedicineBatch', on_delete=models.RESTRICT, related_name='ledger_entries')
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.RESTRICT, related_name='inventory_ledger_entries')
+    performed_by_staff = models.ForeignKey('accounts.StaffProfile', on_delete=models.RESTRICT, related_name='performed_inventory_movements')
+    transaction_type = models.CharField(max_length=30, choices=[
+        ('PURCHASE_RECEIPT', 'Purchase Receipt'),
+        ('DISPENSE', 'Dispense'),
+        ('DISPENSE_REVERSAL', 'Dispense Reversal'),
+        ('TRANSFER_OUT', 'Transfer Out'),
+        ('TRANSFER_IN', 'Transfer In'),
+        ('DAMAGE_WRITEOFF', 'Damage Writeoff'),
+        ('EXPIRED_WRITEOFF', 'Expired Writeoff'),
+        ('AUDIT_CORRECTION', 'Audit Correction')
+    ])
+    quantity_delta = models.IntegerField()
+    balance_after = models.IntegerField()
+    reference_entity_type = models.CharField(max_length=50, blank=True, null=True)
+    reference_entity_id = models.BigIntegerField(blank=True, null=True)
+    remarks = models.TextField(blank=True, default='')
+    transaction_timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'inventory_ledgers'
+        constraints = [
+            models.CheckConstraint(check=models.Q(balance_after__gte=0), name='chk_ledger_balance')
+        ]
+
+    def __str__(self):
+        return f"Ledger #{self.id} Batch #{self.batch_id}: {self.quantity_delta} ({self.transaction_type})"
+
+class PurchaseOrderApproval(models.Model):
+    purchase_order = models.ForeignKey('pharmacy.PurchaseOrder', on_delete=models.CASCADE, related_name='approvals')
+    approver_staff = models.ForeignKey('accounts.StaffProfile', on_delete=models.RESTRICT, related_name='po_approvals')
+    approval_tier = models.IntegerField(default=1)
+    status = models.CharField(max_length=20, choices=[('APPROVED', 'Approved'), ('REJECTED', 'Rejected')])
+    remarks = models.TextField(blank=True, default='')
+    approved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'purchase_order_approvals'
+        unique_together = [('purchase_order', 'approval_tier')]
+
+    def __str__(self):
+        return f"PO #{self.purchase_order_id} Approval Tier {self.approval_tier}: {self.status}"
