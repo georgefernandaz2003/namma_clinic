@@ -18,7 +18,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date })
   const fetchTriageQueue = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`visits/?queue=TRIAGE&date=${date}`);
+      const facParam = summary?.active_facility_id ? `&facility=${summary.active_facility_id}` : '';
+      const res = await api.get(`visits/?queue=TRIAGE&date=${date}${facParam}`);
       const list = res.data.results || res.data || [];
       setTriageQueue(list);
     } catch (e) {
@@ -30,7 +31,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date })
 
   useEffect(() => {
     fetchTriageQueue();
-  }, [date]);
+  }, [date, summary?.active_facility_id]);
 
   return (
     <div className="space-y-6">

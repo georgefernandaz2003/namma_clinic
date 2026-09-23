@@ -153,7 +153,7 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
                       </div>
                     ))
                   ) : (
-                    <div className="text-slate-400 italic">Standard EDL Metformin & Amlodipine</div>
+                    <div className="text-slate-400 italic">No prescription items recorded.</div>
                   )}
                 </div>
               </div>

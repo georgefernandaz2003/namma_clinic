@@ -121,11 +121,18 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               <select
                 value={activeFacility?.id || ''}
                 onChange={(e) => {
-                  const found = allFacilities.find((f) => f.id === parseInt(e.target.value));
-                  if (found) setActiveFacility(found);
+                  if (!e.target.value) {
+                    setActiveFacility(null);
+                  } else {
+                    const found = allFacilities.find((f) => f.id === parseInt(e.target.value));
+                    if (found) setActiveFacility(found);
+                  }
                 }}
                 className="bg-transparent text-xs text-slate-800 font-semibold focus:outline-none w-full cursor-pointer"
               >
+                <option value="" className="bg-white text-slate-800">
+                  All Facilities (District-Wide)
+                </option>
                 {allFacilities.map((fac) => (
                   <option key={fac.id} value={fac.id} className="bg-white text-slate-800">
                     {fac.facility_name} ({fac.facility_type.replace('_', ' ')})

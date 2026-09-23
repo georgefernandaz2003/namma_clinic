@@ -25,7 +25,7 @@ export const DistrictOfficerDashboard: React.FC<DistrictOfficerDashboardProps> =
             </div>
             <h1 className="text-2xl font-black tracking-tight">District Executive Overview</h1>
             <p className="text-xs text-emerald-100 mt-1 max-w-xl">
-              Monitoring operational health, patient inflow, cross-facility referrals, and facility statuses across all direct healthcare facilities in Central District.
+              Monitoring operational health, patient inflow, cross-facility referrals, and facility statuses across all direct healthcare facilities in {summary?.active_facility || 'District Network'}.
             </p>
           </div>
 
@@ -86,7 +86,7 @@ export const DistrictOfficerDashboard: React.FC<DistrictOfficerDashboardProps> =
           <div className="flex justify-between items-start">
             <div>
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Facilities</p>
-              <h3 className="text-2xl font-black text-slate-900 mt-1">{summary?.total_facilities || 4}</h3>
+              <h3 className="text-2xl font-black text-slate-900 mt-1">{summary?.total_facilities ?? 0}</h3>
               <p className="text-[10px] text-teal-700 font-semibold mt-1">Active Healthcare Nodes</p>
             </div>
             <div className="p-3 bg-teal-50 rounded-xl text-teal-700 border border-teal-100">

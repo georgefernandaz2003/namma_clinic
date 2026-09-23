@@ -10,7 +10,7 @@ interface AuthContextType {
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
-  setActiveFacility: (facility: Facility) => void;
+  setActiveFacility: (facility: Facility | null) => void;
   refreshUserData: () => Promise<void>;
 }
 
@@ -37,18 +37,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAllFacilities(facs);
 
       const userFacId = userRes.data.assigned_facility;
-      if (userRes.data.role !== 'DISTRICT_OFFICER' && userFacId) {
-        const userFac = facs.find(f => f.id === userFacId);
-        if (userFac) setActiveFacilityState(userFac);
-        else if (facs.length > 0) setActiveFacilityState(facs[0]);
+      if (userRes.data.role !== 'DISTRICT_OFFICER') {
+        if (userFacId) {
+          const userFac = facs.find(f => f.id === userFacId);
+          if (userFac) setActiveFacilityState(userFac);
+          else if (facs.length > 0) setActiveFacilityState(facs[0]);
+        } else if (facs.length > 0) {
+          setActiveFacilityState(facs[0]);
+        }
       } else {
+        // District Officer defaults to district-wide (null) unless a specific facility was explicitly saved
         const savedFacId = localStorage.getItem('active_facility_id');
         if (savedFacId) {
           const found = facs.find(f => f.id === parseInt(savedFacId));
           if (found) setActiveFacilityState(found);
-          else if (facs.length > 0) setActiveFacilityState(facs[0]);
-        } else if (facs.length > 0) {
-          setActiveFacilityState(facs[0]);
+          else setActiveFacilityState(null);
+        } else {
+          setActiveFacilityState(null);
         }
       }
 
@@ -83,13 +88,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setActiveFacilityState(null);
   };
 
-  const setActiveFacility = (facility: Facility) => {
-    if (user && user.role !== 'DISTRICT_OFFICER' && user.assigned_facility && user.assigned_facility !== facility.id) {
+  const setActiveFacility = (facility: Facility | null) => {
+    if (facility && user && user.role !== 'DISTRICT_OFFICER' && user.assigned_facility && user.assigned_facility !== facility.id) {
       console.warn('Facility switching is restricted to your assigned facility scope.');
       return;
     }
     setActiveFacilityState(facility);
-    localStorage.setItem('active_facility_id', facility.id.toString());
+    if (facility) {
+      localStorage.setItem('active_facility_id', facility.id.toString());
+    } else {
+      localStorage.removeItem('active_facility_id');
+    }
   };
 
 
