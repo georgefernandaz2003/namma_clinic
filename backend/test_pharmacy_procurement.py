@@ -26,7 +26,7 @@ from apps.pharmacy.models import (
 
 def run_procurement_tests():
     print("======================================================================")
-    print("NAMMA CLINIC — PHARMACY PROCUREMENT & GRN 18-TEST VERIFICATION SUITE")
+    print("NAMMA CLINIC — PHARMACY PROCUREMENT & GRN (18 SCENARIOS / 23 ASSERTIONS)")
     print("======================================================================")
 
     client = APIClient()

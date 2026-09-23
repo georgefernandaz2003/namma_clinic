@@ -10,4 +10,4 @@ class PharmacyHardeningTestCase(TestCase):
     def test_procurement_lifecycle_tests(self):
         import test_pharmacy_procurement
         exit_code = test_pharmacy_procurement.run_procurement_tests()
-        self.assertEqual(exit_code, 0, "All 18 procurement lifecycle tests must pass.")
+        self.assertEqual(exit_code, 0, "All 23 procurement lifecycle assertions across 18 scenarios must pass.")
