@@ -207,12 +207,7 @@ class MedicineBatch(models.Model):
 
 
 class PurchaseOrder(models.Model):
-    po_number = models.CharField(max_length=50, unique=True)
-    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='purchase_orders')
-    facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='purchase_orders')
-    order_date = models.DateField(default=timezone.now)
-    expected_delivery_date = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=30, choices=[
+    STATUS_CHOICES = [
         ('DRAFT', 'Draft'),
         ('PENDING_APPROVAL', 'Pending Approval'),
         ('PENDING', 'Pending Approval'),
@@ -221,7 +216,13 @@ class PurchaseOrder(models.Model):
         ('PARTIALLY_RECEIVED', 'Partially Received'),
         ('RECEIVED', 'Fully Received'),
         ('CANCELLED', 'Cancelled')
-    ], default='DRAFT')
+    ]
+    po_number = models.CharField(max_length=50, unique=True)
+    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='purchase_orders')
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='purchase_orders')
+    order_date = models.DateField(default=timezone.now)
+    expected_delivery_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='DRAFT')
     created_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_purchase_orders')
     approved_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_purchase_orders')
     approved_at = models.DateTimeField(null=True, blank=True)
@@ -236,6 +237,41 @@ class PurchaseOrder(models.Model):
     class Meta:
         ordering = ['-order_date', '-id']
 
+    def clean(self):
+        super().clean()
+        if self.status in ['PENDING_APPROVAL', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED']:
+            if self.pk and self.items.exists():
+                for item in self.items.all():
+                    if item.ordered_quantity <= 0:
+                        raise ValidationError(f"Item {item.medicine.generic_name} must have ordered quantity > 0.")
+
+    def recalculate_total(self):
+        if self.pk:
+            tot = sum(item.total_price for item in self.items.all())
+            self.total_amount = tot
+            return tot
+        return self.total_amount
+
+    @property
+    def total_ordered_quantity(self):
+        return sum(item.ordered_quantity for item in self.items.all())
+
+    @property
+    def total_received_quantity(self):
+        return sum(item.received_quantity for item in self.items.all())
+
+    @property
+    def total_accepted_quantity(self):
+        return sum(item.accepted_quantity for item in self.items.all())
+
+    @property
+    def total_rejected_quantity(self):
+        return sum(item.rejected_quantity for item in self.items.all())
+
+    @property
+    def total_remaining_quantity(self):
+        return sum(item.remaining_quantity for item in self.items.all())
+
     def __str__(self):
         return f"PO #{self.po_number} - {self.vendor.vendor_name} ({self.status})"
 
@@ -244,16 +280,26 @@ class PurchaseOrderItem(models.Model):
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='items')
     medicine = models.ForeignKey(MedicineMaster, on_delete=models.CASCADE)
     ordered_quantity = models.IntegerField(default=100)
-    received_quantity = models.IntegerField(default=0)
+    received_quantity = models.IntegerField(default=0)  # Total resolved quantity (accepted + rejected)
+    accepted_quantity = models.IntegerField(default=0)  # Accepted into usable stock
+    rejected_quantity = models.IntegerField(default=0)  # Rejected at inspection
     unit_price = models.DecimalField(max_digits=8, decimal_places=2, default=0.00)
     total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
+    @property
+    def remaining_quantity(self):
+        return max(0, self.ordered_quantity - self.received_quantity)
+
+    @property
+    def resolved_quantity(self):
+        return self.received_quantity
 
     def save(self, *args, **kwargs):
         self.total_price = self.ordered_quantity * self.unit_price
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.medicine.generic_name}: {self.ordered_quantity} ordered"
+        return f"{self.medicine.generic_name}: {self.ordered_quantity} ordered (rec: {self.received_quantity}, acc: {self.accepted_quantity}, rej: {self.rejected_quantity})"
 
 
 class InventoryTransaction(models.Model):

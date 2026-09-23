@@ -460,7 +460,8 @@ export interface GoodsReceiptNote {
   received_date: string;
   invoice_number?: string;
   received_by: number;
-  status: 'DRAFT' | 'VERIFIED' | 'CANCELLED';
+  received_by_name?: string;
+  status: 'DRAFT' | 'ACCEPTED' | 'PARTIAL_ACCEPTANCE' | 'REJECTED' | 'VERIFIED' | 'CANCELLED';
   notes?: string;
   created_at: string;
   items?: Array<{
@@ -469,10 +470,12 @@ export interface GoodsReceiptNote {
     medicine_name?: string;
     batch_number: string;
     expiry_date: string;
+    ordered_quantity?: number;
     received_quantity: number;
     accepted_quantity: number;
     rejected_quantity: number;
     rejection_reason?: string;
+    unit_cost?: number;
   }>;
 }
 
@@ -486,6 +489,9 @@ export interface PurchaseOrderItem {
   ordered_quantity?: number;
   requested_quantity?: number;
   received_quantity: number;
+  accepted_quantity?: number;
+  rejected_quantity?: number;
+  resolved_quantity?: number;
   remaining_quantity?: number;
   unit_price?: number;
   unit_cost?: number;
@@ -515,6 +521,12 @@ export interface PurchaseOrder {
   rejected_by_name?: string;
   rejected_at?: string | null;
   rejection_reason?: string;
+  total_ordered_quantity?: number;
+  total_received_quantity?: number;
+  total_accepted_quantity?: number;
+  total_rejected_quantity?: number;
+  total_remaining_quantity?: number;
+  goods_receipts?: GoodsReceiptNote[];
   created_at: string;
   updated_at?: string;
   items: PurchaseOrderItem[];
@@ -525,10 +537,14 @@ export interface ProcurementSummaryKPIs {
   pending_approval: number;
   approved: number;
   ordered: number;
+  in_transit?: number;
   partially_received: number;
   received: number;
   cancelled: number;
   total_orders: number;
+  committed_value?: number;
+  received_value?: number;
+  paid_value?: number;
   total_spend: number;
 }
 

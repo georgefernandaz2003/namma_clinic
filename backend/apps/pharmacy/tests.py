@@ -6,3 +6,8 @@ class PharmacyHardeningTestCase(TestCase):
         import test_pharmacy_hardening
         exit_code = test_pharmacy_hardening.run_tests()
         self.assertEqual(exit_code, 0, "All 52 pharmacy hardening tests must pass.")
+
+    def test_procurement_lifecycle_tests(self):
+        import test_pharmacy_procurement
+        exit_code = test_pharmacy_procurement.run_procurement_tests()
+        self.assertEqual(exit_code, 0, "All 18 procurement lifecycle tests must pass.")

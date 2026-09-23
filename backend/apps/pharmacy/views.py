@@ -115,29 +115,52 @@ class MedicineBatchSerializer(serializers.ModelSerializer):
         return delta.days
 
 
+class GoodsReceiptItemSerializer(serializers.ModelSerializer):
+    medicine_name = serializers.ReadOnlyField(source='medicine.generic_name')
+
+    class Meta:
+        model = GoodsReceiptItem
+        fields = '__all__'
+
+
+class GoodsReceiptNoteSerializer(serializers.ModelSerializer):
+    items = GoodsReceiptItemSerializer(many=True, read_only=True)
+    vendor_name = serializers.ReadOnlyField(source='vendor.vendor_name')
+    facility_name = serializers.ReadOnlyField(source='facility.facility_name')
+    received_by_name = serializers.ReadOnlyField(source='received_by.full_name')
+
+    class Meta:
+        model = GoodsReceiptNote
+        fields = '__all__'
+
+
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
     medicine_name = serializers.ReadOnlyField(source='medicine.generic_name')
     medicine_brand = serializers.ReadOnlyField(source='medicine.brand_name')
     medicine_strength = serializers.ReadOnlyField(source='medicine.strength')
     medicine_unit = serializers.ReadOnlyField(source='medicine.unit')
-    remaining_quantity = serializers.SerializerMethodField()
+    remaining_quantity = serializers.ReadOnlyField()
+    resolved_quantity = serializers.ReadOnlyField()
 
     class Meta:
         model = PurchaseOrderItem
         fields = '__all__'
 
-    def get_remaining_quantity(self, obj):
-        return max(0, obj.ordered_quantity - obj.received_quantity)
-
 
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     items = PurchaseOrderItemSerializer(many=True, read_only=True)
+    goods_receipts = GoodsReceiptNoteSerializer(many=True, read_only=True)
     vendor_name = serializers.ReadOnlyField(source='vendor.vendor_name')
     vendor_code = serializers.SerializerMethodField()
     facility_name = serializers.ReadOnlyField(source='facility.facility_name')
     created_by_name = serializers.ReadOnlyField(source='created_by.full_name')
     approved_by_name = serializers.ReadOnlyField(source='approved_by.full_name')
     rejected_by_name = serializers.ReadOnlyField(source='rejected_by.full_name')
+    total_ordered_quantity = serializers.ReadOnlyField()
+    total_received_quantity = serializers.ReadOnlyField()
+    total_accepted_quantity = serializers.ReadOnlyField()
+    total_rejected_quantity = serializers.ReadOnlyField()
+    total_remaining_quantity = serializers.ReadOnlyField()
 
     class Meta:
         model = PurchaseOrder
@@ -155,25 +178,6 @@ class InventoryTransactionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InventoryTransaction
-        fields = '__all__'
-
-
-class GoodsReceiptItemSerializer(serializers.ModelSerializer):
-    medicine_name = serializers.ReadOnlyField(source='medicine.generic_name')
-
-    class Meta:
-        model = GoodsReceiptItem
-        fields = '__all__'
-
-
-class GoodsReceiptNoteSerializer(serializers.ModelSerializer):
-    items = GoodsReceiptItemSerializer(many=True, read_only=True)
-    vendor_name = serializers.ReadOnlyField(source='vendor.vendor_name')
-    facility_name = serializers.ReadOnlyField(source='facility.facility_name')
-    received_by_name = serializers.ReadOnlyField(source='received_by.full_name')
-
-    class Meta:
-        model = GoodsReceiptNote
         fields = '__all__'
 
 
@@ -556,6 +560,259 @@ class MedicineBatchViewSet(viewsets.ModelViewSet):
         return Response(MedicineBatchSerializer(batch).data)
 
 
+def execute_goods_receipt(request, po, as_grn_direct=False):
+    """
+    Authoritative Goods Receipt Note (GRN) execution engine:
+    - Atomically processes physical intake against Purchase Order
+    - Multi-batch per line item support
+    - Strict over-receipt guard
+    - Real resolution tracking (accepted + rejected)
+    - Stock increases ONLY for accepted quantities
+    - Generates immutable InventoryTransaction with dual-bucket proof
+    - Concurrency protection via row-level locking
+    """
+    from decimal import Decimal
+    if request.user.role in ['DISTRICT_OFFICER', 'DOCTOR', 'NURSE', 'LAB_TECHNICIAN']:
+        return Response({'error': f"Role '{request.user.role}' is not authorized to intake goods."}, status=status.HTTP_403_FORBIDDEN)
+
+    accessible_ids = get_accessible_facility_ids_for_user(request.user)
+    if accessible_ids is not None and po.facility_id not in accessible_ids:
+        return Response({'error': 'Cross-facility Goods Receipt blocked.'}, status=status.HTTP_403_FORBIDDEN)
+
+    if po.status in ['DRAFT', 'PENDING_APPROVAL', 'PENDING']:
+        return Response({'error': f"Cannot receive goods for PO in status '{po.status}'. PO must be placed/ordered first."}, status=status.HTTP_400_BAD_REQUEST)
+    if po.status == 'CANCELLED':
+        return Response({'error': "Cannot receive goods for a CANCELLED purchase order."}, status=status.HTTP_400_BAD_REQUEST)
+    if po.status == 'RECEIVED':
+        return Response({'error': "Purchase Order is already fully received."}, status=status.HTTP_400_BAD_REQUEST)
+
+    data = request.data
+    items_data = data.get('items') or data.get('received_items') or []
+    if not items_data:
+        return Response({'error': 'At least one item must be received.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    invoice_number = data.get('invoice_number', '').strip()
+    invoice_date = data.get('invoice_date') or None
+    received_date = data.get('received_date') or datetime.date.today()
+    notes = data.get('notes', '')
+
+    with transaction.atomic():
+        po = PurchaseOrder.objects.select_for_update().get(pk=po.pk)
+        po_item_map = {item.id: item for item in po.items.select_for_update().all()}
+        incoming_by_po_item = {}
+
+        validated_lines = []
+        for line in items_data:
+            po_item_id = line.get('po_item') or line.get('po_item_id') or line.get('item_id')
+            if not po_item_id or po_item_id not in po_item_map:
+                return Response({'error': f"Invalid or missing PO Item ID '{po_item_id}' for this Purchase Order."}, status=status.HTTP_400_BAD_REQUEST)
+
+            po_item = po_item_map[po_item_id]
+
+            # Quantities resolution
+            if 'accepted_quantity' in line:
+                accepted_qty = int(line.get('accepted_quantity') or 0)
+                rejected_qty = int(line.get('rejected_quantity') or 0)
+            elif 'received_quantity' in line or 'received_qty' in line:
+                tot_rec = int(line.get('received_quantity') or line.get('received_qty') or 0)
+                rej = int(line.get('rejected_quantity') or 0)
+                accepted_qty = max(0, tot_rec - rej)
+                rejected_qty = rej
+            else:
+                return Response({'error': f"Quantity information missing for item {po_item.medicine.generic_name}."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if accepted_qty < 0 or rejected_qty < 0:
+                return Response({'error': "Accepted and rejected quantities cannot be negative."}, status=status.HTTP_400_BAD_REQUEST)
+
+            received_qty = int(line.get('received_quantity') or (accepted_qty + rejected_qty))
+            if accepted_qty + rejected_qty > received_qty:
+                return Response({'error': f"Accepted ({accepted_qty}) + Rejected ({rejected_qty}) cannot exceed Received quantity ({received_qty})."}, status=status.HTTP_400_BAD_REQUEST)
+
+            resolved_qty = accepted_qty + rejected_qty
+            if resolved_qty <= 0:
+                continue
+
+            if rejected_qty > 0 and not str(line.get('rejection_reason', '')).strip():
+                return Response({'error': f"Rejection reason is required for rejected quantity on item {po_item.medicine.generic_name}."}, status=status.HTTP_400_BAD_REQUEST)
+
+            batch_number = str(line.get('batch_number', '')).strip()
+            if accepted_qty > 0 and not batch_number:
+                return Response({'error': f"Batch number is required for accepted quantity on item {po_item.medicine.generic_name}."}, status=status.HTTP_400_BAD_REQUEST)
+
+            expiry_date_str = line.get('expiry_date')
+            if accepted_qty > 0:
+                if not expiry_date_str:
+                    return Response({'error': f"Expiry date is required for accepted quantity on item {po_item.medicine.generic_name}."}, status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    exp_date = datetime.date.fromisoformat(str(expiry_date_str))
+                except ValueError:
+                    return Response({'error': f"Invalid expiry date format for item {po_item.medicine.generic_name}."}, status=status.HTTP_400_BAD_REQUEST)
+                if exp_date <= datetime.date.today():
+                    return Response({'error': f"Expiry date must be in the future for accepted batch {batch_number} ({po_item.medicine.generic_name})."}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                exp_date = datetime.date.today() + datetime.timedelta(days=365)
+
+            mfg_date_str = line.get('mfg_date') or None
+            mfg_date = None
+            if mfg_date_str:
+                try:
+                    mfg_date = datetime.date.fromisoformat(str(mfg_date_str))
+                    if mfg_date > datetime.date.today():
+                        return Response({'error': f"Manufacturing date cannot be in the future for {po_item.medicine.generic_name}."}, status=status.HTTP_400_BAD_REQUEST)
+                except ValueError:
+                    mfg_date = None
+
+            unit_cost = Decimal(str(line.get('unit_cost') or po_item.unit_price or 0.00))
+
+            incoming_by_po_item[po_item_id] = incoming_by_po_item.get(po_item_id, 0) + resolved_qty
+            validated_lines.append({
+                'po_item': po_item,
+                'accepted_qty': accepted_qty,
+                'rejected_qty': rejected_qty,
+                'received_qty': received_qty,
+                'resolved_qty': resolved_qty,
+                'batch_number': batch_number,
+                'expiry_date': exp_date,
+                'mfg_date': mfg_date,
+                'unit_cost': unit_cost,
+                'rejection_reason': str(line.get('rejection_reason', '')).strip()
+            })
+
+        if not validated_lines:
+            return Response({'error': 'At least one item with quantity > 0 must be received.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 2. Cumulative over-receipt guard
+        for po_item_id, incoming_resolved in incoming_by_po_item.items():
+            po_item = po_item_map[po_item_id]
+            remaining = po_item.remaining_quantity
+            if incoming_resolved > remaining:
+                return Response({
+                    'error': f"Resolved quantity ({incoming_resolved}) exceeds remaining ordered quantity ({remaining}) for {po_item.medicine.generic_name}."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. Create GoodsReceiptNote
+        today_str = datetime.date.today().strftime('%Y%m%d')
+        facility_code = po.facility.facility_code if po.facility else 'FAC'
+        grn_count = GoodsReceiptNote.objects.filter(facility=po.facility, created_at__date=datetime.date.today()).count() + 1
+        grn_number = f"GRN-{facility_code}-{today_str}-{grn_count:03d}"
+
+        grn = GoodsReceiptNote.objects.create(
+            grn_number=grn_number,
+            purchase_order=po,
+            vendor=po.vendor,
+            facility=po.facility,
+            invoice_number=invoice_number,
+            invoice_date=invoice_date,
+            received_date=received_date,
+            received_by=request.user,
+            notes=notes
+        )
+
+        total_grn_accepted = 0
+        total_grn_rejected = 0
+
+        # 4. Ingest lines
+        for vline in validated_lines:
+            po_item = vline['po_item']
+            acc = vline['accepted_qty']
+            rej = vline['rejected_qty']
+            total_grn_accepted += acc
+            total_grn_rejected += rej
+
+            GoodsReceiptItem.objects.create(
+                grn=grn,
+                po_item=po_item,
+                medicine=po_item.medicine,
+                batch_number=vline['batch_number'] or f"REJ-{timezone.now().strftime('%Y%m%d%H%M%S')}",
+                mfg_date=vline['mfg_date'],
+                expiry_date=vline['expiry_date'],
+                ordered_quantity=po_item.ordered_quantity,
+                received_quantity=vline['received_qty'],
+                rejected_quantity=rej,
+                rejection_reason=vline['rejection_reason'],
+                accepted_quantity=acc,
+                unit_cost=vline['unit_cost']
+            )
+
+            # Usable stock entering inventory
+            if acc > 0:
+                batch, _ = MedicineBatch.objects.select_for_update().get_or_create(
+                    facility=po.facility,
+                    medicine=po_item.medicine,
+                    batch_number=vline['batch_number'],
+                    defaults={
+                        'vendor': po.vendor,
+                        'supplier': po.vendor.vendor_name,
+                        'expiry_date': vline['expiry_date'],
+                        'mfg_date': vline['mfg_date'],
+                        'unit_cost': vline['unit_cost'],
+                        'available_quantity': 0,
+                        'status': 'AVAILABLE'
+                    }
+                )
+                dest_before = batch.available_quantity
+                batch.available_quantity += acc
+                batch.save()
+
+                InventoryTransaction.objects.create(
+                    facility=po.facility,
+                    medicine=po_item.medicine,
+                    batch=batch,
+                    transaction_type='PURCHASE_RECEIVED',
+                    quantity=acc,
+                    source_bucket='external_vendor',
+                    source_before_qty=0,
+                    source_after_qty=0,
+                    destination_bucket='available_quantity',
+                    destination_before_qty=dest_before,
+                    destination_after_qty=batch.available_quantity,
+                    reference_id=f"GRN-{grn.grn_number}",
+                    created_by=request.user,
+                    notes=f"Accepted stock via GRN #{grn.grn_number} for PO #{po.po_number} (Item: {po_item.medicine.generic_name})"
+                )
+
+            # Update PO item
+            po_item.accepted_quantity += acc
+            po_item.rejected_quantity += rej
+            po_item.received_quantity += (acc + rej)
+            po_item.save()
+
+        # 5. Evaluate GRN status
+        if total_grn_rejected == 0:
+            grn.status = 'ACCEPTED'
+        elif total_grn_accepted > 0 and total_grn_rejected > 0:
+            grn.status = 'PARTIAL_ACCEPTANCE'
+        else:
+            grn.status = 'REJECTED'
+        grn.save()
+
+        # 6. Evaluate PO status
+        all_resolved = all(i.received_quantity >= i.ordered_quantity for i in po.items.all())
+        any_resolved = any(i.received_quantity > 0 for i in po.items.all())
+        if all_resolved:
+            po.status = 'RECEIVED'
+        elif any_resolved:
+            po.status = 'PARTIALLY_RECEIVED'
+        po.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            username_snapshot=request.user.username,
+            action='GRN_PROCESSED',
+            facility=po.facility,
+            details=f"Processed GRN #{grn.grn_number} ({grn.status}) for PO #{po.po_number}. Accepted: {total_grn_accepted}, Rejected: {total_grn_rejected}. PO Status: {po.status}."
+        )
+
+        if as_grn_direct:
+            return Response(GoodsReceiptNoteSerializer(grn).data, status=status.HTTP_201_CREATED)
+
+        return Response({
+            'message': f"Goods Receipt Note #{grn.grn_number} processed successfully! PO status is now {po.status}.",
+            'grn': GoodsReceiptNoteSerializer(grn).data,
+            'po': PurchaseOrderSerializer(po).data
+        }, status=status.HTTP_201_CREATED)
+
+
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
     serializer_class = PurchaseOrderSerializer
     permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
@@ -568,7 +825,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     }
 
     def get_queryset(self):
-        queryset = PurchaseOrder.objects.all().select_related('vendor', 'facility', 'created_by', 'approved_by', 'rejected_by').prefetch_related('items__medicine')
+        queryset = PurchaseOrder.objects.all().select_related('vendor', 'facility', 'created_by', 'approved_by', 'rejected_by').prefetch_related('items__medicine', 'goods_receipts__items')
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
@@ -680,6 +937,13 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         if po.status != 'DRAFT':
             return Response({'error': f"Only DRAFT purchase orders can be submitted for approval (current status: '{po.status}')."}, status=status.HTTP_400_BAD_REQUEST)
 
+        if not po.items.exists():
+            return Response({'error': "Cannot submit a Purchase Order without items."}, status=status.HTTP_400_BAD_REQUEST)
+        for item in po.items.all():
+            if item.ordered_quantity <= 0:
+                return Response({'error': f"Item {item.medicine.generic_name} must have ordered quantity > 0."}, status=status.HTTP_400_BAD_REQUEST)
+
+        po.recalculate_total()
         po.status = 'PENDING_APPROVAL'
         po.save()
 
@@ -707,8 +971,15 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
 
         po = self.get_object()
         if po.status not in ['PENDING_APPROVAL', 'PENDING', 'DRAFT']:
-            return Response({'error': f"Cannot approve PO with status '{po.status}'."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': f"Only DRAFT or PENDING_APPROVAL purchase orders can be approved (current status: '{po.status}')."}, status=status.HTTP_400_BAD_REQUEST)
 
+        if not po.items.exists():
+            return Response({'error': "Cannot approve a Purchase Order without items."}, status=status.HTTP_400_BAD_REQUEST)
+        for item in po.items.all():
+            if item.ordered_quantity <= 0:
+                return Response({'error': f"Item {item.medicine.generic_name} must have ordered quantity > 0."}, status=status.HTTP_400_BAD_REQUEST)
+
+        po.recalculate_total()
         po.status = 'APPROVED'
         po.approved_by = request.user
         po.approved_at = timezone.now()
@@ -729,6 +1000,9 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             return Response({'error': f"Role '{request.user.role}' is not authorized to reject purchase orders."}, status=status.HTTP_403_FORBIDDEN)
 
         po = self.get_object()
+        if po.status not in ['PENDING_APPROVAL', 'PENDING']:
+            return Response({'error': f"Only PENDING_APPROVAL purchase orders can be rejected (current status: '{po.status}')."}, status=status.HTTP_400_BAD_REQUEST)
+
         reason = request.data.get('reason', 'Rejected by administrator')
         po.status = 'DRAFT'
         po.rejected_by = request.user
@@ -748,8 +1022,11 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def place_order(self, request, pk=None):
         po = self.get_object()
-        if po.status not in ['APPROVED', 'DRAFT']:
-            return Response({'error': f"Cannot place order for PO in status '{po.status}'."}, status=status.HTTP_400_BAD_REQUEST)
+        if po.status != 'APPROVED':
+            return Response({'error': f"Cannot place order for PO in status '{po.status}'. PO must be APPROVED first."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not po.items.exists():
+            return Response({'error': "Cannot place order for a Purchase Order without items."}, status=status.HTTP_400_BAD_REQUEST)
 
         po.status = 'ORDERED'
         po.save()
@@ -764,10 +1041,17 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         return Response({'message': f"Purchase Order #{po.po_number} marked as ORDERED with supplier!", 'po': PurchaseOrderSerializer(po).data})
 
     @action(detail=True, methods=['post'])
+    def receive_items(self, request, pk=None):
+        po = self.get_object()
+        return execute_goods_receipt(request, po=po, as_grn_direct=False)
+
+    @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
         po = self.get_object()
-        if po.status in ['RECEIVED']:
+        if po.status == 'RECEIVED':
             return Response({'error': "Cannot cancel a fully received purchase order."}, status=status.HTTP_400_BAD_REQUEST)
+        if po.status == 'PARTIALLY_RECEIVED':
+            return Response({'error': "Cannot cancel a partially received purchase order with accepted stock. Use return/quarantine workflows."}, status=status.HTTP_400_BAD_REQUEST)
 
         po.status = 'CANCELLED'
         po.notes = f"{po.notes} [Cancelled by {request.user.username} on {datetime.date.today()}]".strip()
@@ -785,16 +1069,29 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def procurement_summary(self, request):
         qs = self.get_queryset()
+        active_pos = qs.filter(status__in=['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED'])
+        committed_val = float(active_pos.aggregate(t=models.Sum('total_amount'))['t'] or 0.0)
+
+        grn_items = GoodsReceiptItem.objects.filter(grn__purchase_order__in=qs)
+        received_val = float(grn_items.aggregate(
+            t=models.Sum(models.F('accepted_quantity') * models.F('unit_cost'))
+        )['t'] or 0.0)
+
         counts = {
             'draft': qs.filter(status='DRAFT').count(),
             'pending_approval': qs.filter(status__in=['PENDING_APPROVAL', 'PENDING']).count(),
             'approved': qs.filter(status='APPROVED').count(),
             'ordered': qs.filter(status='ORDERED').count(),
+            'in_transit': qs.filter(status='ORDERED').count(),
             'partially_received': qs.filter(status='PARTIALLY_RECEIVED').count(),
             'received': qs.filter(status='RECEIVED').count(),
             'cancelled': qs.filter(status='CANCELLED').count(),
             'total_orders': qs.count(),
-            'total_spend': float(qs.filter(status__in=['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED']).aggregate(t=models.Sum('total_amount'))['t'] or 0.0)
+            'committed_value': committed_val,
+            'received_value': received_val,
+            'paid_value': 0.00,
+            # Backwards compatibility key
+            'total_spend': committed_val
         }
         return Response(counts)
 
@@ -1024,11 +1321,7 @@ class GoodsReceiptNoteViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        if request.user.role in ['DISTRICT_OFFICER', 'DOCTOR', 'NURSE', 'LAB_TECHNICIAN']:
-            return Response({'error': f"Role '{request.user.role}' is not authorized to intake goods."}, status=status.HTTP_403_FORBIDDEN)
-
-        data = request.data
-        po_id = data.get('purchase_order') or data.get('purchase_order_id')
+        po_id = request.data.get('purchase_order') or request.data.get('purchase_order_id')
         if not po_id:
             return Response({'error': 'Purchase Order ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1037,117 +1330,7 @@ class GoodsReceiptNoteViewSet(viewsets.ModelViewSet):
         except PurchaseOrder.DoesNotExist:
             return Response({'error': 'Purchase Order not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        accessible_ids = get_accessible_facility_ids_for_user(request.user)
-        if accessible_ids is not None and po.facility_id not in accessible_ids:
-            return Response({'error': 'Cross-facility Goods Receipt blocked.'}, status=status.HTTP_403_FORBIDDEN)
-
-        items_data = data.get('items', [])
-        if not items_data:
-            return Response({'error': 'At least one item must be received.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        today_str = datetime.date.today().strftime('%Y%m%d')
-        facility_code = po.facility.facility_code if po.facility else 'FAC'
-        grn_count = GoodsReceiptNote.objects.filter(facility=po.facility, created_at__date=datetime.date.today()).count() + 1
-        grn_number = f"GRN-{facility_code}-{today_str}-{grn_count:03d}"
-
-        with transaction.atomic():
-            grn = GoodsReceiptNote.objects.create(
-                grn_number=grn_number,
-                purchase_order=po,
-                vendor=po.vendor,
-                facility=po.facility,
-                invoice_number=data.get('invoice_number', ''),
-                invoice_date=data.get('invoice_date') or None,
-                received_date=data.get('received_date') or datetime.date.today(),
-                received_by=request.user,
-                notes=data.get('notes', '')
-            )
-
-            for item_data in items_data:
-                po_item_id = item_data.get('po_item') or item_data.get('po_item_id')
-                po_item = PurchaseOrderItem.objects.select_for_update().get(pk=po_item_id, purchase_order=po)
-                accepted_qty = int(item_data.get('accepted_quantity', 0))
-                rejected_qty = int(item_data.get('rejected_quantity', 0))
-                ordered_qty = po_item.ordered_quantity
-                received_qty = accepted_qty + rejected_qty
-                batch_number = item_data.get('batch_number', f"B-{timezone.now().strftime('%Y%m%d%H%M')}")
-                expiry_date = item_data.get('expiry_date')
-                unit_cost = float(item_data.get('unit_cost') or po_item.unit_price)
-
-                grn_item = GoodsReceiptItem.objects.create(
-                    grn=grn,
-                    po_item=po_item,
-                    medicine=po_item.medicine,
-                    batch_number=batch_number,
-                    mfg_date=item_data.get('mfg_date') or None,
-                    expiry_date=expiry_date,
-                    ordered_quantity=ordered_qty,
-                    received_quantity=received_qty,
-                    rejected_quantity=rejected_qty,
-                    rejection_reason=item_data.get('rejection_reason', ''),
-                    accepted_quantity=accepted_qty,
-                    unit_cost=unit_cost
-                )
-
-                if accepted_qty > 0:
-                    # Create or update MedicineBatch with accepted stock
-                    batch, created = MedicineBatch.objects.select_for_update().get_or_create(
-                        facility=po.facility,
-                        medicine=po_item.medicine,
-                        batch_number=batch_number,
-                        defaults={
-                            'vendor': po.vendor,
-                            'supplier': po.vendor.vendor_name,
-                            'expiry_date': expiry_date,
-                            'mfg_date': item_data.get('mfg_date') or None,
-                            'unit_cost': unit_cost,
-                            'available_quantity': 0,
-                            'status': 'AVAILABLE'
-                        }
-                    )
-                    dest_before = batch.available_quantity
-                    batch.available_quantity += accepted_qty
-                    batch.status = 'AVAILABLE'
-                    batch.save()
-
-                    # Dual-bucket ledger proof: external_vendor -> available_quantity
-                    InventoryTransaction.objects.create(
-                        facility=po.facility,
-                        medicine=po_item.medicine,
-                        batch=batch,
-                        transaction_type='PURCHASE_RECEIVED',
-                        quantity=accepted_qty,
-                        source_bucket='external_vendor',
-                        source_before_qty=0,
-                        source_after_qty=0,
-                        destination_bucket='available_quantity',
-                        destination_before_qty=dest_before,
-                        destination_after_qty=batch.available_quantity,
-                        reference_id=f"GRN-{grn.grn_number}",
-                        created_by=request.user,
-                        notes=f"Received via GRN #{grn.grn_number} for PO #{po.po_number}"
-                    )
-
-                    po_item.received_quantity += accepted_qty
-                    po_item.save()
-
-            total_ordered = sum(i.ordered_quantity for i in po.items.all())
-            total_received = sum(i.received_quantity for i in po.items.all())
-            if total_received >= total_ordered:
-                po.status = 'RECEIVED'
-            elif total_received > 0:
-                po.status = 'PARTIALLY_RECEIVED'
-            po.save()
-
-            AuditLog.objects.create(
-                user=request.user,
-                username_snapshot=request.user.username,
-                action='GRN_PROCESSED',
-                facility=po.facility,
-                details=f"Processed GRN #{grn.grn_number} for PO #{po.po_number}."
-            )
-
-        return Response(GoodsReceiptNoteSerializer(grn).data, status=status.HTTP_201_CREATED)
+        return execute_goods_receipt(request, po=po, as_grn_direct=True)
 
 
 class DispensationReturnViewSet(viewsets.ModelViewSet):

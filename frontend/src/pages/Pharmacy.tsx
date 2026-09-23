@@ -206,12 +206,17 @@ export const Pharmacy: React.FC = () => {
   const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);
   const [receiveItemsData, setReceiveItemsData] = useState<
     Array<{
+      split_id: string;
       po_item_id: number;
       medicine_name: string;
       ordered_quantity: number;
       already_received: number;
-      requested_quantity: number;
-      received_quantity: number;
+      already_accepted?: number;
+      already_rejected?: number;
+      remaining_quantity: number;
+      accepted_quantity: number;
+      rejected_quantity: number;
+      rejection_reason: string;
       batch_number: string;
       mfg_date: string;
       expiry_date: string;
@@ -771,42 +776,83 @@ export const Pharmacy: React.FC = () => {
     }
   };
 
-  // Goods Receiving Handler with Over-receiving & Expired batch guards
+  // Goods Receiving Handler with Multi-batch, Accepted/Rejected quantities, & Expired batch guards
   const openReceivingModal = (po: PurchaseOrder) => {
     setReceivingPO(po);
-    const initial = (po.items || []).map((item) => {
-      const orderedQty = item.ordered_quantity ?? item.requested_quantity ?? 0;
-      const recQty = item.received_quantity ?? 0;
-      const remainingQty = item.remaining_quantity !== undefined ? item.remaining_quantity : Math.max(0, orderedQty - recQty);
-      return {
-        po_item_id: item.id || 0,
-        medicine_name: item.medicine_name || `Medicine #${item.medicine}`,
-        ordered_quantity: orderedQty,
-        already_received: recQty,
-        requested_quantity: remainingQty,
-        received_quantity: remainingQty,
-        batch_number: `BATCH-${Math.floor(1000 + Math.random() * 9000)}`,
-        mfg_date: new Date().toISOString().split('T')[0],
-        expiry_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        unit_cost: item.unit_price ?? item.unit_cost ?? 0,
-      };
-    });
+    const initial = (po.items || [])
+      .filter((item) => {
+        const orderedQty = item.ordered_quantity ?? item.requested_quantity ?? 0;
+        const recQty = item.received_quantity ?? 0;
+        const remainingQty = item.remaining_quantity !== undefined ? item.remaining_quantity : Math.max(0, orderedQty - recQty);
+        return remainingQty > 0;
+      })
+      .map((item, idx) => {
+        const orderedQty = item.ordered_quantity ?? item.requested_quantity ?? 0;
+        const recQty = item.received_quantity ?? 0;
+        const remainingQty = item.remaining_quantity !== undefined ? item.remaining_quantity : Math.max(0, orderedQty - recQty);
+        return {
+          split_id: `${item.id}-${Date.now()}-${idx}`,
+          po_item_id: item.id || 0,
+          medicine_name: item.medicine_name || `Medicine #${item.medicine}`,
+          ordered_quantity: orderedQty,
+          already_received: recQty,
+          already_accepted: item.accepted_quantity ?? 0,
+          already_rejected: item.rejected_quantity ?? 0,
+          remaining_quantity: remainingQty,
+          accepted_quantity: remainingQty,
+          rejected_quantity: 0,
+          rejection_reason: '',
+          batch_number: `BATCH-${Math.floor(1000 + Math.random() * 9000)}`,
+          mfg_date: new Date().toISOString().split('T')[0],
+          expiry_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          unit_cost: item.unit_price ?? item.unit_cost ?? 0,
+        };
+      });
     setReceiveItemsData(initial);
+  };
+
+  const addSplitBatchRow = (itemToSplit: (typeof receiveItemsData)[0]) => {
+    setReceiveItemsData((prev) => [
+      ...prev,
+      {
+        ...itemToSplit,
+        split_id: `${itemToSplit.po_item_id}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        accepted_quantity: 0,
+        rejected_quantity: 0,
+        rejection_reason: '',
+        batch_number: `BATCH-${Math.floor(1000 + Math.random() * 9000)}`,
+      },
+    ]);
+  };
+
+  const removeSplitBatchRow = (splitId: string) => {
+    setReceiveItemsData((prev) => prev.filter((it) => it.split_id !== splitId));
   };
 
   const handleConfirmGoodsReceiving = async () => {
     if (!receivingPO) return;
 
+    // Check item-level remaining bounds across potential split rows
+    const itemTotals: Record<number, { name: string; maxRem: number; totalProcessing: number }> = {};
     for (const it of receiveItemsData) {
-      if (it.received_quantity < 0) {
-        alert(`Received quantity cannot be negative for ${it.medicine_name}`);
+      if (!itemTotals[it.po_item_id]) {
+        itemTotals[it.po_item_id] = {
+          name: it.medicine_name,
+          maxRem: it.remaining_quantity,
+          totalProcessing: 0,
+        };
+      }
+      const acc = Number(it.accepted_quantity || 0);
+      const rej = Number(it.rejected_quantity || 0);
+      if (acc < 0 || rej < 0) {
+        alert(`Quantities cannot be negative for ${it.medicine_name}`);
         return;
       }
-      if (it.received_quantity > it.requested_quantity) {
-        alert(`Received quantity (${it.received_quantity}) cannot exceed remaining ordered quantity (${it.requested_quantity}) for ${it.medicine_name}.`);
+      if (rej > 0 && !it.rejection_reason.trim()) {
+        alert(`Rejection reason is mandatory when rejected quantity > 0 for ${it.medicine_name} (${it.batch_number})`);
         return;
       }
-      if (it.received_quantity > 0) {
+      if (acc > 0 || rej > 0) {
         if (!it.batch_number.trim()) {
           alert(`Batch Number is required for ${it.medicine_name}`);
           return;
@@ -824,31 +870,48 @@ export const Pharmacy: React.FC = () => {
           return;
         }
       }
+      itemTotals[it.po_item_id].totalProcessing += acc + rej;
     }
 
-    const itemsToReceive = receiveItemsData.filter((it) => it.received_quantity > 0);
-    if (itemsToReceive.length === 0) {
-      alert('Please specify at least 1 unit to receive.');
+    for (const [_, info] of Object.entries(itemTotals)) {
+      if (info.totalProcessing > info.maxRem) {
+        alert(
+          `Total received (Accepted + Rejected = ${info.totalProcessing}) exceeds remaining ordered quantity (${info.maxRem}) for ${info.name}.`
+        );
+        return;
+      }
+    }
+
+    const activeRows = receiveItemsData.filter(
+      (it) => Number(it.accepted_quantity || 0) + Number(it.rejected_quantity || 0) > 0
+    );
+    if (activeRows.length === 0) {
+      alert('Please specify at least 1 unit (accepted or rejected) to receive.');
       return;
     }
 
     try {
       const payload = {
-        received_items: itemsToReceive.map((it) => ({
-          item_id: it.po_item_id,
-          batch_number: it.batch_number.trim(),
-          mfg_date: it.mfg_date || null,
-          expiry_date: it.expiry_date,
-          received_qty: Number(it.received_quantity),
-          unit_cost: Number(it.unit_cost),
-        })),
-        items: itemsToReceive.map((it) => ({
+        items: activeRows.map((it) => ({
           po_item_id: it.po_item_id,
           batch_number: it.batch_number.trim(),
           mfg_date: it.mfg_date || null,
           expiry_date: it.expiry_date,
-          received_quantity: Number(it.received_quantity),
-          unit_cost: Number(it.unit_cost),
+          accepted_quantity: Number(it.accepted_quantity || 0),
+          rejected_quantity: Number(it.rejected_quantity || 0),
+          rejection_reason: it.rejection_reason.trim(),
+          unit_cost: Number(it.unit_cost || 0),
+        })),
+        received_items: activeRows.map((it) => ({
+          item_id: it.po_item_id,
+          batch_number: it.batch_number.trim(),
+          mfg_date: it.mfg_date || null,
+          expiry_date: it.expiry_date,
+          received_qty: Number(it.accepted_quantity || 0) + Number(it.rejected_quantity || 0),
+          accepted_quantity: Number(it.accepted_quantity || 0),
+          rejected_quantity: Number(it.rejected_quantity || 0),
+          rejection_reason: it.rejection_reason.trim(),
+          unit_cost: Number(it.unit_cost || 0),
         })),
       };
       const res = await api.post(`pharmacy/purchase-orders/${receivingPO.id}/receive_items/`, payload);
@@ -2002,7 +2065,7 @@ export const Pharmacy: React.FC = () => {
           </div>
 
           {/* Procurement KPI Summary Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
             <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
               <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Orders</span>
               <span className="text-xl font-black text-slate-900 font-mono">
@@ -2026,10 +2089,17 @@ export const Pharmacy: React.FC = () => {
               </span>
             </div>
 
+            <div className="p-3 rounded-xl bg-white border border-teal-200 shadow-2xs space-y-1">
+              <span className="text-[10px] font-bold text-teal-800 uppercase block">Approved</span>
+              <span className="text-xl font-black text-teal-700 font-mono">
+                {procurementKpis?.approved ?? purchaseOrders.filter((p) => p.status === 'APPROVED').length}
+              </span>
+            </div>
+
             <div className="p-3 rounded-xl bg-white border border-blue-200 shadow-2xs space-y-1">
               <span className="text-[10px] font-bold text-blue-800 uppercase block">In Transit</span>
               <span className="text-xl font-black text-blue-700 font-mono">
-                {(procurementKpis?.ordered ?? 0) + (procurementKpis?.approved ?? 0)}
+                {procurementKpis?.in_transit ?? procurementKpis?.ordered ?? purchaseOrders.filter((p) => p.status === 'ORDERED').length}
               </span>
             </div>
 
@@ -2047,10 +2117,13 @@ export const Pharmacy: React.FC = () => {
               </span>
             </div>
 
-            <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1 col-span-2 sm:col-span-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Spend</span>
-              <span className="text-base font-black text-emerald-800 font-mono">
-                ₹{Number(procurementKpis?.total_spend ?? 0).toLocaleString()}
+            <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase block">Committed Value</span>
+              <span className="text-sm font-black text-amber-800 font-mono block">
+                ₹{Number(procurementKpis?.committed_value ?? procurementKpis?.total_spend ?? 0).toLocaleString()}
+              </span>
+              <span className="text-[9px] text-slate-400 block font-mono">
+                Recv: ₹{Number(procurementKpis?.received_value ?? 0).toLocaleString()}
               </span>
             </div>
           </div>
@@ -2140,7 +2213,7 @@ export const Pharmacy: React.FC = () => {
                         <th className="p-4">Vendor</th>
                         <th className="p-4">Dates</th>
                         <th className="p-4">Total Amount</th>
-                        <th className="p-4">Items Summary</th>
+                        <th className="p-4">Items & Quantities</th>
                         <th className="p-4">Status</th>
                         <th className="p-4">Action</th>
                       </tr>
@@ -2168,6 +2241,34 @@ export const Pharmacy: React.FC = () => {
                               : po.status === 'CANCELLED'
                               ? 'bg-red-100 text-red-800 border-red-200'
                               : 'bg-slate-100 text-slate-700 border-slate-300';
+
+                          const totalOrd =
+                            po.total_ordered_quantity ??
+                            po.items?.reduce((s, it) => s + (it.ordered_quantity ?? it.requested_quantity ?? 0), 0) ??
+                            0;
+                          const totalRec =
+                            po.total_received_quantity ??
+                            po.items?.reduce((s, it) => s + (it.received_quantity ?? 0), 0) ??
+                            0;
+                          const totalAcc =
+                            po.total_accepted_quantity ??
+                            po.items?.reduce((s, it) => s + (it.accepted_quantity ?? 0), 0) ??
+                            0;
+                          const totalRej =
+                            po.total_rejected_quantity ??
+                            po.items?.reduce((s, it) => s + (it.rejected_quantity ?? 0), 0) ??
+                            0;
+                          const totalRem =
+                            po.total_remaining_quantity ??
+                            po.items?.reduce(
+                              (s, it) =>
+                                s +
+                                (it.remaining_quantity !== undefined
+                                  ? it.remaining_quantity
+                                  : Math.max(0, (it.ordered_quantity ?? it.requested_quantity ?? 0) - (it.received_quantity ?? 0))),
+                              0
+                            ) ??
+                            0;
 
                           return (
                             <tr key={po.id} className="hover:bg-slate-50/80 transition">
@@ -2201,19 +2302,23 @@ export const Pharmacy: React.FC = () => {
                                 ₹{Number(po.total_amount).toLocaleString()}
                               </td>
                               <td className="p-4 space-y-1 max-w-xs">
-                                <span className="font-bold text-slate-700 text-[11px] block">
-                                  {po.items?.length || 0} item{(po.items?.length || 0) !== 1 ? 's' : ''} requested:
-                                </span>
-                                {po.items?.slice(0, 2).map((it, idx) => (
-                                  <div key={idx} className="text-[11px] text-slate-600 truncate">
-                                    • {it.medicine_name} ({it.ordered_quantity ?? it.requested_quantity ?? 0} units)
+                                <div className="flex items-center gap-1.5 text-[11px] font-mono">
+                                  <span className="text-slate-700 font-bold">Ord: {totalOrd}</span>
+                                  <span className="text-slate-300">|</span>
+                                  <span className="text-emerald-700 font-bold">Rec: {totalRec}</span>
+                                  <span className="text-slate-300">|</span>
+                                  <span className="text-amber-700 font-bold">Rem: {totalRem}</span>
+                                </div>
+                                {totalRej > 0 && (
+                                  <div className="text-[10px] text-red-600 font-bold font-mono">
+                                    Acc: {totalAcc} | Rej: {totalRej}
                                   </div>
-                                ))}
-                                {(po.items?.length || 0) > 2 && (
-                                  <span className="text-[10px] text-amber-700 font-bold block">
-                                    + {(po.items?.length || 0) - 2} more item(s)...
-                                  </span>
                                 )}
+                                <div className="text-[11px] text-slate-600 truncate">
+                                  {po.items?.length || 0} line item{(po.items?.length || 0) !== 1 ? 's' : ''}:{' '}
+                                  {po.items?.map((it) => it.medicine_name).filter(Boolean).slice(0, 2).join(', ')}
+                                  {(po.items?.length || 0) > 2 ? '...' : ''}
+                                </div>
                               </td>
                               <td className="p-4">
                                 <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${statusColor}`}>
@@ -3658,6 +3763,8 @@ export const Pharmacy: React.FC = () => {
                         <th className="p-2.5">Medicine</th>
                         <th className="p-2.5 text-center">Ordered</th>
                         <th className="p-2.5 text-center">Received</th>
+                        <th className="p-2.5 text-center">Accepted</th>
+                        <th className="p-2.5 text-center">Rejected</th>
                         <th className="p-2.5 text-center">Remaining</th>
                         <th className="p-2.5 text-right">Unit Price</th>
                         <th className="p-2.5 text-right">Line Total</th>
@@ -3667,6 +3774,8 @@ export const Pharmacy: React.FC = () => {
                       {selectedPOForDetails.items?.map((it, idx) => {
                         const ordered = it.ordered_quantity ?? it.requested_quantity ?? 0;
                         const rec = it.received_quantity ?? 0;
+                        const acc = it.accepted_quantity ?? 0;
+                        const rej = it.rejected_quantity ?? 0;
                         const rem = it.remaining_quantity !== undefined ? it.remaining_quantity : Math.max(0, ordered - rec);
                         const price = it.unit_price ?? it.unit_cost ?? 0;
 
@@ -3677,7 +3786,9 @@ export const Pharmacy: React.FC = () => {
                               <span className="text-[10px] text-slate-400">{it.medicine_brand || it.medicine_strength}</span>
                             </td>
                             <td className="p-2.5 text-center font-mono font-bold text-slate-700">{ordered}</td>
-                            <td className="p-2.5 text-center font-mono font-bold text-emerald-700">{rec}</td>
+                            <td className="p-2.5 text-center font-mono font-bold text-blue-700">{rec}</td>
+                            <td className="p-2.5 text-center font-mono font-bold text-emerald-700">{acc}</td>
+                            <td className="p-2.5 text-center font-mono font-bold text-red-600">{rej}</td>
                             <td className="p-2.5 text-center font-mono font-bold text-amber-700">{rem}</td>
                             <td className="p-2.5 text-right font-mono text-slate-600">₹{Number(price).toFixed(2)}</td>
                             <td className="p-2.5 text-right font-mono font-bold text-slate-900">
@@ -3689,7 +3800,7 @@ export const Pharmacy: React.FC = () => {
                     </tbody>
                     <tfoot className="bg-slate-50/80 font-bold border-t border-slate-200">
                       <tr>
-                        <td colSpan={5} className="p-2.5 text-right text-slate-700 uppercase">
+                        <td colSpan={7} className="p-2.5 text-right text-slate-700 uppercase">
                           Total PO Amount:
                         </td>
                         <td className="p-2.5 text-right font-mono font-black text-amber-800 text-sm">
@@ -3699,6 +3810,80 @@ export const Pharmacy: React.FC = () => {
                     </tfoot>
                   </table>
                 </div>
+              </div>
+
+              {/* Goods Receipt Notes (GRN Audit History) */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <PackageCheck className="w-4 h-4 text-emerald-600" /> Goods Receipt Notes (GRN Audit History)
+                </h3>
+                {selectedPOForDetails.goods_receipts && selectedPOForDetails.goods_receipts.length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedPOForDetails.goods_receipts.map((grn) => (
+                      <div key={grn.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-slate-900">{grn.grn_number}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                grn.status === 'ACCEPTED'
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                  : grn.status === 'PARTIAL_ACCEPTANCE'
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-red-100 text-red-800 border-red-200'
+                              }`}
+                            >
+                              {grn.status}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 space-x-2">
+                            <span>Date: <strong className="text-slate-700">{grn.received_date}</strong></span>
+                            <span>•</span>
+                            <span>Received By: <strong className="text-slate-700">{grn.received_by_name || 'Pharmacist'}</strong></span>
+                          </div>
+                        </div>
+
+                        {/* GRN Items Breakdown */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-[11px]">
+                            <thead className="text-slate-500 font-bold border-b border-slate-200">
+                              <tr>
+                                <th className="pb-1">Medicine</th>
+                                <th className="pb-1">Batch #</th>
+                                <th className="pb-1">Expiry</th>
+                                <th className="pb-1 text-center">Accepted</th>
+                                <th className="pb-1 text-center">Rejected</th>
+                                <th className="pb-1">Rejection Reason</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {grn.items?.map((gItem, gIdx) => (
+                                <tr key={gIdx}>
+                                  <td className="py-1 font-semibold text-slate-800">{gItem.medicine_name}</td>
+                                  <td className="py-1 font-mono text-slate-700">{gItem.batch_number}</td>
+                                  <td className="py-1 font-mono text-slate-600">{gItem.expiry_date}</td>
+                                  <td className="py-1 text-center font-mono font-bold text-emerald-700">
+                                    {gItem.accepted_quantity}
+                                  </td>
+                                  <td className="py-1 text-center font-mono font-bold text-red-600">
+                                    {gItem.rejected_quantity}
+                                  </td>
+                                  <td className="py-1 text-slate-500 italic">
+                                    {gItem.rejection_reason || '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center text-slate-400 text-xs">
+                    No Goods Receipt Notes generated yet for this Purchase Order.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -3841,13 +4026,13 @@ export const Pharmacy: React.FC = () => {
       {/* GOODS RECEIVING MODAL */}
       {receivingPO && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="bg-white w-full max-w-2xl rounded-2xl border border-slate-200 shadow-xl overflow-hidden p-6 space-y-4 max-h-[90vh] flex flex-col justify-between">
+          <div className="bg-white w-full max-w-3xl rounded-2xl border border-slate-200 shadow-xl overflow-hidden p-6 space-y-4 max-h-[90vh] flex flex-col justify-between">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
                 <span className="font-mono text-xs font-bold text-amber-700">{receivingPO.po_number}</span>
-                <h2 className="text-base font-bold text-slate-900">Goods Receiving & Batch Creation</h2>
+                <h2 className="text-base font-bold text-slate-900">Goods Receiving & Batch Verification</h2>
                 <p className="text-[11px] text-slate-500">
-                  Supplier: <strong>{receivingPO.vendor_name}</strong> | All received batches will be added to the inventory ledger.
+                  Supplier: <strong>{receivingPO.vendor_name}</strong> | Only accepted items enter usable inventory.
                 </p>
               </div>
               <button onClick={() => setReceivingPO(null)} className="text-slate-400 hover:text-slate-600 font-bold">
@@ -3855,86 +4040,172 @@ export const Pharmacy: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-3 text-xs max-h-96 overflow-y-auto pr-1">
-              {receiveItemsData.map((item, idx) => (
-                <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                  <div className="flex justify-between items-center font-bold text-slate-900">
-                    <span>{item.medicine_name}</span>
-                    <span className="text-slate-500 font-mono text-[11px]">
-                      Ordered: {item.ordered_quantity} | Previously Received: {item.already_received} | Remaining:{' '}
-                      <strong className="text-amber-700">{item.requested_quantity}</strong>
-                    </span>
+            <div className="space-y-4 text-xs max-h-[60vh] overflow-y-auto pr-1">
+              {receiveItemsData.map((item, idx) => {
+                const sameItemRows = receiveItemsData.filter((r) => r.po_item_id === item.po_item_id);
+                const isSplitRow = sameItemRows.length > 1;
+
+                return (
+                  <div key={item.split_id || idx} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <div className="flex flex-wrap justify-between items-center gap-2">
+                      <div>
+                        <span className="font-bold text-slate-900 text-sm">{item.medicine_name}</span>
+                        <div className="text-slate-500 font-mono text-[11px] mt-0.5 space-x-2">
+                          <span>Ordered: <strong>{item.ordered_quantity}</strong></span>
+                          <span>•</span>
+                          <span>Previously Recv: <strong>{item.already_received}</strong> (Acc: {item.already_accepted ?? 0}, Rej: {item.already_rejected ?? 0})</span>
+                          <span>•</span>
+                          <span>Remaining: <strong className="text-amber-700">{item.remaining_quantity}</strong></span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => addSplitBatchRow(item)}
+                          className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-[10px] rounded-lg transition shadow-2xs"
+                        >
+                          + Split Batch
+                        </button>
+                        {isSplitRow && (
+                          <button
+                            type="button"
+                            onClick={() => removeSplitBatchRow(item.split_id)}
+                            className="px-2 py-1 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold text-[10px] rounded-lg transition"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                      <div className="col-span-1 sm:col-span-1">
+                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Batch Number *</label>
+                        <input
+                          type="text"
+                          required
+                          value={item.batch_number}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setReceiveItemsData((prev) =>
+                              prev.map((it) => (it.split_id === item.split_id ? { ...it, batch_number: val } : it))
+                            );
+                          }}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-bold font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Mfg Date</label>
+                        <input
+                          type="date"
+                          max={new Date().toISOString().split('T')[0]}
+                          value={item.mfg_date}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setReceiveItemsData((prev) =>
+                              prev.map((it) => (it.split_id === item.split_id ? { ...it, mfg_date: val } : it))
+                            );
+                          }}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Expiry Date *</label>
+                        <input
+                          type="date"
+                          min={DEFAULT_MIN_EXPIRY}
+                          required
+                          value={item.expiry_date}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setReceiveItemsData((prev) =>
+                              prev.map((it) => (it.split_id === item.split_id ? { ...it, expiry_date: val } : it))
+                            );
+                          }}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-emerald-700 block mb-0.5">
+                          Accepted Qty *
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={item.accepted_quantity}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setReceiveItemsData((prev) =>
+                              prev.map((it) => (it.split_id === item.split_id ? { ...it, accepted_quantity: val } : it))
+                            );
+                          }}
+                          className="w-full bg-white border border-emerald-300 rounded-xl px-2 py-1.5 text-xs font-bold font-mono text-emerald-800"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-red-700 block mb-0.5">
+                          Rejected Qty
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={item.rejected_quantity}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setReceiveItemsData((prev) =>
+                              prev.map((it) => (it.split_id === item.split_id ? { ...it, rejected_quantity: val } : it))
+                            );
+                          }}
+                          className="w-full bg-white border border-red-300 rounded-xl px-2 py-1.5 text-xs font-bold font-mono text-red-800"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Unit Price (₹)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={item.unit_cost}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setReceiveItemsData((prev) =>
+                              prev.map((it) => (it.split_id === item.split_id ? { ...it, unit_cost: val } : it))
+                            );
+                          }}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {item.rejected_quantity > 0 && (
+                      <div className="bg-red-50/60 p-2 rounded-xl border border-red-200">
+                        <label className="text-[10px] font-bold text-red-800 block mb-0.5">
+                          Rejection Reason (Mandatory for rejected units) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Broken seals, damaged packaging, cold chain temperature breach..."
+                          value={item.rejection_reason}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setReceiveItemsData((prev) =>
+                              prev.map((it) => (it.split_id === item.split_id ? { ...it, rejection_reason: val } : it))
+                            );
+                          }}
+                          className="w-full bg-white border border-red-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-red-500"
+                        />
+                      </div>
+                    )}
                   </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-0.5">
-                        Received Qty (Max: {item.requested_quantity}) *
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={item.requested_quantity}
-                        value={item.received_quantity}
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          setReceiveItemsData((prev) =>
-                            prev.map((it, i) => (i === idx ? { ...it, received_quantity: val } : it))
-                          );
-                        }}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs font-bold font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Batch Number *</label>
-                      <input
-                        type="text"
-                        value={item.batch_number}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setReceiveItemsData((prev) =>
-                            prev.map((it, i) => (i === idx ? { ...it, batch_number: val } : it))
-                          );
-                        }}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs font-bold font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Mfg Date</label>
-                      <input
-                        type="date"
-                        max={new Date().toISOString().split('T')[0]}
-                        value={item.mfg_date}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setReceiveItemsData((prev) =>
-                            prev.map((it, i) => (i === idx ? { ...it, mfg_date: val } : it))
-                          );
-                        }}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Expiry Date *</label>
-                      <input
-                        type="date"
-                        min={DEFAULT_MIN_EXPIRY}
-                        value={item.expiry_date}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setReceiveItemsData((prev) =>
-                            prev.map((it, i) => (i === idx ? { ...it, expiry_date: val } : it))
-                          );
-                        }}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
