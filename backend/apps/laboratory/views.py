@@ -36,14 +36,30 @@ class LabOrderSerializer(serializers.ModelSerializer):
         model = LabOrder
         fields = '__all__'
 
-class LabTestMasterViewSet(viewsets.ModelViewSet):
-    queryset = LabTestMaster.objects.all()
-    serializer_class = LabTestMasterSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-
 from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
 from apps.audit.models import AuditLog
 import datetime
+
+class LabTestMasterViewSet(viewsets.ModelViewSet):
+    queryset = LabTestMaster.objects.all()
+    serializer_class = LabTestMasterSerializer
+    permission_classes = [
+        permissions.IsAuthenticated,
+        HasPermission
+    ]
+    required_permissions = {
+        'GET': 'lab_test_master.view',
+        'POST': 'lab_test_master.create',
+        'PUT': 'lab_test_master.update',
+        'PATCH': 'lab_test_master.update',
+        'DELETE': 'lab_test_master.delete',
+        'list': 'lab_test_master.view',
+        'retrieve': 'lab_test_master.view',
+        'create': 'lab_test_master.create',
+        'update': 'lab_test_master.update',
+        'partial_update': 'lab_test_master.update',
+        'destroy': 'lab_test_master.delete',
+    }
 
 class LabOrderViewSet(viewsets.ModelViewSet):
     serializer_class = LabOrderSerializer

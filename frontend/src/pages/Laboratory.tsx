@@ -5,14 +5,28 @@ import { useAuth } from '../context/AuthContext';
 import {
   TestTube, CheckCircle2, FileCheck, QrCode, Layers, RefreshCw,
   ChevronLeft, ChevronRight, ArrowRight, Clock, Lock, ShieldAlert,
-  Eye, X, CheckCircle
+  Eye, X, CheckCircle, Plus, Edit2, Trash2
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { hasPermission } from '../utils/permissions';
 
 export const Laboratory: React.FC = () => {
-  const { activeFacility } = useAuth();
+  const { activeFacility, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const canCreateTest = Boolean(
+    (user?.permissions && user.permissions.includes('lab_test_master.create')) ||
+    hasPermission(user?.role, 'lab_test_master.create')
+  );
+  const canUpdateTest = Boolean(
+    (user?.permissions && user.permissions.includes('lab_test_master.update')) ||
+    hasPermission(user?.role, 'lab_test_master.update')
+  );
+  const canDeleteTest = Boolean(
+    (user?.permissions && user.permissions.includes('lab_test_master.delete')) ||
+    hasPermission(user?.role, 'lab_test_master.delete')
+  );
 
   // Helper for YYYY-MM-DD
   const getTodayStr = () => new Date().toISOString().split('T')[0];
@@ -78,6 +92,60 @@ export const Laboratory: React.FC = () => {
       setCatalogue(res.data.results || res.data || []);
     } catch (e) {
       console.error('Failed to load lab test catalogue', e);
+    }
+  };
+
+  // Lab Test Master Management State & Handlers
+  const [showAddTestModal, setShowAddTestModal] = useState(false);
+  const [editingTest, setEditingTest] = useState<any | null>(null);
+  const [testFormLoading, setTestFormLoading] = useState(false);
+  const [testFormData, setTestFormData] = useState({
+    code: '',
+    name: '',
+    category: 'General Biochemistry',
+    reference_range: '',
+    unit: ''
+  });
+
+  const handleCreateTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canCreateTest) return;
+    setTestFormLoading(true);
+    try {
+      await api.post('lab/tests/', testFormData);
+      setShowAddTestModal(false);
+      setTestFormData({ code: '', name: '', category: 'General Biochemistry', reference_range: '', unit: '' });
+      await loadCatalogue();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to create lab test');
+    } finally {
+      setTestFormLoading(false);
+    }
+  };
+
+  const handleUpdateTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canUpdateTest || !editingTest) return;
+    setTestFormLoading(true);
+    try {
+      await api.patch(`lab/tests/${editingTest.id}/`, testFormData);
+      setEditingTest(null);
+      await loadCatalogue();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to update lab test');
+    } finally {
+      setTestFormLoading(false);
+    }
+  };
+
+  const handleDeleteTest = async (testId: number) => {
+    if (!canDeleteTest) return;
+    if (!window.confirm('Are you sure you want to delete this test master record?')) return;
+    try {
+      await api.delete(`lab/tests/${testId}/`);
+      await loadCatalogue();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to delete lab test');
     }
   };
 
@@ -573,9 +641,24 @@ export const Laboratory: React.FC = () => {
               <TestTube className="w-4 h-4 text-purple-600" />
               Approved 14 Diagnostic Test Catalogue
             </h2>
-            <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[10px] font-bold">
-              {catalogue.length} Tests
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[10px] font-bold">
+                {catalogue.length} Tests
+              </span>
+              {canCreateTest && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTestFormData({ code: '', name: '', category: 'General Biochemistry', reference_range: '', unit: '' });
+                    setShowAddTestModal(true);
+                  }}
+                  className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] rounded-lg transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add Test
+                </button>
+              )}
+            </div>
           </div>
 
           <p className="text-[11px] text-slate-500 font-medium">
@@ -590,9 +673,40 @@ export const Laboratory: React.FC = () => {
               >
                 <div className="flex justify-between items-start">
                   <span className="font-bold text-slate-900 text-xs">{test.name}</span>
-                  <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">
-                    {test.code}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">
+                      {test.code}
+                    </span>
+                    {canUpdateTest && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingTest(test);
+                          setTestFormData({
+                            code: test.code,
+                            name: test.name,
+                            category: test.category || 'General Biochemistry',
+                            reference_range: test.reference_range || '',
+                            unit: test.unit || ''
+                          });
+                        }}
+                        className="p-1 text-slate-400 hover:text-purple-600 rounded transition cursor-pointer"
+                        title="Edit Test Master"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {canDeleteTest && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTest(test.id)}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                        title="Delete Test Master"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex justify-between items-center text-[10px] text-slate-500 pt-0.5">
                   <span className="font-semibold text-slate-700">Category: {test.category}</span>
@@ -778,6 +892,205 @@ export const Laboratory: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Add Test Master Modal */}
+      {showAddTestModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <form
+            onSubmit={handleCreateTest}
+            className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-md space-y-4 shadow-xl text-xs"
+          >
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Plus className="w-4 h-4 text-purple-600" />
+                Add Diagnostic Test to Master Catalogue
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAddTestModal(false)}
+                className="text-slate-400 font-bold hover:text-slate-700 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Test Code *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. LBN-015"
+                  value={testFormData.code}
+                  onChange={(e) => setTestFormData({ ...testFormData, code: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-purple-500 font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Test Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Serum Creatinine"
+                  value={testFormData.name}
+                  onChange={(e) => setTestFormData({ ...testFormData, name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Category</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Renal Profile / Biochemistry"
+                  value={testFormData.category}
+                  onChange={(e) => setTestFormData({ ...testFormData, category: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Reference Range</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 0.7 - 1.3 mg/dL"
+                    value={testFormData.reference_range}
+                    onChange={(e) => setTestFormData({ ...testFormData, reference_range: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-purple-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Unit</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. mg/dL"
+                    value={testFormData.unit}
+                    onChange={(e) => setTestFormData({ ...testFormData, unit: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-purple-500 font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowAddTestModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={testFormLoading}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{testFormLoading ? 'Saving...' : 'Add Test'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Edit Test Master Modal */}
+      {editingTest && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <form
+            onSubmit={handleUpdateTest}
+            className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-md space-y-4 shadow-xl text-xs"
+          >
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Edit2 className="w-4 h-4 text-purple-600" />
+                Edit Diagnostic Test Master
+              </h2>
+              <button
+                type="button"
+                onClick={() => setEditingTest(null)}
+                className="text-slate-400 font-bold hover:text-slate-700 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Test Code *</label>
+                <input
+                  type="text"
+                  required
+                  value={testFormData.code}
+                  onChange={(e) => setTestFormData({ ...testFormData, code: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-purple-500 font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Test Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={testFormData.name}
+                  onChange={(e) => setTestFormData({ ...testFormData, name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Category</label>
+                <input
+                  type="text"
+                  value={testFormData.category}
+                  onChange={(e) => setTestFormData({ ...testFormData, category: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Reference Range</label>
+                  <input
+                    type="text"
+                    value={testFormData.reference_range}
+                    onChange={(e) => setTestFormData({ ...testFormData, reference_range: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-purple-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Unit</label>
+                  <input
+                    type="text"
+                    value={testFormData.unit}
+                    onChange={(e) => setTestFormData({ ...testFormData, unit: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-purple-500 font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingTest(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={testFormLoading}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                <span>{testFormLoading ? 'Saving...' : 'Update Test'}</span>
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

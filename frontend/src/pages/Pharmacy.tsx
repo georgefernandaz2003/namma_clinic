@@ -412,7 +412,7 @@ export const Pharmacy: React.FC = () => {
       category: med.category,
       minimum_stock: med.minimum_stock,
       reorder_level: med.reorder_level,
-      description: med.description || '',
+      description: (med as any).description || '',
     });
   };
 

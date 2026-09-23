@@ -10,7 +10,8 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
     'patients.view', 'patients.create', 'appointments.view', 'appointments.create', 'appointments.update',
     'inventory.view', 'inventory.create', 'inventory.update', 'reports.view', 'reports.export',
     'system_config.view', 'system_config.update', 'dashboard.view', 'demo.reset',
-    'medicine_master.view', 'medicine_master.create', 'medicine_master.update', 'medicine_master.delete'
+    'medicine_master.view', 'medicine_master.create', 'medicine_master.update', 'medicine_master.delete',
+    'lab_test_master.view', 'lab_test_master.create', 'lab_test_master.update', 'lab_test_master.delete'
   ]),
   DOCTOR: new Set([
     'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
@@ -25,7 +26,8 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
   ]),
   LAB_TECHNICIAN: new Set([
     'patients.view', 'lab_orders.view', 'lab_results.view', 'lab_results.create', 'lab_results.update',
-    'clinic.view', 'dashboard.view'
+    'clinic.view', 'dashboard.view',
+    'lab_test_master.view'
   ]),
   PHARMACIST: new Set([
     'prescription.view', 'pharmacy.view', 'pharmacy.dispense', 'inventory.view', 'inventory.create', 'inventory.update',

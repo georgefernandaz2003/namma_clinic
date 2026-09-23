@@ -16,7 +16,8 @@ ROLE_PERMISSIONS = {
         'po.view', 'po.create', 'po.update', 'po.approve', 'vendor.view', 'vendor.create', 'vendor.update',
         'lab_orders.view', 'lab_orders.create', 'lab_orders.update', 'lab_results.view', 'lab_results.create', 'lab_results.update',
         'demo.reset',
-        'medicine_master.view', 'medicine_master.create', 'medicine_master.update', 'medicine_master.delete'
+        'medicine_master.view', 'medicine_master.create', 'medicine_master.update', 'medicine_master.delete',
+        'lab_test_master.view', 'lab_test_master.create', 'lab_test_master.update', 'lab_test_master.delete'
     },
     'DOCTOR': {
         'patients.view', 'appointments.view', 'consultation.view', 'consultation.create', 'consultation.update',
@@ -34,7 +35,8 @@ ROLE_PERMISSIONS = {
     'LAB_TECHNICIAN': {
         'patients.view', 'lab_orders.view', 'lab_orders.create', 'lab_orders.update',
         'lab_results.view', 'lab_results.create', 'lab_results.update',
-        'clinic.view', 'dashboard.view'
+        'clinic.view', 'dashboard.view',
+        'lab_test_master.view'
     },
     'PHARMACIST': {
         'prescription.view', 'pharmacy.view', 'pharmacy.dispense', 'inventory.view', 'inventory.create', 'inventory.update',
