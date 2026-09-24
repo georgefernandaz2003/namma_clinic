@@ -1,144 +1,280 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Shield, KeyRound, UserCheck } from 'lucide-react';
+import { Shield, KeyRound, UserCheck, Eye, EyeOff } from 'lucide-react';
+import ErrorAlert from '../components/common/ErrorAlert';
 
-const demoUsers = [
-  { role: 'District Officer', username: 'district', password: 'district123', desc: 'District-Wide Operations & Monitoring Scope' },
-  { role: 'Hospital Admin (DH)', username: 'dh_admin', password: 'dh123', desc: 'District Hospital Facilities & Operations' },
-  { role: 'Hospital Admin (Varthur)', username: 'varthur_admin', password: 'varthur123', desc: 'Varthur Rural Primary Clinic A4 Operations & Facilities' },
-  { role: 'Doctor (VH1 MO)', username: 'vh1_doctor', password: 'vh1doc123', desc: 'Village Hospital 1 Clinical & OPD Queue' },
-  { role: 'Doctor (SDH Specialist)', username: 'sdh_doctor', password: 'sdhdoc123', desc: 'Sub-District Hospital Clinical Operations' },
-  { role: 'Doctor (DH Specialist)', username: 'dh_doctor', password: 'dhdoc123', desc: 'District Hospital Tertiary Consultations' },
-  { role: 'Staff Nurse (VH1)', username: 'nurse', password: 'nurse123', desc: 'Patient Registration & Vitals Triage' },
-  { role: 'Lab Technician (SDH)', username: 'lab', password: 'lab123', desc: 'Diagnostic Lab Test Processing' },
-  { role: 'Pharmacist (VH1)', username: 'pharmacy', password: 'pharmacy123', desc: 'FEFO Drug Dispensing & Stock Management' }
+interface DemoUser {
+  role: string;
+  roleBadge: string;
+  username: string;
+  password: string;
+  desc: string;
+}
+
+const LOCAL_DEMO_USERS: DemoUser[] = [
+  {
+    role: 'Medical Officer',
+    roleBadge: 'DOCTOR',
+    username: 'localdoc',
+    password: 'DoctorPassword123!',
+    desc: 'Clinical consults, triage review, OPD prescriptions',
+  },
+  {
+    role: 'Staff Nurse',
+    roleBadge: 'NURSE',
+    username: 'localnurse',
+    password: 'NursePassword123!',
+    desc: 'Patient intake registration & vitals triage recording',
+  },
+  {
+    role: 'Pharmacist',
+    roleBadge: 'PHARMACIST',
+    username: 'localpharm',
+    password: 'PharmPassword123!',
+    desc: 'Prescription verification & inventory dispensation',
+  },
+  {
+    role: 'Hospital Admin',
+    roleBadge: 'HOSPITAL_ADMIN',
+    username: 'testadmin',
+    password: 'AdminPassword123!',
+    desc: 'Facility configuration, procurement approval & audit logs',
+  },
+  {
+    role: 'Lab Technician',
+    roleBadge: 'LAB_TECHNICIAN',
+    username: 'locallab',
+    password: 'LabPassword123!',
+    desc: 'Diagnostic order processing & specimen test results',
+  },
+  {
+    role: 'District Officer',
+    roleBadge: 'DISTRICT_OFFICER',
+    username: 'localdistrict',
+    password: 'DistrictPassword123!',
+    desc: 'District-wide healthcare network monitoring & surveillance',
+  },
 ];
 
 export const Login: React.FC = () => {
-  const { login } = useAuth();
+  const { login, error: authError, clearError } = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState('vh1_doctor');
-  const [password, setPassword] = useState('vh1doc123');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const [username, setUsername] = useState('localdoc');
+  const [password, setPassword] = useState('DoctorPassword123!');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localError, setLocalError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setLoading(true);
-    setError('');
+    if (!username.trim() || !password) {
+      setLocalError('Please enter both username and password.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setLocalError('');
+    clearError();
+
     try {
       await login(username, password);
-      navigate('/');
-    } catch (err) {
-      setError('Invalid username or password.');
+      navigate('/', { replace: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Invalid credentials. Please verify your username and password.';
+      setLocalError(msg);
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  const handleQuickSelect = (u: string, p: string) => {
-    setUsername(u);
-    setPassword(p);
+  const handleQuickSelect = (user: DemoUser) => {
+    setUsername(user.username);
+    setPassword(user.password);
+    setLocalError('');
+    clearError();
   };
 
+  const displayError = localError || authError;
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-6 lg:px-8 relative overflow-hidden">
-      {/* Background accents */}
-      <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+    <main className="min-h-screen bg-slate-50 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Decorative ambient background */}
+      <div
+        className="absolute top-1/4 left-1/3 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"
+        aria-hidden="true"
+      />
+      <div
+        className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"
+        aria-hidden="true"
+      />
 
       <div className="sm:mx-auto sm:w-full sm:max-w-xl z-10">
-        <div className="flex justify-center items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center font-bold text-2xl text-white shadow-lg shadow-emerald-600/30">
+        {/* Brand Header */}
+        <header className="flex justify-center items-center gap-3 mb-4">
+          <div
+            className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center font-black text-2xl text-white shadow-lg shadow-emerald-600/30"
+            aria-hidden="true"
+          >
             NC
           </div>
           <div>
-            <h2 className="text-2xl font-black text-slate-900 tracking-wide">NAMMA CLINIC</h2>
-            <p className="text-xs text-emerald-700 font-extrabold tracking-wider uppercase">Integrated Digital Healthcare Network</p>
+            <h1 className="text-2xl font-black text-slate-900 tracking-wide">NAMMA CLINIC</h1>
+            <p className="text-xs text-emerald-700 font-extrabold tracking-wider uppercase">
+              Integrated Digital Healthcare Network
+            </p>
           </div>
-        </div>
+        </header>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6 text-center shadow-xs">
+        {/* Local Environment Notice */}
+        <section
+          aria-label="System Notice"
+          className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6 text-center shadow-xs"
+        >
           <p className="text-xs font-bold text-amber-900">
-            DEMO SYSTEM ONLY • FICTIONAL DATA • LOCAL EXECUTION
+            LOCAL LAPTOP EXECUTION • DEMO HEALTHCARE NETWORK • POSTGRESQL 16
           </p>
-        </div>
+        </section>
 
-        <div className="bg-white rounded-2xl p-8 shadow-xl border border-slate-200">
-          {error && (
-            <div className="mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
-              {error}
+        {/* Login Card */}
+        <section
+          aria-labelledby="login-heading"
+          className="bg-white rounded-2xl p-6 sm:p-8 shadow-xl border border-slate-200"
+        >
+          <h2 id="login-heading" className="text-lg font-bold text-slate-900 mb-4">
+            Sign In to Clinical Console
+          </h2>
+
+          {displayError && (
+            <div className="mb-4">
+              <ErrorAlert
+                title="Authentication Failed"
+                message={displayError}
+                onDismiss={() => {
+                  setLocalError('');
+                  clearError();
+                }}
+              />
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+            {/* Username Input */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Username</label>
+              <label htmlFor="login-username" className="block text-xs font-bold text-slate-700 mb-1">
+                Username <span className="text-rose-500">*</span>
+              </label>
               <div className="relative">
-                <Shield className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <Shield
+                  className="w-4 h-4 text-slate-400 absolute left-3 top-3.5 pointer-events-none"
+                  aria-hidden="true"
+                />
                 <input
+                  id="login-username"
+                  name="username"
                   type="text"
+                  autoComplete="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:border-emerald-600 font-medium"
+                  disabled={isSubmitting}
+                  className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm font-medium focus:outline-none focus:border-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-500/20 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                  placeholder="Enter staff username"
                   required
                 />
               </div>
             </div>
 
+            {/* Password Input */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Password</label>
+              <label htmlFor="login-password" className="block text-xs font-bold text-slate-700 mb-1">
+                Password <span className="text-rose-500">*</span>
+              </label>
               <div className="relative">
-                <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <KeyRound
+                  className="w-4 h-4 text-slate-400 absolute left-3 top-3.5 pointer-events-none"
+                  aria-hidden="true"
+                />
                 <input
-                  type="password"
+                  id="login-password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:border-emerald-600 font-medium"
+                  disabled={isSubmitting}
+                  className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm font-medium focus:outline-none focus:border-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-500/20 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                  placeholder="Enter password"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded p-0.5 cursor-pointer"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" aria-hidden="true" />
+                  ) : (
+                    <Eye className="w-4 h-4" aria-hidden="true" />
+                  )}
+                </button>
               </div>
             </div>
 
+            {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm rounded-lg shadow-md transition cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm rounded-lg shadow-md transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
             >
-              {loading ? 'Authenticating...' : 'Sign In to Demo Console'}
+              {isSubmitting ? 'Authenticating...' : 'Sign In to Console'}
             </button>
           </form>
 
           {/* Quick Demo Credentials Matrix */}
           <div className="mt-8 pt-6 border-t border-slate-200">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
-              <UserCheck className="w-4 h-4 text-emerald-600" />
+              <UserCheck className="w-4 h-4 text-emerald-600" aria-hidden="true" />
               Quick Select Demo Credentials (6 Roles Matrix)
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {demoUsers.map((u) => (
-                <button
-                  key={u.username}
-                  type="button"
-                  onClick={() => handleQuickSelect(u.username, u.password)}
-                  className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between cursor-pointer ${
-                    username === u.username
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-900 shadow-xs'
-                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
-                  }`}
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold">{u.role}</span>
-                    <span className="text-[10px] font-mono font-semibold text-emerald-700">{u.username}</span>
-                  </div>
-                  <span className="text-[10px] text-slate-500 truncate mt-1">{u.desc}</span>
-                </button>
-              ))}
+            <div
+              role="group"
+              aria-label="Demo Role Accounts"
+              className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+            >
+              {LOCAL_DEMO_USERS.map((u) => {
+                const isSelected = username === u.username;
+                return (
+                  <button
+                    key={u.username}
+                    type="button"
+                    onClick={() => handleQuickSelect(u)}
+                    className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                      isSelected
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-900 shadow-xs'
+                        : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
+                    }`}
+                    aria-pressed={isSelected}
+                  >
+                    <div className="flex justify-between items-center w-full">
+                      <span className="text-xs font-bold text-slate-900">{u.role}</span>
+                      <span className="text-[10px] font-mono font-semibold text-emerald-700 bg-emerald-100/60 px-1.5 py-0.5 rounded">
+                        {u.username}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 truncate mt-1 block">
+                      {u.desc}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 };
+
+export default Login;

@@ -1,25 +1,6 @@
-export type Role =
-  | 'DISTRICT_OFFICER'
-  | 'HOSPITAL_ADMIN'
-  | 'DOCTOR'
-  | 'NURSE'
-  | 'LAB_TECHNICIAN'
-  | 'PHARMACIST';
+export * from './api';
+export * from './auth';
 
-export interface User {
-  id: number;
-  username: string;
-  full_name: string;
-  email: string;
-  phone: string;
-  role: Role;
-  role_display: string;
-  assigned_facility: number | null;
-  facility_name?: string;
-  facility_type?: string;
-  assigned_district: number | null;
-  district_name?: string;
-}
 
 export type FacilityType =
   | 'MAIN_HOSPITAL'

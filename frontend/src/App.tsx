@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
+﻿import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { isPathAllowedForRole } from './utils/permissions';
 import { DashboardLayout } from './layouts/DashboardLayout';
@@ -28,14 +28,24 @@ import { Alerts } from './pages/Alerts';
 import { Integrations } from './pages/Integrations';
 import { Compliance } from './pages/Compliance';
 import { Audit } from './pages/Audit';
-import { ShieldAlert } from 'lucide-react';
+import LoadingSpinner from './components/common/LoadingSpinner';
+import ForbiddenCard from './components/common/ForbiddenCard';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token, user, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) return <div className="h-screen bg-slate-950 flex items-center justify-center text-xs text-slate-400">Loading Namma Clinic Console...</div>;
-  if (!token) return <Navigate to="/login" replace />;
+  if (loading) {
+    return (
+      <div className="h-screen bg-slate-50 flex items-center justify-center">
+        <LoadingSpinner size="lg" label="Initializing Namma Clinic Console..." />
+      </div>
+    );
+  }
+
+  if (!token) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
 
   const isAllowed = isPathAllowedForRole(user?.role, location.pathname);
 
@@ -44,23 +54,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
       {isAllowed ? (
         children
       ) : (
-        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-8 max-w-xl mx-auto my-12 text-center shadow-lg">
-          <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4 border border-rose-300 shadow-sm">
-            <ShieldAlert className="w-7 h-7 text-rose-600" />
-          </div>
-          <h2 className="text-xl font-black text-rose-950 mb-2">Access Denied (HTTP 403)</h2>
-          <p className="text-sm font-semibold text-rose-700 mb-6">
-            You do not have permission to perform this action.
-          </p>
-          <div className="bg-white rounded-xl p-4 border border-rose-200 text-left text-xs space-y-2 mb-6 font-mono text-slate-700">
-            <p><span className="font-bold text-slate-900">Assigned Role:</span> {user?.role_display || user?.role}</p>
-            <p><span className="font-bold text-slate-900">Requested Path:</span> {location.pathname}</p>
-            <p><span className="font-bold text-slate-900">Authorization Status:</span> Rejected by Route Guard</p>
-          </div>
-          <Link to="/" className="inline-block px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md transition">
-            Return to Authorized Dashboard
-          </Link>
-        </div>
+        <ForbiddenCard
+          role={user?.role}
+          roleDisplay={user?.role_display}
+          requestedPath={location.pathname}
+        />
       )}
     </DashboardLayout>
   );
