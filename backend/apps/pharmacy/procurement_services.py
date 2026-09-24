@@ -42,6 +42,7 @@ def create_purchase_order(
             facility=facility,
             vendor=vendor,
             po_number=num,
+            order_date=today,
             status="DRAFT"
         )
 
@@ -143,6 +144,7 @@ def receive_goods_receipt(
             vendor=purchase_order.vendor,
             grn_number=grn_number,
             facility=facility,
+            received_date=datetime.date.today(),
             received_by=None
         )
 
