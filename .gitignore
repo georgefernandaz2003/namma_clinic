@@ -1,4 +1,4 @@
-# Python / Django
+﻿# Python / Django
 __pycache__/
 *.py[cod]
 *$py.class
@@ -9,6 +9,10 @@ backend/venv/
 backend/.env
 venv/
 env/
+
+# Static and collected files
+staticfiles/
+backend/staticfiles/
 
 # Node / React
 node_modules/
