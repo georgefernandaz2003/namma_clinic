@@ -1,4 +1,4 @@
-export * from './api';
+﻿export * from './api';
 export * from './auth';
 
 
@@ -133,8 +133,9 @@ export interface Visit {
   priority?: string;
   arrival_time?: string;
   waiting_time_minutes?: number;
-  status_history_list?: any[];
+  status_history_list?: unknown[];
   token_details?: Token;
+  token_number?: string | number | null;
 }
 
 
@@ -751,3 +752,92 @@ export interface PatientRecordsSummary {
   documents: PatientDocument[];
 }
 
+
+
+export interface DiagnosticTestMaster {
+  id: number;
+  test_code: string;
+  test_name: string;
+  category: string;
+  specimen_type: string;
+  reference_range_male?: string;
+  reference_range_female?: string;
+  unit_of_measure?: string;
+  is_active: boolean;
+}
+
+export interface DiagnosticOrder {
+  id: number;
+  order_number: string;
+  visit: number;
+  facility: number;
+  ordering_doctor_staff?: number | null;
+  order_date: string;
+  priority: 'ROUTINE' | 'URGENT' | 'STAT' | string;
+  status: 'ORDERED' | 'SAMPLE_COLLECTED' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED' | string;
+  clinical_indication: string;
+  lab_token_number?: string | null;
+  created_at: string;
+}
+
+export interface TestRequest {
+  id: number;
+  diagnostic_order: number;
+  test_master: number;
+  test_master_name?: string;
+  specimen?: number | null;
+  status: string;
+  created_at: string;
+}
+
+export interface DiagnosticResult {
+  id: number;
+  test_request: number;
+  result_value_text: string;
+  result_value_numeric?: number | string | null;
+  reference_range_applied?: string;
+  is_abnormal: boolean;
+  is_critical_panic: boolean;
+  status: 'DRAFT' | 'PRELIMINARY' | 'VERIFIED' | 'AMENDED' | string;
+  entered_by_staff?: number | null;
+  entered_at?: string;
+  verified_by_staff?: number | null;
+  verified_at?: string | null;
+}
+
+export interface ReferralOrder {
+  id: number;
+  referral_number: string;
+  patient: number;
+  patient_name?: string;
+  visit: number;
+  source_facility: number;
+  source_facility_name?: string;
+  destination_facility: number;
+  destination_facility_name?: string;
+  referring_doctor?: number | null;
+  urgency: 'ROUTINE' | 'URGENT' | 'EMERGENCY';
+  reason: string;
+  clinical_summary: string;
+  status: 'INITIATED' | 'ACCEPTED' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED' | string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface FollowUpTask {
+  id: number;
+  patient: number;
+  patient_name?: string;
+  facility: number;
+  facility_name?: string;
+  category: 'GENERAL' | 'NCD_ROUTINE' | 'POST_REFERRAL' | 'LAB_REVIEW' | string;
+  due_date: string;
+  clinical_instructions: string;
+  status: 'PENDING' | 'COMPLETED' | 'OVERDUE' | 'CANCELLED' | string;
+  originating_visit?: number | null;
+  referral?: number | null;
+  completed_in_visit?: number | null;
+  completed_by_staff?: number | null;
+  completed_at?: string | null;
+  created_at?: string;
+}
