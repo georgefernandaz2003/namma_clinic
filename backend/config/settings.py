@@ -140,7 +140,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 # -----------------------------------------------------------------------------
-# 3. DATABASE CONFIGURATION
+# 3. DATABASE CONFIGURATION (LOCAL LAPTOP TARGET: POSTGRESQL 16)
 # -----------------------------------------------------------------------------
 DB_ENGINE = os.environ.get('DATABASE_ENGINE', '').strip().lower()
 
@@ -170,28 +170,55 @@ if DJANGO_ENV == 'production':
             'CONN_MAX_AGE': int(os.environ.get('DATABASE_CONN_MAX_AGE', '60')),
         }
     }
-else:
-    # Staging or Local
-    if 'postgresql' in DB_ENGINE:
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': os.environ.get('DATABASE_NAME', 'namma_clinic_staging'),
-                'USER': os.environ.get('DATABASE_USER', 'postgres'),
-                'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
-                'HOST': os.environ.get('DATABASE_HOST', '127.0.0.1'),
-                'PORT': os.environ.get('DATABASE_PORT', '5432'),
-                'CONN_MAX_AGE': int(os.environ.get('DATABASE_CONN_MAX_AGE', '0')),
-                'TEST': {
-                    'NAME': os.environ.get('DATABASE_TEST_NAME', 'test_namma_clinic_staging'),
-                },
-            }
+elif DJANGO_ENV == 'staging':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DATABASE_NAME', 'namma_clinic_staging'),
+            'USER': os.environ.get('DATABASE_USER', 'postgres'),
+            'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
+            'HOST': os.environ.get('DATABASE_HOST', '127.0.0.1'),
+            'PORT': os.environ.get('DATABASE_PORT', '5432'),
+            'CONN_MAX_AGE': int(os.environ.get('DATABASE_CONN_MAX_AGE', '0')),
+            'TEST': {
+                'NAME': os.environ.get('DATABASE_TEST_NAME', 'test_namma_clinic_staging'),
+            },
         }
-    else:
+    }
+else:
+    # LOCAL (Default target: Native local PostgreSQL 16 on laptop)
+    if 'sqlite' in DB_ENGINE:
         DATABASES = {
             'default': {
                 'ENGINE': 'django.db.backends.sqlite3',
                 'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
+    else:
+        # Resolve active local PostgreSQL port (supports dynamic pgserver or standard 5432)
+        local_port = os.environ.get('DATABASE_PORT')
+        if not local_port:
+            try:
+                from pgserver.utils import PostmasterInfo
+                pinfo = PostmasterInfo.read_from_pgdata(BASE_DIR.parent / 'pgdata')
+                if pinfo and pinfo.is_running():
+                    local_port = str(pinfo.port)
+            except Exception:
+                pass
+        local_port = local_port or '5432'
+
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': os.environ.get('DATABASE_NAME', 'namma_clinic_local'),
+                'USER': os.environ.get('DATABASE_USER', 'postgres'),
+                'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
+                'HOST': os.environ.get('DATABASE_HOST', '127.0.0.1'),
+                'PORT': local_port,
+                'CONN_MAX_AGE': int(os.environ.get('DATABASE_CONN_MAX_AGE', '0')),
+                'TEST': {
+                    'NAME': os.environ.get('DATABASE_TEST_NAME', 'test_namma_clinic_local'),
+                },
             }
         }
 
@@ -303,8 +330,6 @@ REST_FRAMEWORK = {
 
 # Environment-driven JWT token configuration
 # Defaults preserve full backward compatibility with development/test baselines.
-# Production recommendation (pending clinical/security approval):
-# ACCESS_TOKEN_LIFETIME = 15-30 minutes, REFRESH_TOKEN_LIFETIME = 7 days.
 JWT_ACCESS_MINUTES = int(os.environ.get('JWT_ACCESS_TOKEN_MINUTES', '10080'))  # Default: 7 days
 JWT_REFRESH_DAYS = int(os.environ.get('JWT_REFRESH_TOKEN_DAYS', '30'))        # Default: 30 days
 

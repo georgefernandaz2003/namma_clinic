@@ -1,4 +1,4 @@
-﻿# Phase 18 — Application Deployment Foundation & Production Configuration Hardening
+# Phase 18 — Application Deployment Foundation & Production Configuration Hardening
 
 ## 1. Executive Summary & Baseline
 
@@ -291,4 +291,22 @@ Before authorizing Phase 19:
 
 ---
 
+## 15. Operational Direction Update (Phase 19 Realignment)
+
+> [!IMPORTANT]
+> **TARGET ENVIRONMENT REALIGNMENT (PHASE 19)**:
+> Following architectural review, the Namma Clinic project targets a **local developer laptop** deployment.
+> - **TARGET ENVIRONMENT**: LOCAL LAPTOP
+> - **SUPPORTED BACKEND RUNTIME**: Python 3.11 + Django 4.2 + Django REST Framework
+> - **DATABASE**: PostgreSQL 16+ (Native local execution)
+> - **CONTAINERIZATION**: NOT REQUIRED (Docker & Docker Compose removed from architecture)
+> - **CLOUD DEPLOYMENT**: NOT REQUIRED (AWS, Azure, SDC, MeghRaj out of scope)
+> - **PRODUCTION INFRASTRUCTURE**: OUT OF SCOPE
+> - **FRONTEND**: React / Vite (Scheduled for future phase)
+> 
+> See `docs/LOCAL_DEVELOPMENT_GUIDE.md` for native laptop installation and execution instructions.
+
+---
+
 **PHASE 18 APPLICATION DEPLOYMENT FOUNDATION COMPLETE.**
+
