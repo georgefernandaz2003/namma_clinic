@@ -15,6 +15,7 @@ from apps.laboratory.services import (
     record_diagnostic_result, verify_diagnostic_result, amend_diagnostic_result
 )
 from apps.common.permissions import (
+    IsMedicalOfficer,
     IsActiveStaff, FacilityScopedPermission, get_request_staff,
     get_user_permitted_facilities, check_facility_permission
 )
@@ -195,7 +196,7 @@ class DiagnosticResultViewSet(viewsets.ModelViewSet):
         )
         return Response(self.get_serializer(result).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], url_path='verify')
+    @action(detail=True, methods=['post'], url_path='verify', permission_classes=[IsMedicalOfficer])
     def verify(self, request, pk=None):
         diag_res = self.get_object()
         staff = get_request_staff(request)

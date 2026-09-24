@@ -273,4 +273,9 @@ def transfer_staff(staff_profile, new_facility, new_department=None, effective_d
             effective_from=transfer_date,
             actor_staff=actor_staff
         )
+        from apps.accounts.models import User
+        user = User.objects.filter(staff_profile=staff_profile).first()
+        if user and user.assigned_facility_id != new_facility.id:
+            user.assigned_facility = new_facility
+            user.save(update_fields=["assigned_facility"])
         return new_assignment

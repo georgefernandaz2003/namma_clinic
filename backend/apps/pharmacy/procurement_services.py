@@ -138,6 +138,9 @@ def receive_goods_receipt(
     if not items_received:
         raise DomainValidationError("Cannot process a GRN with empty received items.")
 
+    if GoodsReceiptNote.objects.filter(grn_number=grn_number).exists():
+        raise DomainValidationError(f"Goods Receipt Note #{grn_number} has already been processed.")
+
     with transaction.atomic():
         grn = GoodsReceiptNote.objects.create(
             purchase_order=purchase_order,

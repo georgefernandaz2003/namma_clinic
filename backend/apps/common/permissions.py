@@ -1,3 +1,5 @@
+import datetime
+from django.db.models import Q
 """
 Backend Authoritative Permission and Scope Classes for Namma Clinic REST API.
 Enforces active StaffProfile resolution, administrative privileges, and facility/district isolation.
@@ -44,7 +46,14 @@ def get_user_permitted_facilities(staff_profile, user=None):
 
     facility_ids = set()
     if staff_profile:
-        active_assignments = StaffFacilityAssignment.objects.filter(staff=staff_profile, is_active=True).values_list("facility_id", flat=True)
+        today = datetime.date.today()
+        active_assignments = StaffFacilityAssignment.objects.filter(
+            staff=staff_profile,
+            is_active=True,
+            effective_from__lte=today
+        ).filter(
+            Q(effective_to__isnull=True) | Q(effective_to__gte=today)
+        ).values_list("facility_id", flat=True)
         facility_ids.update(active_assignments)
     if user and user.assigned_facility_id:
         facility_ids.add(user.assigned_facility_id)
@@ -122,3 +131,22 @@ class FacilityScopedPermission(BasePermission):
             return True
 
         return target_facility_id in permitted_facilities
+
+class IsMedicalOfficer(BasePermission):
+    """
+    Requires the requesting user to hold an active Doctor/Medical Officer role.
+    """
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated or not request.user.is_active:
+            return False
+        if request.user.is_superuser:
+            return True
+        staff = get_request_staff(request, required=False)
+        if not staff or staff.status != "ACTIVE":
+            return False
+        if getattr(request.user, "role", "") == "DOCTOR":
+            return True
+        if staff.designation in ["Medical Officer", "Doctor", "Chief Medical Officer"]:
+            return True
+        from apps.accounts.models import StaffRoleAssignment
+        return StaffRoleAssignment.objects.filter(staff=staff, role__code="DOCTOR", is_active=True).exists()

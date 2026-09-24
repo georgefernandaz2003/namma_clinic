@@ -25,7 +25,7 @@ class VisitSerializer(serializers.ModelSerializer):
         read_only_fields = ['visit_id']
 
 class VisitViewSet(viewsets.ModelViewSet):
-    queryset = Visit.objects.all().select_related('patient', 'facility')
+    queryset = Visit.objects.all().select_related('patient', 'facility', 'token')
     serializer_class = VisitSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
 
