@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import type { LabOrder } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import {
   TestTube, CheckCircle2, FileCheck, QrCode, Layers, RefreshCw,
   ChevronLeft, ChevronRight, ArrowRight, Clock, Lock, ShieldAlert,
@@ -12,6 +13,7 @@ import { hasPermission } from '../utils/permissions';
 
 export const Laboratory: React.FC = () => {
   const { activeFacility, user } = useAuth();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -115,46 +117,92 @@ export const Laboratory: React.FC = () => {
     unit: ''
   });
 
-  const handleCreateTest = async (e: React.FormEvent) => {
+  const handleCreateTest = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canCreateTest) return;
-    setTestFormLoading(true);
-    try {
-      await api.post('lab/tests/', testFormData);
-      setShowAddTestModal(false);
-      setTestFormData({ code: '', name: '', category: 'General Biochemistry', reference_range: '', unit: '' });
-      await loadCatalogue();
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to create lab test');
-    } finally {
-      setTestFormLoading(false);
-    }
+
+    confirm({
+      title: 'Confirm Test Master Creation',
+      message: 'Are you sure you want to add this new diagnostic test to the facility laboratory master catalog?',
+      confirmText: 'Create Lab Test',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Creating Lab Test...',
+      details: [
+        { label: 'Test Name', value: testFormData.name },
+        { label: 'Test Code', value: testFormData.code },
+        { label: 'Category', value: testFormData.category },
+        { label: 'Reference Range', value: testFormData.reference_range || 'N/A' },
+        { label: 'Unit', value: testFormData.unit || 'N/A' }
+      ],
+      onConfirm: async () => {
+        setTestFormLoading(true);
+        try {
+          await api.post('lab/tests/', testFormData);
+          setShowAddTestModal(false);
+          setTestFormData({ code: '', name: '', category: 'General Biochemistry', reference_range: '', unit: '' });
+          await loadCatalogue();
+        } finally {
+          setTestFormLoading(false);
+        }
+      }
+    });
   };
 
-  const handleUpdateTest = async (e: React.FormEvent) => {
+  const handleUpdateTest = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canUpdateTest || !editingTest) return;
-    setTestFormLoading(true);
-    try {
-      await api.patch(`lab/tests/${editingTest.id}/`, testFormData);
-      setEditingTest(null);
-      await loadCatalogue();
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to update lab test');
-    } finally {
-      setTestFormLoading(false);
-    }
+
+    confirm({
+      title: 'Confirm Test Master Update',
+      message: `Are you sure you want to save modifications to diagnostic test '${editingTest.name}'?`,
+      confirmText: 'Save Test Changes',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Updating Test...',
+      details: [
+        { label: 'Test Name', value: testFormData.name },
+        { label: 'Test Code', value: testFormData.code },
+        { label: 'Category', value: testFormData.category },
+        { label: 'Reference Range', value: testFormData.reference_range || 'N/A' },
+        { label: 'Unit', value: testFormData.unit || 'N/A' }
+      ],
+      onConfirm: async () => {
+        setTestFormLoading(true);
+        try {
+          await api.patch(`lab/tests/${editingTest.id}/`, testFormData);
+          setEditingTest(null);
+          await loadCatalogue();
+        } finally {
+          setTestFormLoading(false);
+        }
+      }
+    });
   };
 
-  const handleDeleteTest = async (testId: number) => {
+  const handleDeleteTest = (testId: number) => {
     if (!canDeleteTest) return;
-    if (!window.confirm('Are you sure you want to delete this test master record?')) return;
-    try {
-      await api.delete(`lab/tests/${testId}/`);
-      await loadCatalogue();
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to delete lab test');
-    }
+    const testItem = catalogue.find((t) => t.id === testId);
+    const testName = testItem?.name || `Test #${testId}`;
+
+    confirm({
+      title: 'Confirm Test Master Deletion',
+      message: `Are you sure you want to delete test master '${testName}'?`,
+      warning: 'Warning: This action is permanent and cannot be undone. This diagnostic test will no longer be orderable.',
+      confirmText: 'Delete Test Record',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      loadingText: 'Deleting Test Master...',
+      details: [
+        { label: 'Test Name', value: testName },
+        { label: 'Test Code', value: testItem?.code || 'N/A' },
+        { label: 'Category', value: testItem?.category || 'N/A' }
+      ],
+      onConfirm: async () => {
+        await api.delete(`lab/tests/${testId}/`);
+        await loadCatalogue();
+      }
+    });
   };
 
   useEffect(() => {
@@ -199,61 +247,85 @@ export const Laboratory: React.FC = () => {
     }
   };
 
-  const handleCollectSample = async (order: LabOrder) => {
-    setCollectingId(order.id);
-    try {
-      let sampleType = 'Blood / Serum';
-      const nameLower = (order.test_name || '').toLowerCase();
-      if (nameLower.includes('urine')) {
-        sampleType = 'Urine Specimen';
-      } else if (nameLower.includes('sputum')) {
-        sampleType = 'Sputum Specimen';
-      } else if (nameLower.includes('stool')) {
-        sampleType = 'Stool Specimen';
-      } else if (nameLower.includes('swab')) {
-        sampleType = 'Swab Specimen';
-      }
-
-      const barcode = `SMP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-      const res = await api.post(`lab/orders/${order.id}/collect-sample/`, {
-        sample_type: sampleType,
-        sample_code: barcode
-      });
-      const generatedCode = res.data?.sample?.sample_code || barcode;
-      alert(`Sample collected successfully!\n\nSpecimen Type: ${sampleType}\nBarcode Tag: ${generatedCode}\nOrder: #LAB-${String(order.id).padStart(4, '0')}\nOPD Queue updated to LAB_IN_PROGRESS.`);
-      await loadData();
-    } catch (e: any) {
-      console.error('Failed to collect sample:', e);
-      const errMsg = e.response?.data?.error || e.response?.data?.detail || e.message || 'Failed to collect sample.';
-      alert(`Failed to collect sample: ${errMsg}`);
-    } finally {
-      setCollectingId(null);
+  const handleCollectSample = (order: LabOrder) => {
+    let sampleType = 'Blood / Serum';
+    const nameLower = (order.test_name || '').toLowerCase();
+    if (nameLower.includes('urine')) {
+      sampleType = 'Urine Specimen';
+    } else if (nameLower.includes('sputum')) {
+      sampleType = 'Sputum Specimen';
+    } else if (nameLower.includes('stool')) {
+      sampleType = 'Stool Specimen';
+    } else if (nameLower.includes('swab')) {
+      sampleType = 'Swab Specimen';
     }
+
+    confirm({
+      title: 'Confirm Specimen Collection',
+      message: `Are you sure you want to log specimen collection for order #LAB-${String(order.id).padStart(4, '0')}?`,
+      confirmText: 'Collect Specimen & Update Queue',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Logging Specimen Collection...',
+      details: [
+        { label: 'Patient Name', value: order.patient_name || 'Patient' },
+        { label: 'Test Requested', value: order.test_name || 'Diagnostic Test' },
+        { label: 'Specimen Type', value: sampleType },
+        { label: 'Order ID', value: `#LAB-${String(order.id).padStart(4, '0')}` },
+        { label: 'Queue Update', value: 'Advances to LAB_IN_PROGRESS' }
+      ],
+      onConfirm: async () => {
+        setCollectingId(order.id);
+        try {
+          const barcode = `SMP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+          await api.post(`lab/orders/${order.id}/collect-sample/`, {
+            sample_type: sampleType,
+            sample_code: barcode
+          });
+          await loadData();
+        } finally {
+          setCollectingId(null);
+        }
+      }
+    });
   };
 
-  const handleSaveResult = async (e: React.FormEvent) => {
+  const handleSaveResult = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrder) return;
 
-    setSavingResult(true);
-    try {
-      await api.post(`lab/orders/${selectedOrder.id}/save-result/`, {
-        result_value: resultVal,
-        unit: resultUnit,
-        reference_range: refRange,
-        interpretation_flag: interpFlag,
-        notes
-      });
-      alert(`Lab result verified and pushed to patient EMR timeline for ${selectedOrder.patient_name}!\nOPD Queue updated automatically.`);
-      setSelectedOrder(null);
-      await loadData();
-    } catch (e: any) {
-      console.error('Failed to save lab result:', e);
-      const errMsg = e.response?.data?.error || e.response?.data?.detail || e.message || 'Failed to save lab result.';
-      alert(`Failed to save lab result: ${errMsg}`);
-    } finally {
-      setSavingResult(false);
-    }
+    confirm({
+      title: 'Confirm Lab Result Verification',
+      message: `Are you sure you want to submit and verify this laboratory result for ${selectedOrder.patient_name}?`,
+      confirmText: 'Verify & Release Result to EMR',
+      cancelText: 'Cancel',
+      variant: 'success',
+      loadingText: 'Verifying & Releasing Result...',
+      details: [
+        { label: 'Patient Name', value: selectedOrder.patient_name },
+        { label: 'Test Name', value: selectedOrder.test_name },
+        { label: 'Reported Value', value: `${resultVal} ${resultUnit}`.trim() },
+        { label: 'Reference Range', value: refRange || 'Normal' },
+        { label: 'Interpretation Flag', value: interpFlag },
+        { label: 'EMR Route', value: 'Pushed to Doctor Consultation & Patient EMR' }
+      ],
+      onConfirm: async () => {
+        setSavingResult(true);
+        try {
+          await api.post(`lab/orders/${selectedOrder.id}/save-result/`, {
+            result_value: resultVal,
+            unit: resultUnit,
+            reference_range: refRange,
+            interpretation_flag: interpFlag,
+            notes
+          });
+          setSelectedOrder(null);
+          await loadData();
+        } finally {
+          setSavingResult(false);
+        }
+      }
+    });
   };
 
   // Authoritative KPI calculations from backend labSummary with table fallback

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Patient, PatientDocument } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { 
   ArrowLeft, User, Phone, MapPin, Activity, Clock, 
   FileText, Pill, Share2, Stethoscope, History, Plus,
@@ -16,6 +17,7 @@ export const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, activeFacility } = useAuth();
+  const { confirm } = useConfirm();
   const isDistrictOfficer = user?.role === 'DISTRICT_OFFICER';
 
   // Navigation Tab State
@@ -121,43 +123,51 @@ export const PatientDetail: React.FC = () => {
       return;
     }
 
-    setUploading(true);
-    setUploadError(null);
+    confirm({
+      title: 'Confirm Document Upload',
+      message: `Are you sure you want to upload this document to ${patient.name}'s medical record?`,
+      confirmText: 'Upload Document',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Uploading Document...',
+      details: [
+        { label: 'Patient Name', value: patient.name },
+        { label: 'Document Title', value: uploadTitle.trim() },
+        { label: 'Category', value: uploadType },
+        { label: 'File Name', value: uploadFile.name },
+        { label: 'File Size', value: `${(uploadFile.size / 1024).toFixed(1)} KB` },
+      ],
+      onConfirm: async () => {
+        setUploading(true);
+        setUploadError(null);
+        try {
+          const formData = new FormData();
+          formData.append('title', uploadTitle.trim());
+          formData.append('document_type', uploadType);
+          formData.append('description', uploadDescription.trim());
+          formData.append('file', uploadFile);
 
-    try {
-      const formData = new FormData();
-      formData.append('title', uploadTitle.trim());
-      formData.append('document_type', uploadType);
-      formData.append('description', uploadDescription.trim());
-      formData.append('file', uploadFile);
+          await api.post(`patients/${patient.id}/documents/`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
 
-      await api.post(`patients/${patient.id}/documents/`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      alert(`Document '${uploadTitle}' uploaded successfully!`);
-      setShowUploadModal(false);
-      setUploadTitle('');
-      setUploadType('MEDICAL_RECORD');
-      setUploadDescription('');
-      setUploadFile(null);
-      
-      // Refresh patient data
-      fetchPatientData();
-    } catch (err: any) {
-      console.error('Document upload error', err);
-      let msg = 'Failed to upload document.';
-      if (err.response?.data?.error) {
-        msg = err.response.data.error;
-      } else if (err.response?.data && typeof err.response.data === 'object') {
-        msg = Object.entries(err.response.data)
-          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
-          .join('\n');
+          setShowUploadModal(false);
+          setUploadTitle('');
+          setUploadType('MEDICAL_RECORD');
+          setUploadDescription('');
+          setUploadFile(null);
+          
+          await fetchPatientData();
+        } catch (err: any) {
+          console.error('Document upload error', err);
+          const msg = err.response?.data?.error || err.message || 'Failed to upload document.';
+          setUploadError(msg);
+          throw err;
+        } finally {
+          setUploading(false);
+        }
       }
-      setUploadError(msg);
-    } finally {
-      setUploading(false);
-    }
+    });
   };
 
   // Secure Document Download
@@ -184,17 +194,27 @@ export const PatientDetail: React.FC = () => {
   };
 
   // Delete Document
-  const handleDeleteDocument = async (docId: number, docTitle: string) => {
+  const handleDeleteDocument = (docId: number, docTitle: string) => {
     if (!patient) return;
-    if (!window.confirm(`Are you sure you want to delete the document '${docTitle}'? This action cannot be undone.`)) return;
 
-    try {
-      await api.delete(`patients/${patient.id}/documents/${docId}/`);
-      alert('Document deleted successfully.');
-      fetchPatientData();
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to delete document.');
-    }
+    confirm({
+      title: 'Confirm Document Deletion',
+      message: `Are you sure you want to permanently delete the document '${docTitle}'?`,
+      warning: 'Warning: This action is permanent and cannot be undone. The document file will be deleted from storage.',
+      confirmText: 'Delete Document',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      loadingText: 'Deleting Document...',
+      details: [
+        { label: 'Patient Name', value: patient.name },
+        { label: 'Document Title', value: docTitle },
+        { label: 'Patient UHID', value: patient.patient_id }
+      ],
+      onConfirm: async () => {
+        await api.delete(`patients/${patient.id}/documents/${docId}/`);
+        await fetchPatientData();
+      }
+    });
   };
 
   // Quick Date Filter Handler
@@ -332,27 +352,42 @@ export const PatientDetail: React.FC = () => {
   }, [recordsData.documents, docCategoryFilter, docSearchQuery]);
 
   // Issue Token Submit
-  const handleIssueTokenSubmit = async (e: React.FormEvent) => {
+  const handleIssueTokenSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!patient || !activeFacility) return;
-    setSubmittingToken(true);
-    try {
-      const res = await api.post('visits/', {
-        patient: patient.id,
-        facility: activeFacility.id,
-        visit_type: visitType,
-        priority,
-        chief_complaint: chiefComplaint
-      });
-      const newVisit = res.data;
-      alert(`OPD Token #${newVisit.token_details?.token_number || newVisit.id} Issued for ${patient.name}!`);
-      setShowTokenModal(false);
-      navigate('/queue');
-    } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to issue OPD token');
-    } finally {
-      setSubmittingToken(false);
-    }
+
+    confirm({
+      title: 'Confirm OPD Visit Token Issuance',
+      message: `Are you sure you want to generate an OPD check-in token for ${patient.name}?`,
+      confirmText: 'Issue Visit Token',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Issuing Token...',
+      details: [
+        { label: 'Patient Name', value: patient.name },
+        { label: 'Patient UHID', value: patient.patient_id },
+        { label: 'Facility', value: activeFacility.facility_name },
+        { label: 'Visit Type', value: visitType },
+        { label: 'Priority', value: priority },
+        { label: 'Chief Complaint', value: chiefComplaint || 'Routine OPD' }
+      ],
+      onConfirm: async () => {
+        setSubmittingToken(true);
+        try {
+          await api.post('visits/', {
+            patient: patient.id,
+            facility: activeFacility.id,
+            visit_type: visitType,
+            priority,
+            chief_complaint: chiefComplaint
+          });
+          setShowTokenModal(false);
+          navigate('/queue');
+        } finally {
+          setSubmittingToken(false);
+        }
+      }
+    });
   };
 
   const isGroupExpanded = (dateKey: string, index: number) => {

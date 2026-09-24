@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Stethoscope, Clock, TestTube, CalendarCheck, User, ShieldAlert, ArrowRight, Activity, FileText } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import { useConfirm } from '../../context/ConfirmContext';
 
 interface DoctorDashboardProps {
   summary: any;
@@ -11,6 +12,7 @@ interface DoctorDashboardProps {
 
 export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date, isToday }) => {
   const navigate = useNavigate();
+  const { confirm } = useConfirm();
   const kpis = summary?.kpis || {};
   const [opdQueue, setOpdQueue] = useState<any[]>([]);
   const [activeVisit, setActiveVisit] = useState<any>(null);
@@ -44,19 +46,39 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
       alert('Queue status modifications are blocked on historical OPD dates.');
       return;
     }
-    try {
-      const payload: any = { queue: 'DOCTOR' };
-      if (summary?.active_facility_id) payload.facility = summary.active_facility_id;
-      const res = await api.post('visits/call-next/', payload);
-      if (res.data && res.data.id) {
-        setActiveVisit(res.data);
-        fetchDoctorQueue();
-      } else {
-        alert(res.data.message || 'No waiting patients found.');
-      }
-    } catch (e) {
-      alert('Failed to call next patient.');
-    }
+    const nextPatient = opdQueue.find((v: any) => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'WAITING');
+    await confirm({
+      title: 'Confirm Call Next Patient',
+      message: 'Are you sure you want to call the next waiting patient into the consultation room?',
+      confirmText: 'Call Patient',
+      variant: 'primary',
+      details: [
+        { label: 'Target Queue', value: 'Doctor OPD Queue' },
+        { label: 'Facility', value: summary?.active_facility || 'Current Facility' },
+        ...(nextPatient
+          ? [
+              { label: 'Next in Queue', value: nextPatient.patient_name || `Patient #${nextPatient.patient}` },
+              { label: 'Token #', value: nextPatient.token_number || `#${nextPatient.id}` },
+            ]
+          : []),
+      ],
+      warning: 'This will change the patient status to In Consultation.',
+      onConfirm: async () => {
+        try {
+          const payload: any = { queue: 'DOCTOR' };
+          if (summary?.active_facility_id) payload.facility = summary.active_facility_id;
+          const res = await api.post('visits/call-next/', payload);
+          if (res.data && res.data.id) {
+            setActiveVisit(res.data);
+            fetchDoctorQueue();
+          } else {
+            alert(res.data.message || 'No waiting patients found.');
+          }
+        } catch (e) {
+          alert('Failed to call next patient.');
+        }
+      },
+    });
   };
 
   return (

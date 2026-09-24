@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import type { Patient } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { Users, Search, UserPlus, Clock, History, X, Activity, FileText, Pill, Share2, Stethoscope } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const Patients: React.FC = () => {
   const { activeFacility } = useAuth();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState('');
@@ -51,89 +53,106 @@ export const Patients: React.FC = () => {
     loadPatients();
   }, [activeFacility]);
 
-  const handleRegisterPatient = async (e: React.FormEvent) => {
+  const handleRegisterPatient = (e: React.FormEvent) => {
     e.preventDefault();
     const finalVulnerability = vulnerability === 'OTHER'
       ? (customVulnerability.trim() || 'General / Non-Vulnerable')
       : vulnerability;
 
-    try {
-      const res = await api.post('patients/', {
-        name,
-        age: parseInt(age) || 30,
-        gender,
-        mobile,
-        address,
-        ABHA_ID_DEMO: abhaId || `ABHA-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-        vulnerability_information: finalVulnerability,
-        registered_at_facility: activeFacility?.id
-      });
-      const newPat = res.data;
+    const facName = activeFacility?.facility_name || 'Assigned Facility';
 
-      if (registerForOpd && activeFacility) {
-        try {
-          const vRes = await api.post('visits/', {
-            patient: newPat.id,
-            facility: activeFacility.id,
-            visit_type: 'GENERAL_OPD',
-            priority: 'NORMAL',
-            chief_complaint: 'Routine General OPD Checkup'
-          });
-          const vData = vRes.data;
-          alert(`Patient '${newPat.name}' registered & OPD Token #${vData.token_details?.token_number || vData.id} issued successfully!`);
-        } catch (vErr: any) {
-          alert(`Patient '${newPat.name}' registered, but failed to issue OPD token: ${vErr.response?.data?.error || 'Error'}`);
+    confirm({
+      title: 'Confirm Patient Registration',
+      message: `Are you sure you want to register this patient at ${facName}?`,
+      confirmText: 'Register Patient',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Registering Patient...',
+      details: [
+        { label: 'Patient Name', value: name },
+        { label: 'Demographics', value: `${age || '30'} Yrs • ${gender}` },
+        { label: 'Mobile Number', value: mobile || 'N/A' },
+        { label: 'Facility', value: facName },
+        { label: 'Vulnerability Group', value: finalVulnerability },
+        { label: 'Initial Queue', value: registerForOpd ? 'Auto-Checkin to Nurse Triage OPD' : 'Registration Only' }
+      ],
+      onConfirm: async () => {
+        const res = await api.post('patients/', {
+          name,
+          age: parseInt(age) || 30,
+          gender,
+          mobile,
+          address,
+          ABHA_ID_DEMO: abhaId || `ABHA-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+          vulnerability_information: finalVulnerability,
+          registered_at_facility: activeFacility?.id
+        });
+        const newPat = res.data;
+
+        if (registerForOpd && activeFacility) {
+          try {
+            await api.post('visits/', {
+              patient: newPat.id,
+              facility: activeFacility.id,
+              visit_type: 'GENERAL_OPD',
+              priority: 'NORMAL',
+              chief_complaint: 'Routine General OPD Checkup'
+            });
+          } catch (vErr) {
+            console.error('Visit token creation error:', vErr);
+          }
         }
-      } else {
-        alert(`Patient '${newPat.name}' registered successfully!\nAssigned Patient ID: ${newPat.patient_id}`);
-      }
 
-      setShowRegisterModal(false);
-      setName('');
-      setAge('');
-      setMobile('');
-      setAddress('');
-      setAbhaId('');
-      setVulnerability('Slum Resident / Low Income Group');
-      setCustomVulnerability('');
-      loadPatients();
-    } catch (e: any) {
-      let msg = 'Failed to register patient.';
-      if (e.response?.data?.error) {
-        msg = e.response.data.error;
-      } else if (e.response?.data?.detail) {
-        msg = e.response.data.detail;
-      } else if (e.response?.data && typeof e.response.data === 'object') {
-        msg = Object.entries(e.response.data)
-          .map(([k, v]) => `${k.toUpperCase()}: ${Array.isArray(v) ? v.join(', ') : v}`)
-          .join('\n');
+        setShowRegisterModal(false);
+        setName('');
+        setAge('');
+        setMobile('');
+        setAddress('');
+        setAbhaId('');
+        setVulnerability('Slum Resident / Low Income Group');
+        setCustomVulnerability('');
+        await loadPatients();
       }
-      alert(msg);
-    }
+    });
   };
 
-  const handleIssueTokenSubmit = async (e: React.FormEvent) => {
+  const handleIssueTokenSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetPatient || !activeFacility) return;
-    setSubmittingToken(true);
-    try {
-      const res = await api.post('visits/', {
-        patient: targetPatient.id,
-        facility: activeFacility.id,
-        visit_type: visitType,
-        priority,
-        chief_complaint: chiefComplaint
-      });
-      const newVisit = res.data;
-      alert(`OPD Token #${newVisit.token_details?.token_number || newVisit.id} Issued for ${targetPatient.name}!`);
-      setShowTokenModal(false);
-      setChiefComplaint('');
-      navigate('/queue');
-    } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to issue OPD token');
-    } finally {
-      setSubmittingToken(false);
-    }
+
+    confirm({
+      title: 'Confirm OPD Visit Registration',
+      message: `Are you sure you want to issue a new OPD visit token for ${targetPatient.name}?`,
+      confirmText: 'Issue Visit Token',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Issuing OPD Token...',
+      details: [
+        { label: 'Patient Name', value: targetPatient.name },
+        { label: 'UHID / Patient ID', value: targetPatient.patient_id },
+        { label: 'Facility', value: activeFacility.facility_name },
+        { label: 'Visit Type', value: visitType },
+        { label: 'Triage Priority', value: priority },
+        { label: 'Chief Complaint', value: chiefComplaint || 'Routine Checkup' }
+      ],
+      onConfirm: async () => {
+        setSubmittingToken(true);
+        try {
+          await api.post('visits/', {
+            patient: targetPatient.id,
+            facility: activeFacility.id,
+            visit_type: visitType,
+            priority,
+            chief_complaint: chiefComplaint
+          });
+          setShowTokenModal(false);
+          setChiefComplaint('');
+          navigate('/queue');
+        } finally {
+          setSubmittingToken(false);
+        }
+      }
+    });
   };
 
   const openTimelineModal = async (p: Patient) => {

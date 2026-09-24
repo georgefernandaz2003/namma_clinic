@@ -7,6 +7,7 @@ from apps.facilities.models import Facility, FacilityTypeChoices
 from apps.accounts.models import RoleChoices
 from apps.accounts.permissions import ROLE_PERMISSIONS
 from apps.audit.models import AuditLog
+from django.db.models import Sum
 
 User = get_user_model()
 
@@ -426,7 +427,7 @@ class DashboardSummaryViewTests(APITestCase):
         """2. Dashboard pharmacy total equals prescription queryset count."""
         today = datetime.date.today()
         p = Patient.objects.create(patient_id='P02_RX', name='RX Patient', registered_at_facility=self.fac_1a)
-        v = Visit.objects.create(patient=p, facility=self.fac_1a, opd_date=today, token_number='T02')
+        v = Visit.objects.create(visit_id='V02_RX', patient=p, facility=self.fac_1a, opd_date=today)
         c = Consultation.objects.create(visit=v, patient=p, facility=self.fac_1a, chief_complaint='Fever')
         Prescription.objects.create(consultation=c, patient=p, doctor=self.doctor, facility=self.fac_1a, status='PENDING')
 
@@ -705,7 +706,7 @@ class DashboardSummaryViewTests(APITestCase):
         """18. Paginated prescription API total is not based on page length."""
         today = datetime.date.today()
         p = Patient.objects.create(patient_id='P18', name='Pt 18', registered_at_facility=self.fac_1a)
-        v = Visit.objects.create(patient=p, facility=self.fac_1a, opd_date=today, token_number='T18')
+        v = Visit.objects.create(visit_id='V18', patient=p, facility=self.fac_1a, opd_date=today)
         c = Consultation.objects.create(visit=v, patient=p, facility=self.fac_1a, chief_complaint='Review')
         Prescription.objects.create(consultation=c, patient=p, doctor=self.doctor, facility=self.fac_1a, status='PENDING')
 

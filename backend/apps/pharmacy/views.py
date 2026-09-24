@@ -16,6 +16,63 @@ from apps.alerts.models import Alert
 from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
 from apps.reports.services import EXPIRING_SOON_DAYS
 
+# Authoritative Pharmacy Helpers
+def get_stock_status(quantity, minimum_stock=25, reorder_level=None):
+    """
+    Authoritative single-source stock status rule:
+    - OUT_OF_STOCK: quantity <= 0
+    - LOW_STOCK: quantity > 0 and quantity <= threshold
+    - NORMAL: quantity > threshold
+    """
+    qty = quantity or 0
+    threshold = minimum_stock if (minimum_stock is not None and minimum_stock > 0) else (reorder_level or 0)
+    if qty <= 0:
+        return 'OUT_OF_STOCK'
+    if threshold > 0 and qty <= threshold:
+        return 'LOW_STOCK'
+    return 'NORMAL'
+
+
+def resolve_pharmacy_facility_scope(user, requested_facility_id=None):
+    """
+    Enforces strict facility scope for Pharmacy views:
+    - DISTRICT_OFFICER: Can view district-wide (default) or a specific facility in their assigned district.
+      Cannot view facilities outside their district.
+    - Operational roles (HOSPITAL_ADMIN, DOCTOR, NURSE, LAB_TECHNICIAN, PHARMACIST):
+      Strictly clamped to assigned_facility_id. Any requested facility param is locked to assigned_facility_id.
+    Returns: (list_of_accessible_facility_ids, effective_facility_id_or_None)
+    """
+    if not user or not user.is_authenticated:
+        return ([], None)
+
+    if getattr(user, 'is_superuser', False):
+        if requested_facility_id:
+            try:
+                fac_id = int(requested_facility_id)
+                return ([fac_id], fac_id)
+            except (ValueError, TypeError):
+                pass
+        return (None, None)
+
+    if user.role == 'DISTRICT_OFFICER':
+        accessible_ids = get_accessible_facility_ids_for_user(user)
+        if requested_facility_id:
+            try:
+                fac_id = int(requested_facility_id)
+                if accessible_ids is None or fac_id in accessible_ids:
+                    return ([fac_id], fac_id)
+                return (accessible_ids if accessible_ids is not None else [], None)
+            except (ValueError, TypeError):
+                pass
+        return (accessible_ids, None)
+
+    # Operational roles:
+    assigned_id = getattr(user, 'assigned_facility_id', None)
+    if not assigned_id:
+        return ([], None)
+    return ([assigned_id], assigned_id)
+
+
 # Serializers
 class MedicineMasterSerializer(serializers.ModelSerializer):
     available_stock = serializers.SerializerMethodField()
@@ -28,26 +85,21 @@ class MedicineMasterSerializer(serializers.ModelSerializer):
     def get_available_stock(self, obj):
         request = self.context.get('request')
         user = request.user if request else None
-        accessible_ids = get_accessible_facility_ids_for_user(user) if user else None
-        
-        batches = obj.batches.filter(status__in=['ACTIVE', 'LOW_STOCK', 'EXPIRING_SOON'])
-        if accessible_ids is not None:
-            batches = batches.filter(facility_id__in=accessible_ids)
-        
         facility_param = request.query_params.get('facility') if request else None
-        if facility_param:
-            batches = batches.filter(facility_id=facility_param)
-            
+        accessible_ids, effective_fac_id = resolve_pharmacy_facility_scope(user, facility_param)
+
+        batches = obj.batches.filter(status__in=['ACTIVE', 'LOW_STOCK', 'EXPIRING_SOON'])
+        if effective_fac_id is not None:
+            batches = batches.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
+            batches = batches.filter(facility_id__in=accessible_ids)
+
         total = batches.aggregate(total=models.Sum('quantity'))['total'] or 0
         return total
 
     def get_stock_status(self, obj):
         stock = self.get_available_stock(obj)
-        if stock == 0:
-            return 'OUT_OF_STOCK'
-        elif stock <= obj.minimum_stock or stock <= obj.reorder_level:
-            return 'LOW_STOCK'
-        return 'NORMAL'
+        return get_stock_status(stock, obj.minimum_stock, obj.reorder_level)
 
 
 class VendorSerializer(serializers.ModelSerializer):
@@ -65,17 +117,33 @@ class VendorSerializer(serializers.ModelSerializer):
         model = Vendor
         fields = '__all__'
 
+    def _get_scoped_pos(self, obj):
+        request = self.context.get('request')
+        user = request.user if request else None
+        facility_param = request.query_params.get('facility') if request else None
+        accessible_ids, effective_fac_id = resolve_pharmacy_facility_scope(user, facility_param)
+        pos = obj.purchase_orders.all()
+        if effective_fac_id is not None:
+            pos = pos.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
+            pos = pos.filter(facility_id__in=accessible_ids)
+        return pos
+
     def get_po_count(self, obj):
-        return obj.purchase_orders.count()
+        return self._get_scoped_pos(obj).count()
 
     def get_pending_orders(self, obj):
-        return obj.purchase_orders.filter(status__in=['DRAFT', 'PENDING_APPROVAL', 'PENDING', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED']).count()
+        return self._get_scoped_pos(obj).filter(
+            status__in=['DRAFT', 'PENDING_APPROVAL', 'PENDING', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED']
+        ).count()
 
     def get_completed_orders(self, obj):
-        return obj.purchase_orders.filter(status='RECEIVED').count()
+        return self._get_scoped_pos(obj).filter(status='RECEIVED').count()
 
     def get_total_spend(self, obj):
-        total = obj.purchase_orders.filter(status__in=['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED']).aggregate(t=models.Sum('total_amount'))['t'] or 0
+        total = self._get_scoped_pos(obj).filter(
+            status__in=['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED']
+        ).aggregate(t=models.Sum('total_amount'))['t'] or 0
         return float(total)
 
     def get_vendor_code(self, obj):
@@ -140,6 +208,8 @@ class InventoryTransactionSerializer(serializers.ModelSerializer):
     batch_number = serializers.ReadOnlyField(source='batch.batch_number')
     facility_name = serializers.ReadOnlyField(source='facility.facility_name')
     performed_by_name = serializers.ReadOnlyField(source='created_by.full_name')
+    created_by_name = serializers.ReadOnlyField(source='created_by.full_name')
+    timestamp = serializers.DateTimeField(source='created_at', read_only=True)
 
     class Meta:
         model = InventoryTransaction
@@ -183,14 +253,20 @@ class VendorViewSet(viewsets.ModelViewSet):
         'DELETE': 'vendor.update'
     }
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
     def get_queryset(self):
         queryset = Vendor.objects.all().prefetch_related('purchase_orders')
-        accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
-        if accessible_ids is not None:
+        accessible_ids, effective_fac_id = resolve_pharmacy_facility_scope(
+            self.request.user, self.request.query_params.get('facility')
+        )
+        if effective_fac_id is not None:
+            queryset = queryset.filter(models.Q(facility_id=effective_fac_id) | models.Q(facility__isnull=True))
+        elif accessible_ids is not None:
             queryset = queryset.filter(models.Q(facility_id__in=accessible_ids) | models.Q(facility__isnull=True))
-        facility_param = self.request.query_params.get('facility')
-        if facility_param:
-            queryset = queryset.filter(models.Q(facility_id=facility_param) | models.Q(facility__isnull=True))
 
         search = self.request.query_params.get('search')
         if search:
@@ -300,12 +376,13 @@ class MedicineBatchViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = MedicineBatch.objects.all().select_related('medicine', 'facility', 'vendor')
-        accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
-        if accessible_ids is not None:
+        accessible_ids, effective_fac_id = resolve_pharmacy_facility_scope(
+            self.request.user, self.request.query_params.get('facility')
+        )
+        if effective_fac_id is not None:
+            queryset = queryset.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
-        facility_param = self.request.query_params.get('facility')
-        if facility_param:
-            queryset = queryset.filter(facility_id=facility_param)
         
         status_param = self.request.query_params.get('status')
         if status_param:
@@ -331,12 +408,13 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = PurchaseOrder.objects.all().select_related('vendor', 'facility', 'created_by', 'approved_by', 'rejected_by').prefetch_related('items__medicine')
-        accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
-        if accessible_ids is not None:
+        accessible_ids, effective_fac_id = resolve_pharmacy_facility_scope(
+            self.request.user, self.request.query_params.get('facility')
+        )
+        if effective_fac_id is not None:
+            queryset = queryset.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
-        facility_param = self.request.query_params.get('facility')
-        if facility_param:
-            queryset = queryset.filter(facility_id=facility_param)
 
         status_param = self.request.query_params.get('status')
         if status_param and status_param != 'ALL':
@@ -721,6 +799,9 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     def procurement_summary(self, request):
         """Comprehensive procurement KPI summary for dashboard and reporting."""
         qs = self.get_queryset()
+        pending_orders_count = qs.filter(
+            status__in=['DRAFT', 'PENDING_APPROVAL', 'PENDING', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED']
+        ).count()
         counts = {
             'draft': qs.filter(status='DRAFT').count(),
             'pending_approval': qs.filter(status__in=['PENDING_APPROVAL', 'PENDING']).count(),
@@ -730,6 +811,8 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             'received': qs.filter(status='RECEIVED').count(),
             'cancelled': qs.filter(status='CANCELLED').count(),
             'total_orders': qs.count(),
+            'pending_orders': pending_orders_count,
+            'completed_orders': qs.filter(status='RECEIVED').count(),
             'total_spend': float(qs.filter(status__in=['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED']).aggregate(t=models.Sum('total_amount'))['t'] or 0.0)
         }
         return Response(counts)
@@ -748,12 +831,13 @@ class InventoryTransactionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = InventoryTransaction.objects.all().select_related('medicine', 'batch', 'facility', 'created_by').order_by('-created_at')
-        accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
-        if accessible_ids is not None:
+        accessible_ids, effective_fac_id = resolve_pharmacy_facility_scope(
+            self.request.user, self.request.query_params.get('facility')
+        )
+        if effective_fac_id is not None:
+            queryset = queryset.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
-        facility_param = self.request.query_params.get('facility')
-        if facility_param:
-            queryset = queryset.filter(facility_id=facility_param)
         return queryset
 
 
@@ -920,58 +1004,84 @@ class PharmacyDashboardSummaryView(APIView):
 
     def get(self, request):
         user = request.user
-        accessible_ids = get_accessible_facility_ids_for_user(user)
-        facility_param = request.query_params.get('facility')
+        accessible_ids, effective_fac_id = resolve_pharmacy_facility_scope(
+            user, request.query_params.get('facility')
+        )
 
         # Prescriptions Query
         rx_qs = Prescription.objects.all()
-        if accessible_ids is not None:
+        if effective_fac_id is not None:
+            rx_qs = rx_qs.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
             rx_qs = rx_qs.filter(facility_id__in=accessible_ids)
-        if facility_param:
-            rx_qs = rx_qs.filter(facility_id=facility_param)
 
         pending_prescriptions_count = rx_qs.filter(status__in=['ACTIVE', 'PENDING', 'PARTIALLY_DISPENSED']).count()
-        dispensed_today_count = rx_qs.filter(status='DISPENSED', date=datetime.date.today()).count()
 
         # Batches Query
         batch_qs = MedicineBatch.objects.all()
-        if accessible_ids is not None:
+        if effective_fac_id is not None:
+            batch_qs = batch_qs.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
             batch_qs = batch_qs.filter(facility_id__in=accessible_ids)
-        if facility_param:
-            batch_qs = batch_qs.filter(facility_id=facility_param)
 
-        total_available_stock = batch_qs.aggregate(t=models.Sum('quantity'))['t'] or 0
+        total_available_stock = batch_qs.filter(
+            status__in=['ACTIVE', 'LOW_STOCK', 'EXPIRING_SOON']
+        ).aggregate(t=models.Sum('quantity'))['t'] or 0
 
         today = datetime.date.today()
-        expiring_threshold = today + datetime.timedelta(days=60)
-        expiring_soon_count = batch_qs.filter(quantity__gt=0, expiry_date__gt=today, expiry_date__lte=expiring_threshold).count()
+        expiring_threshold = today + datetime.timedelta(days=EXPIRING_SOON_DAYS)
+        expiring_soon_count = batch_qs.filter(
+            quantity__gt=0, expiry_date__gt=today, expiry_date__lte=expiring_threshold
+        ).count()
         expired_count = batch_qs.filter(models.Q(expiry_date__lte=today) | models.Q(status='EXPIRED')).count()
 
-        # Low Stock & Out of Stock counts
+        # Low Stock & Out of Stock counts using unified get_stock_status
         meds = MedicineMaster.objects.all()
         total_medicines = meds.count()
+        stocked_medicines_count = batch_qs.values_list('medicine_id', flat=True).distinct().count()
+
         low_stock_count = 0
         out_of_stock_count = 0
         for m in meds:
-            mb_qs = batch_qs.filter(medicine=m)
+            mb_qs = batch_qs.filter(medicine=m, status__in=['ACTIVE', 'LOW_STOCK', 'EXPIRING_SOON'])
             tot_qty = mb_qs.aggregate(t=models.Sum('quantity'))['t'] or 0
-            if tot_qty == 0:
+            st = get_stock_status(tot_qty, m.minimum_stock, m.reorder_level)
+            if st == 'OUT_OF_STOCK':
                 out_of_stock_count += 1
-            elif tot_qty <= m.minimum_stock or tot_qty <= m.reorder_level:
+            elif st == 'LOW_STOCK':
                 low_stock_count += 1
 
         # Purchase Orders Query
         po_qs = PurchaseOrder.objects.all()
-        if accessible_ids is not None:
+        if effective_fac_id is not None:
+            po_qs = po_qs.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
             po_qs = po_qs.filter(facility_id__in=accessible_ids)
-        if facility_param:
-            po_qs = po_qs.filter(facility_id=facility_param)
 
-        pending_purchase_orders_count = po_qs.filter(status__in=['DRAFT', 'PENDING', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED']).count()
-        total_vendors_count = Vendor.objects.filter(status='ACTIVE').count()
+        pending_purchase_orders_count = po_qs.filter(
+            status__in=['DRAFT', 'PENDING_APPROVAL', 'PENDING', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED']
+        ).count()
+
+        # Vendors Query scoped to facility / district
+        vendor_qs = Vendor.objects.filter(status='ACTIVE')
+        if effective_fac_id is not None:
+            vendor_qs = vendor_qs.filter(models.Q(facility_id=effective_fac_id) | models.Q(facility__isnull=True))
+        elif accessible_ids is not None:
+            vendor_qs = vendor_qs.filter(models.Q(facility_id__in=accessible_ids) | models.Q(facility__isnull=True))
+        total_vendors_count = vendor_qs.count()
+
+        # Dispensed today count reconciled with InventoryTransaction DISPENSED records
+        tx_qs = InventoryTransaction.objects.filter(transaction_type='DISPENSED', created_at__date=today)
+        if effective_fac_id is not None:
+            tx_qs = tx_qs.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
+            tx_qs = tx_qs.filter(facility_id__in=accessible_ids)
+        dispensed_today_count = tx_qs.values('reference_id').distinct().count()
 
         return Response({
             'total_medicines': total_medicines,
+            'medicine_master_count': total_medicines,
+            'stocked_medicine_count': stocked_medicines_count,
             'total_available_stock': total_available_stock,
             'low_stock_count': low_stock_count,
             'out_of_stock_count': out_of_stock_count,
@@ -981,6 +1091,7 @@ class PharmacyDashboardSummaryView(APIView):
             'dispensed_today_count': dispensed_today_count,
             'pending_purchase_orders_count': pending_purchase_orders_count,
             'total_vendors_count': total_vendors_count,
+            'total_batches_count': batch_qs.count(),
 
             # Backwards compatibility keys
             'prescriptions_waiting': pending_prescriptions_count,
@@ -999,14 +1110,15 @@ class PharmacyAlertsView(APIView):
 
     def get(self, request):
         user = request.user
-        accessible_ids = get_accessible_facility_ids_for_user(user)
-        facility_param = request.query_params.get('facility')
+        accessible_ids, effective_fac_id = resolve_pharmacy_facility_scope(
+            user, request.query_params.get('facility')
+        )
 
         batch_qs = MedicineBatch.objects.all().select_related('medicine', 'facility')
-        if accessible_ids is not None:
+        if effective_fac_id is not None:
+            batch_qs = batch_qs.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
             batch_qs = batch_qs.filter(facility_id__in=accessible_ids)
-        if facility_param:
-            batch_qs = batch_qs.filter(facility_id=facility_param)
 
         alerts = []
         today = datetime.date.today()
@@ -1015,27 +1127,36 @@ class PharmacyAlertsView(APIView):
         # 1. Low stock & Out of stock alerts
         meds = MedicineMaster.objects.all()
         for m in meds:
-            mb_qs = batch_qs.filter(medicine=m)
+            mb_qs = batch_qs.filter(medicine=m, status__in=['ACTIVE', 'LOW_STOCK', 'EXPIRING_SOON'])
             tot_qty = mb_qs.aggregate(t=models.Sum('quantity'))['t'] or 0
-            fac_name = mb_qs.first().facility.facility_name if mb_qs.exists() else 'Namma Clinic'
+            first_b = mb_qs.first()
+            fac_name = first_b.facility.facility_name if first_b else 'Namma Clinic'
+            fac_id = first_b.facility_id if first_b else (effective_fac_id or (accessible_ids[0] if accessible_ids else None))
+            st = get_stock_status(tot_qty, m.minimum_stock, m.reorder_level)
 
-            if tot_qty == 0:
+            if st == 'OUT_OF_STOCK':
                 alerts.append({
                     'id': f"OUT-{m.id}",
                     'alert_type': 'OUT_OF_STOCK',
+                    'type': 'OUT_OF_STOCK',
                     'severity': 'CRITICAL',
                     'title': f"OUT OF STOCK: {m.generic_name} {m.strength}",
                     'description': f"Current stock is 0 {m.unit}. Immediate procurement required.",
+                    'medicine_id': m.id,
+                    'facility_id': fac_id,
                     'facility_name': fac_name,
                     'created_at': today.strftime('%Y-%m-%d')
                 })
-            elif tot_qty <= m.minimum_stock or tot_qty <= m.reorder_level:
+            elif st == 'LOW_STOCK':
                 alerts.append({
                     'id': f"LOW-{m.id}",
                     'alert_type': 'LOW_STOCK',
+                    'type': 'LOW_STOCK',
                     'severity': 'HIGH',
                     'title': f"LOW STOCK: {m.generic_name} {m.strength}",
                     'description': f"Current stock is {tot_qty} {m.unit} (Minimum threshold: {m.minimum_stock}).",
+                    'medicine_id': m.id,
+                    'facility_id': fac_id,
                     'facility_name': fac_name,
                     'created_at': today.strftime('%Y-%m-%d')
                 })
@@ -1043,13 +1164,17 @@ class PharmacyAlertsView(APIView):
         # 2. Expiring & Expired Batches Alerts
         for b in batch_qs:
             if b.quantity > 0:
-                if b.expiry_date <= today:
+                if b.expiry_date <= today or b.status == 'EXPIRED':
                     alerts.append({
                         'id': f"EXP-{b.id}",
                         'alert_type': 'EXPIRED',
+                        'type': 'EXPIRED',
                         'severity': 'CRITICAL',
                         'title': f"EXPIRED BATCH: {b.medicine.generic_name} ({b.batch_number})",
                         'description': f"Batch expired on {b.expiry_date} with {b.quantity} {b.medicine.unit} remaining.",
+                        'medicine_id': b.medicine_id,
+                        'batch_id': b.id,
+                        'facility_id': b.facility_id,
                         'facility_name': b.facility.facility_name,
                         'created_at': today.strftime('%Y-%m-%d')
                     })
@@ -1057,27 +1182,34 @@ class PharmacyAlertsView(APIView):
                     alerts.append({
                         'id': f"EXPS-{b.id}",
                         'alert_type': 'EXPIRING_SOON',
+                        'type': 'EXPIRING_SOON',
                         'severity': 'MEDIUM',
                         'title': f"EXPIRING SOON: {b.medicine.generic_name} ({b.batch_number})",
                         'description': f"Batch expires on {b.expiry_date} ({ (b.expiry_date - today).days } days remaining).",
+                        'medicine_id': b.medicine_id,
+                        'batch_id': b.id,
+                        'facility_id': b.facility_id,
                         'facility_name': b.facility.facility_name,
                         'created_at': today.strftime('%Y-%m-%d')
                     })
 
         # 3. Pending Purchase Orders Alerts
         po_qs = PurchaseOrder.objects.all().select_related('vendor', 'facility')
-        if accessible_ids is not None:
+        if effective_fac_id is not None:
+            po_qs = po_qs.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
             po_qs = po_qs.filter(facility_id__in=accessible_ids)
-        if facility_param:
-            po_qs = po_qs.filter(facility_id=facility_param)
 
-        for po in po_qs.filter(status__in=['PENDING', 'ORDERED']):
+        for po in po_qs.filter(status__in=['DRAFT', 'PENDING_APPROVAL', 'PENDING', 'ORDERED']):
             alerts.append({
                 'id': f"PO-{po.id}",
                 'alert_type': 'PENDING_PURCHASE_ORDER',
+                'type': 'PENDING_PURCHASE_ORDER',
                 'severity': 'MEDIUM',
                 'title': f"PENDING PO #{po.po_number}",
                 'description': f"PO for Vendor {po.vendor.vendor_name} is currently in status '{po.status}'.",
+                'po_id': po.id,
+                'facility_id': po.facility_id,
                 'facility_name': po.facility.facility_name,
                 'created_at': po.order_date.strftime('%Y-%m-%d')
             })
@@ -1091,22 +1223,22 @@ class PharmacyReportsView(APIView):
 
     def get(self, request):
         user = request.user
-        accessible_ids = get_accessible_facility_ids_for_user(user)
-        facility_param = request.query_params.get('facility')
+        accessible_ids, effective_fac_id = resolve_pharmacy_facility_scope(
+            user, request.query_params.get('facility')
+        )
 
         batch_qs = MedicineBatch.objects.all().select_related('medicine', 'facility', 'vendor')
         tx_qs = InventoryTransaction.objects.all().select_related('medicine', 'batch', 'facility', 'created_by')
         po_qs = PurchaseOrder.objects.all().select_related('vendor', 'facility', 'created_by')
 
-        if accessible_ids is not None:
+        if effective_fac_id is not None:
+            batch_qs = batch_qs.filter(facility_id=effective_fac_id)
+            tx_qs = tx_qs.filter(facility_id=effective_fac_id)
+            po_qs = po_qs.filter(facility_id=effective_fac_id)
+        elif accessible_ids is not None:
             batch_qs = batch_qs.filter(facility_id__in=accessible_ids)
             tx_qs = tx_qs.filter(facility_id__in=accessible_ids)
             po_qs = po_qs.filter(facility_id__in=accessible_ids)
-
-        if facility_param:
-            batch_qs = batch_qs.filter(facility_id=facility_param)
-            tx_qs = tx_qs.filter(facility_id=facility_param)
-            po_qs = po_qs.filter(facility_id=facility_param)
 
         # 1. Daily Dispensing Ledger
         dispensing_logs = tx_qs.filter(transaction_type='DISPENSED')[:50]
@@ -1144,11 +1276,12 @@ class PharmacyReportsView(APIView):
                 'total_dispensed': item['total_consumed']
             })
 
-        # 4. Stock Status Summary
+        # 4. Stock Status Summary using unified get_stock_status
         stock_summary = []
         for m in MedicineMaster.objects.all():
-            m_batches = batch_qs.filter(medicine=m)
+            m_batches = batch_qs.filter(medicine=m, status__in=['ACTIVE', 'LOW_STOCK', 'EXPIRING_SOON'])
             tot_qty = m_batches.aggregate(t=models.Sum('quantity'))['t'] or 0
+            st = get_stock_status(tot_qty, m.minimum_stock, m.reorder_level)
             stock_summary.append({
                 'medicine_id': m.id,
                 'generic_name': m.generic_name,
@@ -1157,12 +1290,20 @@ class PharmacyReportsView(APIView):
                 'available_stock': tot_qty,
                 'minimum_stock': m.minimum_stock,
                 'reorder_level': m.reorder_level,
-                'status': 'OUT_OF_STOCK' if tot_qty == 0 else ('LOW_STOCK' if tot_qty <= m.minimum_stock else 'NORMAL')
+                'status': st
             })
 
+        # Total procurement spend
+        total_procurement_spend = float(po_qs.filter(status__in=['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED']).aggregate(t=models.Sum('total_amount'))['t'] or 0.0)
+
+        dispensed_count_today = tx_qs.filter(transaction_type='DISPENSED', created_at__date=today).count()
+
         return Response({
+            'dispensed_today': dispensed_count_today,
+            'dispensed_today_count': dispensed_count_today,
+            'total_procurement_spend': total_procurement_spend,
             'dispensing_summary': {
-                'dispensed_today': dispensed_today_qty,
+                'dispensed_today': abs(dispensed_today_qty) if dispensed_today_qty else dispensed_count_today,
                 'prescriptions_count': dispensed_today_rx
             },
             'stock_valuation': {
@@ -1174,5 +1315,6 @@ class PharmacyReportsView(APIView):
             'consumption_summary': consumption_summary,
             'stock_summary': stock_summary,
             'total_batches': batch_qs.count(),
-            'total_purchase_orders': po_qs.count()
+            'total_purchase_orders': po_qs.count(),
+            'total_procurement_spend': total_procurement_spend
         })

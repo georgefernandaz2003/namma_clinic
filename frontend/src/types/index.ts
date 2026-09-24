@@ -205,6 +205,8 @@ export interface Prescription {
   facility: number;
   date: string;
   status: string;
+  prescription_number?: string;
+  visit_id?: string;
   items: PrescriptionItem[];
 }
 
@@ -279,6 +281,8 @@ export interface LabOrder {
 
 export interface Vendor {
   id: number;
+  facility?: number | null;
+  facility_name?: string | null;
   vendor_code?: string;
   vendor_name?: string;
   name?: string;
@@ -391,6 +395,8 @@ export interface ProcurementSummaryKPIs {
   received: number;
   cancelled: number;
   total_orders: number;
+  pending_orders?: number;
+  completed_orders?: number;
   total_spend: number;
 }
 
@@ -407,11 +413,15 @@ export interface InventoryTransaction {
   notes: string;
   created_by?: number | null;
   created_by_name?: string;
-  timestamp: string;
+  performed_by_name?: string;
+  created_at: string;
+  timestamp?: string;
 }
 
 export interface PharmacyDashboardKPIs {
   total_medicines: number;
+  medicine_master_count?: number;
+  stocked_medicine_count?: number;
   total_available_stock: number;
   low_stock_count: number;
   out_of_stock_count: number;
@@ -421,17 +431,28 @@ export interface PharmacyDashboardKPIs {
   dispensed_today_count: number;
   pending_purchase_orders_count: number;
   total_vendors_count: number;
+  total_batches_count?: number;
+  prescriptions_waiting?: number;
+  dispensed_today?: number;
+  low_stock?: number;
+  out_of_stock?: number;
+  expiring_soon?: number;
+  pending_purchase_orders?: number;
 }
 
 export interface PharmacyAlert {
   id: string;
-  type: 'LOW_STOCK' | 'OUT_OF_STOCK' | 'EXPIRING_SOON' | 'EXPIRED' | 'PENDING_PO';
+  type?: 'LOW_STOCK' | 'OUT_OF_STOCK' | 'EXPIRING_SOON' | 'EXPIRED' | 'PENDING_PO' | string;
+  alert_type?: 'LOW_STOCK' | 'OUT_OF_STOCK' | 'EXPIRING_SOON' | 'EXPIRED' | 'PENDING_PO' | string;
   title: string;
   description: string;
   severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   medicine_id?: number;
   batch_id?: number;
   po_id?: number;
+  facility_id?: number;
+  facility_name?: string;
+  created_at?: string;
 }
 
 export interface PharmacyReportSummary {

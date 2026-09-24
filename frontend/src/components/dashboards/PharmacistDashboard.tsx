@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Pill, Clock, ShieldAlert, CheckCircle2, Package, AlertTriangle, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
+import { useConfirm } from '../../context/ConfirmContext';
 
 interface PharmacistDashboardProps {
   summary: any;
@@ -10,6 +11,7 @@ interface PharmacistDashboardProps {
 }
 
 export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summary, date, isToday }) => {
+  const { confirm } = useConfirm();
   const kpis = summary?.kpis || {};
   const inventory = summary?.inventory_summary || {};
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
@@ -41,17 +43,40 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
       alert('Pharmacy dispensing actions are blocked on historical dates.');
       return;
     }
-    setDispensing(true);
-    try {
-      const res = await api.post('pharmacy/dispense/', { prescription_id: rxId });
-      alert(res.data.message || 'Prescription dispensed using FEFO batch rules!');
-      fetchPrescriptions();
-      setSelectedRx(null);
-    } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to dispense prescription.');
-    } finally {
-      setDispensing(false);
-    }
+    const rx = prescriptions.find((r) => r.id === rxId) || selectedRx;
+    await confirm({
+      title: 'Confirm Prescription Dispense',
+      message: `Are you sure you want to dispense prescription ${rx?.prescription_number || `#${rxId}`}?`,
+      confirmText: 'Dispense Medicine',
+      variant: 'primary',
+      details: [
+        { label: 'Prescription #', value: rx?.prescription_number || `#${rxId}` },
+        { label: 'Patient', value: rx?.patient_name || `Patient #${rx?.patient || ''}` },
+        { label: 'Doctor', value: rx?.doctor_name || 'Medical Officer' },
+        ...(rx?.items
+          ? [
+              {
+                label: 'Items',
+                value: rx.items.map((it: any) => `${it.medicine_name || it.medicine} (${it.quantity || it.dosage || ''})`).join(', '),
+              },
+            ]
+          : []),
+      ],
+      warning: 'Stock will be deducted from inventory batches in real time using FEFO rules.',
+      onConfirm: async () => {
+        setDispensing(true);
+        try {
+          const res = await api.post('pharmacy/dispense/', { prescription_id: rxId });
+          alert(res.data.message || 'Prescription dispensed using FEFO batch rules!');
+          fetchPrescriptions();
+          setSelectedRx(null);
+        } catch (e: any) {
+          alert(e.response?.data?.error || 'Failed to dispense prescription.');
+        } finally {
+          setDispensing(false);
+        }
+      },
+    });
   };
 
   return (

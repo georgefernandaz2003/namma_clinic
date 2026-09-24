@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import api from '../services/api';
 import {
   Wrench,
@@ -81,6 +82,7 @@ interface BedAllocation {
 
 export const Infrastructure: React.FC = () => {
   const { activeFacility } = useAuth();
+  const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState<'oxygen' | 'beds' | 'consumables' | 'maintenance'>('oxygen');
   
   const [oxygenList, setOxygenList] = useState<OxygenSupply[]>([]);
@@ -144,76 +146,143 @@ export const Infrastructure: React.FC = () => {
   }, [activeFacility]);
 
   // Handlers
-  const handleRequestRefill = async () => {
-    alert('Oxygen Refill Indent ticket created successfully! Facility Logistics notified.');
-    setShowRefillModal(false);
+  const handleRequestRefill = () => {
+    confirm({
+      title: 'Confirm Oxygen Refill Indent',
+      message: 'Are you sure you want to log an urgent indent ticket for medical oxygen cylinder replenishment?',
+      confirmText: 'Submit Refill Indent',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Submitting Oxygen Indent...',
+      details: [
+        { label: 'Facility', value: activeFacility?.facility_name || 'Selected Facility' },
+        { label: 'Gas Specification', value: 'Medical Oxygen (IP 99.5%)' },
+        { label: 'Priority', value: 'HIGH / URGENT' },
+        { label: 'Logistics Action', value: 'Notify BBMP Facility Logistics & Vendor' }
+      ],
+      onConfirm: async () => {
+        setShowRefillModal(false);
+      }
+    });
   };
 
-  const handleCreateTicket = async (e: React.FormEvent) => {
+  const handleCreateTicket = (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await api.post('facilities-infra/maintenance-tickets/', {
-        ...newTicket,
-        facility: activeFacility?.id || 1,
-        ticket_number: `MAINT-${Date.now().toString().slice(-6)}`,
-        status: 'LOGGED',
-        assigned_technician: 'BBMP Facility Maintenance Team'
-      });
-      alert('Maintenance Work Order logged successfully!');
-      setShowTicketModal(false);
-      fetchData();
-    } catch (err) {
-      alert('Failed to log maintenance ticket.');
-    }
+
+    confirm({
+      title: 'Confirm Maintenance Work Order',
+      message: 'Are you sure you want to log this infrastructure maintenance work order?',
+      confirmText: 'Log Work Order',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Logging Work Order...',
+      details: [
+        { label: 'Facility', value: activeFacility?.facility_name || 'Selected Facility' },
+        { label: 'Equipment / Area', value: newTicket.equipment_or_area },
+        { label: 'Category', value: newTicket.category },
+        { label: 'Priority', value: newTicket.priority },
+        { label: 'Description', value: newTicket.description }
+      ],
+      onConfirm: async () => {
+        await api.post('facilities-infra/maintenance-tickets/', {
+          ...newTicket,
+          facility: activeFacility?.id || 1,
+          ticket_number: `MAINT-${Date.now().toString().slice(-6)}`,
+          status: 'LOGGED',
+          assigned_technician: 'BBMP Facility Maintenance Team'
+        });
+        setShowTicketModal(false);
+        await fetchData();
+      }
+    });
   };
 
-  const handleDeductConsumable = async (e: React.FormEvent) => {
+  const handleDeductConsumable = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedConsumable) return;
-    try {
-      const updatedStock = Math.max(0, selectedConsumable.current_stock - usedQuantity);
-      const reorderStatus = updatedStock <= selectedConsumable.min_threshold ? 'LOW_STOCK' : 'ADEQUATE';
-      
-      await api.patch(`facilities-infra/consumables/${selectedConsumable.id}/`, {
-        current_stock: updatedStock,
-        reorder_status: reorderStatus
-      });
-      alert(`Consumable usage recorded. Remaining stock: ${updatedStock} ${selectedConsumable.unit_of_measure}`);
-      setShowUsageModal(false);
-      fetchData();
-    } catch (err) {
-      alert('Failed to update consumable stock.');
-    }
+
+    const updatedStock = Math.max(0, selectedConsumable.current_stock - usedQuantity);
+    const reorderStatus = updatedStock <= selectedConsumable.min_threshold ? 'LOW_STOCK' : 'ADEQUATE';
+
+    confirm({
+      title: 'Confirm Consumable Usage',
+      message: `Are you sure you want to record the usage of ${usedQuantity} ${selectedConsumable.unit_of_measure} of ${selectedConsumable.item_name}?`,
+      confirmText: 'Record Usage & Deduct Stock',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Deducting Stock...',
+      details: [
+        { label: 'Item Name', value: selectedConsumable.item_name },
+        { label: 'Quantity Deducted', value: `${usedQuantity} ${selectedConsumable.unit_of_measure}` },
+        { label: 'Remaining Stock', value: `${updatedStock} ${selectedConsumable.unit_of_measure}` },
+        { label: 'Minimum Threshold', value: `${selectedConsumable.min_threshold} ${selectedConsumable.unit_of_measure}` },
+        { label: 'Status After Usage', value: reorderStatus }
+      ],
+      onConfirm: async () => {
+        await api.patch(`facilities-infra/consumables/${selectedConsumable.id}/`, {
+          current_stock: updatedStock,
+          reorder_status: reorderStatus
+        });
+        setShowUsageModal(false);
+        await fetchData();
+      }
+    });
   };
 
-  const handleAssignBed = async (e: React.FormEvent) => {
+  const handleAssignBed = (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await api.post('facilities-infra/bed-allocations/', {
-        ...newBedAllocation,
-        facility: activeFacility?.id || 1,
-        status: 'OCCUPIED'
-      });
-      alert('Patient successfully admitted to bed!');
-      setShowBedAssignModal(false);
-      fetchData();
-    } catch (err) {
-      alert('Failed to assign bed.');
-    }
+
+    confirm({
+      title: 'Confirm Observation Bed Admission',
+      message: `Are you sure you want to admit ${newBedAllocation.patient_name} to Bed ${newBedAllocation.bed_number}?`,
+      confirmText: 'Admit Patient to Bed',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Admitting to Bed...',
+      details: [
+        { label: 'Patient Name', value: newBedAllocation.patient_name },
+        { label: 'Bed Number', value: newBedAllocation.bed_number },
+        { label: 'Category', value: newBedAllocation.bed_category },
+        { label: 'Attending Doctor', value: newBedAllocation.attending_doctor }
+      ],
+      onConfirm: async () => {
+        await api.post('facilities-infra/bed-allocations/', {
+          ...newBedAllocation,
+          facility: activeFacility?.id || 1,
+          status: 'OCCUPIED'
+        });
+        setShowBedAssignModal(false);
+        await fetchData();
+      }
+    });
   };
 
-  const handleDischargeBed = async (id: number) => {
-    try {
-      await api.patch(`facilities-infra/bed-allocations/${id}/`, {
-        status: 'AVAILABLE',
-        patient_name: '',
-        discharged_at: new Date().toISOString()
-      });
-      alert('Bed discharged and marked available for sanitation.');
-      fetchData();
-    } catch (err) {
-      alert('Failed to update bed status.');
-    }
+  const handleDischargeBed = (id: number) => {
+    const bed = bedAllocations.find((b) => b.id === id);
+
+    confirm({
+      title: 'Confirm Patient Bed Discharge',
+      message: `Are you sure you want to discharge ${bed?.patient_name || 'the patient'} from Bed ${bed?.bed_number || id}?`,
+      warning: 'Warning: This action frees the observation bed and transitions it to sanitation status.',
+      confirmText: 'Discharge Patient',
+      cancelText: 'Cancel',
+      variant: 'warning',
+      loadingText: 'Discharging Bed...',
+      details: [
+        { label: 'Bed Number', value: bed?.bed_number || `#${id}` },
+        { label: 'Patient Name', value: bed?.patient_name || 'N/A' },
+        { label: 'Category', value: bed?.bed_category || 'General Observation' },
+        { label: 'Status Transition', value: 'OCCUPIED -> AVAILABLE' }
+      ],
+      onConfirm: async () => {
+        await api.patch(`facilities-infra/bed-allocations/${id}/`, {
+          status: 'AVAILABLE',
+          patient_name: '',
+          discharged_at: new Date().toISOString()
+        });
+        await fetchData();
+      }
+    });
   };
 
   // Active facility data filtering

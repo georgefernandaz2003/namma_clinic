@@ -3,10 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Visit, TriageVitals } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { FileText, Pill, Share2, Plus, Trash2 } from 'lucide-react';
 
 export const Consultation: React.FC = () => {
-  const { activeFacility, allFacilities } = useAuth();
+  const { activeFacility, allFacilities, user } = useAuth();
+  const { confirm } = useConfirm();
   const location = useLocation();
   const navigate = useNavigate();
   const queryParams = new URLSearchParams(location.search);
@@ -148,86 +150,99 @@ export const Consultation: React.FC = () => {
     }
   };
 
-  const handleSaveConsultation = async (e: React.FormEvent) => {
+  const handleSaveConsultation = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVisit || !activeFacility) return;
-    setSaving(true);
 
-    try {
-      // 1. Save Consultation & Prescription & Lab Test Requisitions
-      const consultRes = await api.post('consultations/', {
-        visit: selectedVisit.id,
-        patient: selectedVisit.patient,
-        facility: activeFacility.id,
-        chief_complaint: chiefComplaint,
-        clinical_history: history,
-        clinical_assessment: assessment,
-        diagnosis_code: diagCode,
-        diagnosis_name: diagName,
-        clinical_notes: notes,
-        prescription_items: prescriptions,
-        lab_test_ids: selectedTestIds
-      });
+    const patientName = selectedVisit.patient_details?.name || 'Patient';
+    const tokenNum = selectedVisit.token_details?.token_number || selectedVisit.id;
 
-      // 2. Save Referral if checked
-      if (createReferral && destFacilityId) {
-        await api.post('referrals/', {
-          patient: selectedVisit.patient,
-          source_facility: activeFacility.id,
-          destination_facility: destFacilityId,
-          reason: refReason,
-          clinical_summary: `${diagName} - BP ${vitals?.blood_pressure_systolic || 140}/${vitals?.blood_pressure_diastolic || 90} mmHg`,
-          required_service: 'Specialist Consultation',
-          urgency: refUrgency
-        });
-      }
-
-      // 3. Save Diagnostic Lab Orders (idempotent fallback)
-      for (const testId of selectedTestIds) {
+    confirm({
+      title: 'Confirm Consultation Completion',
+      message: `Are you sure you want to complete this clinical consultation and save records for ${patientName}?`,
+      confirmText: 'Complete Consultation & Issue Orders',
+      cancelText: 'Cancel',
+      variant: 'success',
+      loadingText: 'Finalizing Consultation...',
+      details: [
+        { label: 'Patient Name', value: patientName },
+        { label: 'Token / Visit', value: `Token #${tokenNum}` },
+        { label: 'Attending Doctor', value: user?.full_name ? `Dr. ${user.full_name}` : (user?.username || 'Medical Officer') },
+        { label: 'Diagnosis', value: diagName },
+        { label: 'Prescriptions', value: `${prescriptions.length} Medicines Prescribed` },
+        { label: 'Laboratory Orders', value: selectedTestIds.length > 0 ? `${selectedTestIds.length} Tests Ordered` : 'None' },
+        { label: 'Referral', value: createReferral && destFacilityId ? 'Yes (Specialist Referral)' : 'No' },
+        { label: 'Follow-up Date', value: followUpDate || 'None Scheduled' }
+      ],
+      onConfirm: async () => {
+        setSaving(true);
         try {
-          await api.post('lab/orders/', {
+          // 1. Save Consultation & Prescription & Lab Test Requisitions
+          const consultRes = await api.post('consultations/', {
             visit: selectedVisit.id,
-            consultation: consultRes.data?.id,
             patient: selectedVisit.patient,
             facility: activeFacility.id,
-            test_master: testId
+            chief_complaint: chiefComplaint,
+            clinical_history: history,
+            clinical_assessment: assessment,
+            diagnosis_code: diagCode,
+            diagnosis_name: diagName,
+            clinical_notes: notes,
+            prescription_items: prescriptions,
+            lab_test_ids: selectedTestIds
           });
-        } catch (err) {
-          console.error('Failed to order lab test', err);
+
+          // 2. Save Referral if checked
+          if (createReferral && destFacilityId) {
+            await api.post('referrals/', {
+              patient: selectedVisit.patient,
+              source_facility: activeFacility.id,
+              destination_facility: destFacilityId,
+              reason: refReason,
+              clinical_summary: `${diagName} - BP ${vitals?.blood_pressure_systolic || 140}/${vitals?.blood_pressure_diastolic || 90} mmHg`,
+              required_service: 'Specialist Consultation',
+              urgency: refUrgency
+            });
+          }
+
+          // 3. Save Diagnostic Lab Orders (idempotent fallback)
+          for (const testId of selectedTestIds) {
+            try {
+              await api.post('lab/orders/', {
+                visit: selectedVisit.id,
+                consultation: consultRes.data?.id,
+                patient: selectedVisit.patient,
+                facility: activeFacility.id,
+                test_master: testId
+              });
+            } catch (err) {
+              console.error('Failed to order lab test', err);
+            }
+          }
+
+          // 4. Save Scheduled Follow-up
+          if (followUpDate) {
+            try {
+              await api.post('followups/', {
+                patient: selectedVisit.patient,
+                facility: activeFacility.id,
+                due_date: followUpDate,
+                category: followUpCategory,
+                notes: followUpNotes
+              });
+            } catch (err) {
+              console.error('Failed to schedule follow-up', err);
+            }
+          }
+
+          setSelectedTestIds([]);
+          await loadQueue();
+          navigate('/queue');
+        } finally {
+          setSaving(false);
         }
       }
-
-      // 4. Save Scheduled Follow-up
-      if (followUpDate) {
-        try {
-          await api.post('followups/', {
-            patient: selectedVisit.patient,
-            facility: activeFacility.id,
-            due_date: followUpDate,
-            category: followUpCategory,
-            notes: followUpNotes
-          });
-        } catch (err) {
-          console.error('Failed to schedule follow-up', err);
-        }
-      }
-
-      let routeMsg = 'Consultation completed successfully!';
-      if (selectedTestIds.length > 0) {
-        routeMsg = 'Consultation saved! Patient routed to Laboratory for diagnostic testing.';
-      } else if (prescriptions.length > 0) {
-        routeMsg = 'Consultation saved! Patient routed to Pharmacy for medication dispensing.';
-      }
-
-      setSelectedTestIds([]);
-      alert(`Saved for ${selectedVisit.patient_details?.name}!\n${routeMsg}`);
-      loadQueue();
-      navigate('/queue');
-    } catch (e) {
-      alert('Failed to save consultation.');
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   return (

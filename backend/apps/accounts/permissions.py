@@ -51,18 +51,24 @@ def has_role_permission(user, permission_name):
     """Check if user role possesses the requested permission code."""
     if not user or not user.is_authenticated:
         return False
+    if getattr(user, 'is_superuser', False):
+        return True
     user_perms = ROLE_PERMISSIONS.get(user.role, set())
     return permission_name in user_perms
 
 def get_accessible_facility_ids_for_user(user):
     """
     Facility Scoping Helper:
+    - Superusers: Full access across all facilities (returns None).
     - DISTRICT_OFFICER: Returns list of facility IDs in user's assigned district (or None for all facilities in district).
     - Operational Users (HOSPITAL_ADMIN, DOCTOR, NURSE, LAB_TECHNICIAN, PHARMACIST):
       Returns [user.assigned_facility_id] only.
     """
     if not user or not user.is_authenticated:
         return []
+
+    if getattr(user, 'is_superuser', False):
+        return None
 
     if user.role == 'DISTRICT_OFFICER':
         if user.assigned_district_id:
@@ -79,6 +85,8 @@ def can_access_facility(user, facility_id):
     """Verifies if user has authorization to access the specified facility ID."""
     if not user or not user.is_authenticated or not facility_id:
         return False
+    if getattr(user, 'is_superuser', False):
+        return True
     if user.role == 'DISTRICT_OFFICER':
         if user.assigned_district_id:
             from apps.facilities.models import Facility
@@ -130,6 +138,9 @@ class HasFacilityScope(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
+        if getattr(request.user, 'is_superuser', False):
+            return True
+
         # District Officer is blocked from direct clinical, facility procurement, and user mutations
         if request.user.role == 'DISTRICT_OFFICER':
             if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
@@ -146,6 +157,9 @@ class HasFacilityScope(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if not request.user or not request.user.is_authenticated:
             return False
+
+        if getattr(request.user, 'is_superuser', False):
+            return True
 
         if request.user.role == 'DISTRICT_OFFICER':
             if request.method not in permissions.SAFE_METHODS:

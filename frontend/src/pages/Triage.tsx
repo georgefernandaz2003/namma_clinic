@@ -3,10 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Visit } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { Stethoscope, CheckCircle2 } from 'lucide-react';
 
 export const Triage: React.FC = () => {
   const { activeFacility } = useAuth();
+  const { confirm } = useConfirm();
   const location = useLocation();
   const navigate = useNavigate();
   const stateVisitId = location.state?.visitId;
@@ -54,52 +56,70 @@ export const Triage: React.FC = () => {
     loadQueue();
   }, [activeFacility]);
 
-  const handleSaveTriage = async (e: React.FormEvent) => {
+  const handleSaveTriage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVisit) return;
-    setSaving(true);
 
-    try {
-      await api.post('triage/', {
-        visit: selectedVisit.id,
-        patient: selectedVisit.patient,
-        blood_pressure_systolic: parseInt(sys) || 120,
-        blood_pressure_diastolic: parseInt(dia) || 80,
-        pulse_bpm: parseInt(pulse) || 72,
-        temperature_f: parseFloat(temp) || 98.6,
-        spo2_percent: parseInt(spo2) || 98,
-        respiratory_rate: parseInt(resp) || 18,
-        height_cm: parseFloat(height) || 165,
-        weight_kg: parseFloat(weight) || 60,
-        blood_glucose_mgdl: parseInt(glucose) || 100,
-        nurse_notes: notes
-      });
+    const patientName = selectedVisit.patient_details?.name || 'Patient';
+    const tokenNum = selectedVisit.token_details?.token_number || selectedVisit.token_number || selectedVisit.id;
 
-      const patientName = selectedVisit.patient_details?.name || 'Patient';
-      const tokenNum = selectedVisit.token_details?.token_number || selectedVisit.token_number || selectedVisit.id;
+    confirm({
+      title: 'Confirm Triage Assessment & Routing',
+      message: `Are you sure you want to save these vitals and route ${patientName} to the Doctor OPD queue?`,
+      confirmText: 'Save Vitals & Route to Doctor',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Saving Triage Assessment...',
+      details: [
+        { label: 'Patient Name', value: patientName },
+        { label: 'Token Number', value: `#${tokenNum}` },
+        { label: 'Blood Pressure', value: `${sys}/${dia} mmHg` },
+        { label: 'Pulse / SpO2', value: `${pulse} bpm • ${spo2}%` },
+        { label: 'Temperature', value: `${temp} °F` },
+        { label: 'Blood Glucose', value: `${glucose} mg/dL` },
+        { label: 'BMI', value: `${calculatedBmi} kg/m²` },
+        { label: 'Destination Queue', value: 'Doctor Consultation' }
+      ],
+      onConfirm: async () => {
+        setSaving(true);
+        try {
+          await api.post('triage/', {
+            visit: selectedVisit.id,
+            patient: selectedVisit.patient,
+            blood_pressure_systolic: parseInt(sys) || 120,
+            blood_pressure_diastolic: parseInt(dia) || 80,
+            pulse_bpm: parseInt(pulse) || 72,
+            temperature_f: parseFloat(temp) || 98.6,
+            spo2_percent: parseInt(spo2) || 98,
+            respiratory_rate: parseInt(resp) || 18,
+            height_cm: parseFloat(height) || 165,
+            weight_kg: parseFloat(weight) || 60,
+            blood_glucose_mgdl: parseInt(glucose) || 100,
+            nurse_notes: notes
+          });
 
-      setCompletedInfo({
-        patientName,
-        tokenNumber: tokenNum
-      });
+          setCompletedInfo({
+            patientName,
+            tokenNumber: tokenNum
+          });
 
-      // Reset vitals form for next patient
-      setSys('120');
-      setDia('80');
-      setPulse('72');
-      setTemp('98.6');
-      setSpo2('98');
-      setHeight('165');
-      setWeight('65');
-      setGlucose('100');
-      setNotes('');
+          // Reset vitals form for next patient
+          setSys('120');
+          setDia('80');
+          setPulse('72');
+          setTemp('98.6');
+          setSpo2('98');
+          setHeight('165');
+          setWeight('65');
+          setGlucose('100');
+          setNotes('');
 
-      await loadQueue();
-    } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to save triage vitals');
-    } finally {
-      setSaving(false);
-    }
+          await loadQueue();
+        } finally {
+          setSaving(false);
+        }
+      }
+    });
   };
 
   // Dynamic BMI Calculation

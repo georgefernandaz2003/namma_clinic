@@ -1,9 +1,35 @@
 import React, { useState } from 'react';
-import { Video, PhoneCall, Mic, MicOff } from 'lucide-react';
+import { Video, PhoneCall, Mic, MicOff, CheckCircle2 } from 'lucide-react';
+import { useConfirm } from '../context/ConfirmContext';
 
 export const Teleconsultation: React.FC = () => {
+  const { confirm } = useConfirm();
   const [inCall, setInCall] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [adviceNotes, setAdviceNotes] = useState(
+    'Specialist recommended upgrading Amlodipine to 10mg OD, adding Telmisartan 40mg, and review in 14 days.'
+  );
+  const [savedSuccess, setSavedSuccess] = useState(false);
+
+  const handleSaveAdvice = () => {
+    confirm({
+      title: 'Confirm Teleconsultation Record',
+      message: 'Are you sure you want to append these specialist advice notes to the patient EMR record?',
+      confirmText: 'Save Advice Notes',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Saving Clinical Record...',
+      details: [
+        { label: 'Patient Name', value: 'Ramesh Kumar (52/M)' },
+        { label: 'Specialist Hub', value: 'Victoria Hospital Cardiology (Dr. K. V. Sharma)' },
+        { label: 'Clinical Advice', value: adviceNotes },
+      ],
+      onConfirm: async () => {
+        await new Promise((r) => setTimeout(r, 300));
+        setSavedSuccess(true);
+      },
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -67,14 +93,14 @@ export const Teleconsultation: React.FC = () => {
               {inCall ? (
                 <button
                   onClick={() => setInCall(false)}
-                  className="px-6 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl shadow-md"
+                  className="px-6 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer"
                 >
                   End Teleconsult
                 </button>
               ) : (
                 <button
                   onClick={() => setInCall(true)}
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-2"
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-2 cursor-pointer"
                 >
                   <PhoneCall className="w-4 h-4" />
                   <span>Start Simulated Teleconsultation</span>
@@ -97,18 +123,26 @@ export const Teleconsultation: React.FC = () => {
             <label className="block text-slate-700 font-bold">Specialist Advice Notes</label>
             <textarea
               rows={4}
+              value={adviceNotes}
+              onChange={(e) => setAdviceNotes(e.target.value)}
               placeholder="Record specialist advice received during teleconsultation..."
               className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-purple-600 font-medium"
-              defaultValue="Specialist recommended upgrading Amlodipine to 10mg OD, adding Telmisartan 40mg, and review in 14 days."
             />
           </div>
 
-          <button
-            onClick={() => alert('Teleconsultation advice notes saved to patient visit EMR!')}
-            className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow-md"
-          >
-            Save Advice to Patient Record
-          </button>
+          {savedSuccess ? (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl font-bold flex items-center justify-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Advice Recorded in Patient EMR</span>
+            </div>
+          ) : (
+            <button
+              onClick={handleSaveAdvice}
+              className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition"
+            >
+              Save Advice to Patient Record
+            </button>
+          )}
         </div>
       </div>
     </div>

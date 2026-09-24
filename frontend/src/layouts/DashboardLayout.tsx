@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { isPathAllowedForRole, hasPermission } from '../utils/permissions';
 import api from '../services/api';
+import { useConfirm } from '../context/ConfirmContext';
 import {
   LayoutDashboard,
   Network,
@@ -70,6 +71,7 @@ const navItems: NavItem[] = [
 
 export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, activeFacility, allFacilities, logout, setActiveFacility, refreshUserData } = useAuth();
+  const { confirm } = useConfirm();
   const location = useLocation();
   const navigate = useNavigate();
   const [resetting, setResetting] = useState(false);
@@ -78,19 +80,32 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
     hasPermission(user?.role, 'demo.reset')
   );
 
-  const handleResetDemo = async () => {
-    if (!window.confirm('Reset all demo data back to initial pristine state?')) return;
-    setResetting(true);
-    try {
-      await api.post('admin/reset-demo/');
-      await refreshUserData();
-      alert('Demo data successfully reset!');
-      navigate('/');
-    } catch (e) {
-      alert('Failed to reset demo data.');
-    } finally {
-      setResetting(false);
-    }
+  const handleResetDemo = () => {
+    confirm({
+      title: 'Reset Demo Data?',
+      message: 'This will reset the demo environment and replace current demo data. Any changes made during the demo may be lost.',
+      warning: 'Warning: This action is destructive and irreversible. All recent clinical and procurement mutations will be reverted to baseline demo state.',
+      confirmText: 'Reset Demo Data',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      loadingText: 'Resetting Demo Environment...',
+      details: [
+        { label: 'Authorized User', value: user?.username || 'admin' },
+        { label: 'Role Scope', value: user?.role_display || user?.role || 'Hospital Admin' },
+        { label: 'Facility Context', value: activeFacility?.facility_name || 'All Facilities' },
+        { label: 'Operation', value: 'Complete Database Re-seed' }
+      ],
+      onConfirm: async () => {
+        setResetting(true);
+        try {
+          await api.post('admin/reset-demo/');
+          await refreshUserData();
+          navigate('/');
+        } finally {
+          setResetting(false);
+        }
+      }
+    });
   };
 
   return (

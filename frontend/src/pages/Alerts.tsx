@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import type { Alert } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { Bell, CheckCircle2 } from 'lucide-react';
 
 export const Alerts: React.FC = () => {
   const { activeFacility } = useAuth();
+  const { confirm } = useConfirm();
   const [alerts, setAlerts] = useState<Alert[]>([]);
 
   const loadData = async () => {
@@ -22,13 +24,25 @@ export const Alerts: React.FC = () => {
     loadData();
   }, [activeFacility]);
 
-  const handleAcknowledge = async (alertId: number) => {
-    try {
-      await api.patch(`alerts/${alertId}/`, { status: 'ACKNOWLEDGED' });
-      loadData();
-    } catch (e) {
-      alert('Failed to acknowledge alert.');
-    }
+  const handleAcknowledge = (a: Alert) => {
+    confirm({
+      title: 'Confirm Alert Acknowledgment',
+      message: 'Are you sure you want to mark this system alert as acknowledged?',
+      confirmText: 'Acknowledge Alert',
+      cancelText: 'Cancel',
+      variant: 'warning',
+      loadingText: 'Acknowledging Alert...',
+      details: [
+        { label: 'Alert Title', value: a.title },
+        { label: 'Severity', value: a.severity },
+        { label: 'Description', value: a.description },
+        { label: 'Triggered At', value: a.created_at },
+      ],
+      onConfirm: async () => {
+        await api.patch(`alerts/${a.id}/`, { status: 'ACKNOWLEDGED' });
+        await loadData();
+      },
+    });
   };
 
   return (
@@ -72,8 +86,8 @@ export const Alerts: React.FC = () => {
 
               {a.status === 'NEW' ? (
                 <button
-                  onClick={() => handleAcknowledge(a.id)}
-                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold shrink-0 shadow-xs"
+                  onClick={() => handleAcknowledge(a)}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold shrink-0 shadow-xs cursor-pointer"
                 >
                   Acknowledge Alert
                 </button>

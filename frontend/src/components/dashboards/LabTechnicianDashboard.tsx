@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { TestTube, Clock, ShieldAlert, CheckCircle2, FileText, AlertCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
+import { useConfirm } from '../../context/ConfirmContext';
 
 interface LabTechnicianDashboardProps {
   summary: any;
@@ -10,6 +11,7 @@ interface LabTechnicianDashboardProps {
 }
 
 export const LabTechnicianDashboard: React.FC<LabTechnicianDashboardProps> = ({ summary, date, isToday }) => {
+  const { confirm } = useConfirm();
   const kpis = summary?.kpis || {};
   const [labOrders, setLabOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -43,21 +45,36 @@ export const LabTechnicianDashboard: React.FC<LabTechnicianDashboardProps> = ({ 
       alert('Lab result verification is blocked on historical dates.');
       return;
     }
-    setSaving(true);
-    try {
-      await api.post(`lab/orders/${selectedOrder.id}/save-result/`, {
-        result_value: resultVal,
-        interpretation_flag: resultFlag,
-        notes: 'Result verified by lab technician.'
-      });
-      alert('Lab result verified and released to EMR successfully!');
-      fetchLabOrders();
-      setSelectedOrder(null);
-    } catch (e) {
-      alert('Failed to save lab result.');
-    } finally {
-      setSaving(false);
-    }
+    await confirm({
+      title: 'Confirm Lab Result Verification',
+      message: `Are you sure you want to verify and submit the lab result for ${selectedOrder.test_name || `Order #${selectedOrder.id}`}?`,
+      confirmText: 'Verify & Release Result',
+      variant: 'primary',
+      details: [
+        { label: 'Patient', value: selectedOrder.patient_name || `Patient #${selectedOrder.patient}` },
+        { label: 'Test Name', value: selectedOrder.test_name || `Order #${selectedOrder.id}` },
+        { label: 'Result Value', value: resultVal },
+        { label: 'Interpretation Flag', value: resultFlag },
+      ],
+      warning: 'The diagnostic result will be released immediately to the patient EMR and doctor consultation queue.',
+      onConfirm: async () => {
+        setSaving(true);
+        try {
+          await api.post(`lab/orders/${selectedOrder.id}/save-result/`, {
+            result_value: resultVal,
+            interpretation_flag: resultFlag,
+            notes: 'Result verified by lab technician.',
+          });
+          alert('Lab result verified and released to EMR successfully!');
+          fetchLabOrders();
+          setSelectedOrder(null);
+        } catch (e) {
+          alert('Failed to save lab result.');
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   return (

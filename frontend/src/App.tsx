@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ConfirmProvider } from './context/ConfirmContext';
 import { isPathAllowedForRole } from './utils/permissions';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { Login } from './pages/Login';
@@ -71,38 +72,40 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 export const App: React.FC = () => {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/network" element={<ProtectedRoute><HealthcareNetwork /></ProtectedRoute>} />
-          <Route path="/facilities" element={<ProtectedRoute><Facilities /></ProtectedRoute>} />
-          <Route path="/patients" element={<ProtectedRoute><Patients /></ProtectedRoute>} />
-          <Route path="/patients/:id" element={<ProtectedRoute><PatientDetail /></ProtectedRoute>} />
-          <Route path="/queue" element={<ProtectedRoute><Queue /></ProtectedRoute>} />
-          <Route path="/triage" element={<ProtectedRoute><Triage /></ProtectedRoute>} />
-          <Route path="/consultation" element={<ProtectedRoute><Consultation /></ProtectedRoute>} />
-          <Route path="/lab" element={<ProtectedRoute><Laboratory /></ProtectedRoute>} />
-          <Route path="/pharmacy" element={<ProtectedRoute><Pharmacy /></ProtectedRoute>} />
-          <Route path="/referrals" element={<ProtectedRoute><Referrals /></ProtectedRoute>} />
-          <Route path="/followups" element={<ProtectedRoute><FollowUps /></ProtectedRoute>} />
-          <Route path="/ncd" element={<ProtectedRoute><NCD /></ProtectedRoute>} />
-          <Route path="/maternal-child" element={<ProtectedRoute><MaternalChild /></ProtectedRoute>} />
-          <Route path="/surveillance" element={<ProtectedRoute><Surveillance /></ProtectedRoute>} />
-          <Route path="/teleconsultation" element={<ProtectedRoute><Teleconsultation /></ProtectedRoute>} />
-          <Route path="/outreach" element={<ProtectedRoute><Outreach /></ProtectedRoute>} />
-          <Route path="/wellness" element={<ProtectedRoute><Wellness /></ProtectedRoute>} />
-          <Route path="/ars" element={<ProtectedRoute><ARS /></ProtectedRoute>} />
-          <Route path="/quality" element={<ProtectedRoute><Quality /></ProtectedRoute>} />
-          <Route path="/infrastructure" element={<ProtectedRoute><Infrastructure /></ProtectedRoute>} />
-          <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-          <Route path="/alerts" element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
-          <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
-          <Route path="/compliance" element={<ProtectedRoute><Compliance /></ProtectedRoute>} />
-          <Route path="/audit" element={<ProtectedRoute><Audit /></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+      <ConfirmProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/network" element={<ProtectedRoute><HealthcareNetwork /></ProtectedRoute>} />
+            <Route path="/facilities" element={<ProtectedRoute><Facilities /></ProtectedRoute>} />
+            <Route path="/patients" element={<ProtectedRoute><Patients /></ProtectedRoute>} />
+            <Route path="/patients/:id" element={<ProtectedRoute><PatientDetail /></ProtectedRoute>} />
+            <Route path="/queue" element={<ProtectedRoute><Queue /></ProtectedRoute>} />
+            <Route path="/triage" element={<ProtectedRoute><Triage /></ProtectedRoute>} />
+            <Route path="/consultation" element={<ProtectedRoute><Consultation /></ProtectedRoute>} />
+            <Route path="/lab" element={<ProtectedRoute><Laboratory /></ProtectedRoute>} />
+            <Route path="/pharmacy" element={<ProtectedRoute><Pharmacy /></ProtectedRoute>} />
+            <Route path="/referrals" element={<ProtectedRoute><Referrals /></ProtectedRoute>} />
+            <Route path="/followups" element={<ProtectedRoute><FollowUps /></ProtectedRoute>} />
+            <Route path="/ncd" element={<ProtectedRoute><NCD /></ProtectedRoute>} />
+            <Route path="/maternal-child" element={<ProtectedRoute><MaternalChild /></ProtectedRoute>} />
+            <Route path="/surveillance" element={<ProtectedRoute><Surveillance /></ProtectedRoute>} />
+            <Route path="/teleconsultation" element={<ProtectedRoute><Teleconsultation /></ProtectedRoute>} />
+            <Route path="/outreach" element={<ProtectedRoute><Outreach /></ProtectedRoute>} />
+            <Route path="/wellness" element={<ProtectedRoute><Wellness /></ProtectedRoute>} />
+            <Route path="/ars" element={<ProtectedRoute><ARS /></ProtectedRoute>} />
+            <Route path="/quality" element={<ProtectedRoute><Quality /></ProtectedRoute>} />
+            <Route path="/infrastructure" element={<ProtectedRoute><Infrastructure /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+            <Route path="/alerts" element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
+            <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
+            <Route path="/compliance" element={<ProtectedRoute><Compliance /></ProtectedRoute>} />
+            <Route path="/audit" element={<ProtectedRoute><Audit /></ProtectedRoute>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </ConfirmProvider>
     </AuthProvider>
   );
 };

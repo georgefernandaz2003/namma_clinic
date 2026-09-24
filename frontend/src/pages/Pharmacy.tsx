@@ -49,6 +49,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useConfirm } from '../context/ConfirmContext';
 import { hasPermission } from '../utils/permissions';
 
 type ActiveTab =
@@ -64,6 +65,7 @@ type ActiveTab =
 
 export const Pharmacy: React.FC = () => {
   const { activeFacility, user } = useAuth();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -102,6 +104,43 @@ export const Pharmacy: React.FC = () => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [alerts, setAlerts] = useState<PharmacyAlert[]>([]);
   const [reportSummary, setReportSummary] = useState<PharmacyReportSummary | null>(null);
+
+  // Total record counts (authoritative from backend API metadata, never page-length only)
+  const [prescriptionsTotalCount, setPrescriptionsTotalCount] = useState<number>(0);
+  const [medicinesTotalCount, setMedicinesTotalCount] = useState<number>(0);
+  const [batchesTotalCount, setBatchesTotalCount] = useState<number>(0);
+  const [transactionsTotalCount, setTransactionsTotalCount] = useState<number>(0);
+  const [vendorsTotalCount, setVendorsTotalCount] = useState<number>(0);
+  const [purchaseOrdersTotalCount, setPurchaseOrdersTotalCount] = useState<number>(0);
+
+  // Defensive date formatters (zero "Invalid Date" guarantee)
+  const formatDateTime = (dateVal?: string | null): string => {
+    if (!dateVal) return '-';
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) {
+      return typeof dateVal === 'string' && dateVal.trim() ? dateVal : '-';
+    }
+    return d.toLocaleString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const formatDateOnly = (dateVal?: string | null): string => {
+    if (!dateVal) return '-';
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) {
+      return typeof dateVal === 'string' && dateVal.trim() ? dateVal : '-';
+    }
+    return d.toLocaleDateString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -218,19 +257,34 @@ export const Pharmacy: React.FC = () => {
         api.get(`pharmacy/medicines/?facility=${facilityId}`).catch(() => ({ data: [] })),
         api.get(`pharmacy/batches/?facility=${facilityId}`).catch(() => ({ data: [] })),
         api.get(`pharmacy/transactions/?facility=${facilityId}`).catch(() => ({ data: [] })),
-        api.get(`pharmacy/vendors/`).catch(() => ({ data: [] })),
+        api.get(`pharmacy/vendors/?facility=${facilityId}`).catch(() => ({ data: [] })),
         api.get(`pharmacy/purchase-orders/?facility=${facilityId}`).catch(() => ({ data: [] })),
         api.get(`pharmacy/alerts/?facility=${facilityId}`).catch(() => ({ data: [] })),
         api.get(`pharmacy/reports/?facility=${facilityId}`).catch(() => ({ data: null })),
         api.get(`pharmacy/purchase-orders/procurement_summary/?facility=${facilityId}`).catch(() => ({ data: null })),
       ]);
 
-      const rxList = pRes.data.results || pRes.data || [];
-      const medList = mRes.data.results || mRes.data || [];
-      const batchList = bRes.data.results || bRes.data || [];
-      const txList = tRes.data.results || tRes.data || [];
-      const vendorList = vRes.data.results || vRes.data || [];
-      const poList = poRes.data.results || poRes.data || [];
+      const rxList = pRes.data?.results || pRes.data || [];
+      const medList = mRes.data?.results || mRes.data || [];
+      const batchList = bRes.data?.results || bRes.data || [];
+      const txList = tRes.data?.results || tRes.data || [];
+      const vendorList = vRes.data?.results || vRes.data || [];
+      const poList = poRes.data?.results || poRes.data || [];
+
+      // Extract authoritative total counts (independent of pagination limit)
+      const rxCount = typeof pRes.data?.count === 'number' ? pRes.data.count : (Array.isArray(rxList) ? rxList.length : 0);
+      const medCount = typeof mRes.data?.count === 'number' ? mRes.data.count : (Array.isArray(medList) ? medList.length : 0);
+      const batchCount = typeof bRes.data?.count === 'number' ? bRes.data.count : (Array.isArray(batchList) ? batchList.length : 0);
+      const txCount = typeof tRes.data?.count === 'number' ? tRes.data.count : (Array.isArray(txList) ? txList.length : 0);
+      const vendorCount = typeof vRes.data?.count === 'number' ? vRes.data.count : (Array.isArray(vendorList) ? vendorList.length : 0);
+      const poCount = typeof poRes.data?.count === 'number' ? poRes.data.count : (Array.isArray(poList) ? poList.length : 0);
+
+      setPrescriptionsTotalCount(rxCount);
+      setMedicinesTotalCount(medCount);
+      setBatchesTotalCount(batchCount);
+      setTransactionsTotalCount(txCount);
+      setVendorsTotalCount(vendorCount);
+      setPurchaseOrdersTotalCount(poCount);
 
       // Calculate real-time fallbacks from loaded data
       const totalStock = batchList.reduce((acc: number, b: any) => acc + (Number(b.quantity) || 0), 0);
@@ -240,7 +294,9 @@ export const Pharmacy: React.FC = () => {
       const pendingPOs = poList.filter((po: any) => ['DRAFT', 'PENDING_APPROVAL', 'PENDING', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(po.status)).length;
 
       const mergedKPIs: PharmacyDashboardKPIs = {
-        total_medicines: kpiRes.data?.total_medicines ?? medList.length,
+        total_medicines: kpiRes.data?.total_medicines ?? medCount,
+        medicine_master_count: kpiRes.data?.medicine_master_count ?? medCount,
+        stocked_medicine_count: kpiRes.data?.stocked_medicine_count,
         total_available_stock: kpiRes.data?.total_available_stock ?? totalStock,
         low_stock_count: kpiRes.data?.low_stock_count ?? kpiRes.data?.low_stock ?? 0,
         out_of_stock_count: kpiRes.data?.out_of_stock_count ?? kpiRes.data?.out_of_stock ?? 0,
@@ -249,7 +305,8 @@ export const Pharmacy: React.FC = () => {
         pending_prescriptions_count: kpiRes.data?.pending_prescriptions_count ?? kpiRes.data?.prescriptions_waiting ?? pendingRx,
         dispensed_today_count: kpiRes.data?.dispensed_today_count ?? kpiRes.data?.dispensed_today ?? 0,
         pending_purchase_orders_count: kpiRes.data?.pending_purchase_orders_count ?? kpiRes.data?.pending_purchase_orders ?? pendingPOs,
-        total_vendors_count: kpiRes.data?.total_vendors_count ?? vendorList.length,
+        total_vendors_count: kpiRes.data?.total_vendors_count ?? vendorCount,
+        total_batches_count: kpiRes.data?.total_batches_count ?? batchCount,
       };
 
       // Procurement Summary Fallback
@@ -261,7 +318,9 @@ export const Pharmacy: React.FC = () => {
         partially_received: poList.filter((p: any) => p.status === 'PARTIALLY_RECEIVED').length,
         received: poList.filter((p: any) => p.status === 'RECEIVED').length,
         cancelled: poList.filter((p: any) => p.status === 'CANCELLED').length,
-        total_orders: poList.length,
+        total_orders: poCount,
+        pending_orders: kpiRes.data?.pending_purchase_orders_count ?? pendingPOs,
+        completed_orders: poList.filter((p: any) => p.status === 'RECEIVED').length,
         total_spend: poList
           .filter((p: any) => ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED'].includes(p.status))
           .reduce((sum: number, p: any) => sum + (Number(p.total_amount) || 0), 0),
@@ -275,7 +334,7 @@ export const Pharmacy: React.FC = () => {
       setTransactions(txList);
       setVendors(vendorList);
       setPurchaseOrders(poList);
-      setAlerts(alertRes.data.alerts || alertRes.data || []);
+      setAlerts(alertRes.data?.alerts || alertRes.data || []);
       setReportSummary(rptRes.data);
 
       // Keep detail modals synced if currently open
@@ -351,53 +410,83 @@ export const Pharmacy: React.FC = () => {
   const handleConfirmDispense = async () => {
     if (!dispenseModalRx) return;
     setDispensingError('');
-    try {
-      const payload = {
-        prescription_id: dispenseModalRx.id,
-        items: dispenseItems.map((it) => ({
-          item_id: it.item_id,
-          medicine_name: it.medicine_name,
-          batch_id: it.batch_id > 0 ? it.batch_id : null,
-          qty: it.qty_to_dispense,
-          qty_to_dispense: it.qty_to_dispense,
-        })),
-      };
-      const res = await api.post('pharmacy/dispense/', payload);
-      alert(res.data?.message || 'Prescription successfully dispensed! Stock deducted in real-time.');
-      setDispenseModalRx(null);
-      loadData();
-    } catch (e: any) {
-      const msg = e.response?.data?.error || 'Failed to dispense prescription.';
-      setDispensingError(msg);
-    }
+    await confirm({
+      title: 'Confirm Medicine Dispensing',
+      message: `Are you sure you want to dispense prescription ${dispenseModalRx.prescription_number || `#${dispenseModalRx.id}`}?`,
+      confirmText: 'Dispense Medicine',
+      variant: 'primary',
+      details: [
+        { label: 'Patient', value: dispenseModalRx.patient_name || `Patient #${dispenseModalRx.patient || ''}` },
+        { label: 'Prescription #', value: dispenseModalRx.prescription_number || `#${dispenseModalRx.id}` },
+        { label: 'Total Items', value: `${dispenseItems.length} medicine(s)` },
+        { label: 'Items to Dispense', value: dispenseItems.map((it) => `${it.medicine_name} (${it.qty_to_dispense} units)`).join(', ') },
+      ],
+      warning: 'Stock will be deducted in real-time according to FEFO batch allocations.',
+      onConfirm: async () => {
+        try {
+          const payload = {
+            prescription_id: dispenseModalRx.id,
+            items: dispenseItems.map((it) => ({
+              item_id: it.item_id,
+              medicine_name: it.medicine_name,
+              batch_id: it.batch_id > 0 ? it.batch_id : null,
+              qty: it.qty_to_dispense,
+              qty_to_dispense: it.qty_to_dispense,
+            })),
+          };
+          const res = await api.post('pharmacy/dispense/', payload);
+          alert(res.data?.message || 'Prescription successfully dispensed! Stock deducted in real-time.');
+          setDispenseModalRx(null);
+          loadData();
+        } catch (e: any) {
+          const msg = e.response?.data?.error || 'Failed to dispense prescription.';
+          setDispensingError(msg);
+        }
+      },
+    });
   };
 
   // Medicine Master Action Handlers
   const handleAddMedicine = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canCreateMedicine) return;
-    setMedicineActionLoading(true);
-    try {
-      const res = await api.post('pharmacy/medicines/', newMedicineData);
-      setMedicines((prev) => [...prev, res.data]);
-      setShowAddMedicineModal(false);
-      setNewMedicineData({
-        generic_name: '',
-        brand_name: '',
-        strength: '500 mg',
-        dosage_form: 'Tablet',
-        unit: 'Tablets',
-        category: 'Essential Medicines',
-        minimum_stock: 25,
-        reorder_level: 50,
-        description: '',
-      });
-      alert('Medicine registered successfully!');
-    } catch (err: any) {
-      alert(err.response?.data?.message || err.response?.data?.generic_name?.[0] || 'Failed to register medicine');
-    } finally {
-      setMedicineActionLoading(false);
-    }
+    await confirm({
+      title: 'Confirm Medicine Registration',
+      message: `Are you sure you want to register "${newMedicineData.generic_name}" in the master catalog?`,
+      confirmText: 'Register Medicine',
+      variant: 'primary',
+      details: [
+        { label: 'Generic Name', value: newMedicineData.generic_name },
+        { label: 'Brand Name', value: newMedicineData.brand_name || 'N/A' },
+        { label: 'Strength & Form', value: `${newMedicineData.strength} - ${newMedicineData.dosage_form}` },
+        { label: 'Category', value: newMedicineData.category },
+        { label: 'Min Stock / Reorder', value: `${newMedicineData.minimum_stock} / ${newMedicineData.reorder_level}` },
+      ],
+      onConfirm: async () => {
+        setMedicineActionLoading(true);
+        try {
+          const res = await api.post('pharmacy/medicines/', newMedicineData);
+          setMedicines((prev) => [...prev, res.data]);
+          setShowAddMedicineModal(false);
+          setNewMedicineData({
+            generic_name: '',
+            brand_name: '',
+            strength: '500 mg',
+            dosage_form: 'Tablet',
+            unit: 'Tablets',
+            category: 'Essential Medicines',
+            minimum_stock: 25,
+            reorder_level: 50,
+            description: '',
+          });
+          alert('Medicine registered successfully!');
+        } catch (err: any) {
+          alert(err.response?.data?.message || err.response?.data?.generic_name?.[0] || 'Failed to register medicine');
+        } finally {
+          setMedicineActionLoading(false);
+        }
+      },
+    });
   };
 
   const handleOpenEditMedicine = (med: MedicineMaster) => {
@@ -419,66 +508,124 @@ export const Pharmacy: React.FC = () => {
   const handleSaveEditMedicine = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canUpdateMedicine || !editingMedicine) return;
-    setMedicineActionLoading(true);
-    try {
-      const res = await api.patch(`pharmacy/medicines/${editingMedicine.id}/`, editMedicineData);
-      setMedicines((prev) => prev.map((m) => (m.id === editingMedicine.id ? res.data : m)));
-      setEditingMedicine(null);
-      alert('Medicine updated successfully!');
-    } catch (err: any) {
-      alert(err.response?.data?.message || err.response?.data?.generic_name?.[0] || 'Failed to update medicine');
-    } finally {
-      setMedicineActionLoading(false);
-    }
+    await confirm({
+      title: 'Confirm Medicine Update',
+      message: `Are you sure you want to save changes to medicine "${editingMedicine.generic_name}"?`,
+      confirmText: 'Save Changes',
+      variant: 'primary',
+      details: [
+        { label: 'Generic Name', value: editMedicineData.generic_name },
+        { label: 'Brand Name', value: editMedicineData.brand_name || 'N/A' },
+        { label: 'Strength & Form', value: `${editMedicineData.strength} - ${editMedicineData.dosage_form}` },
+        { label: 'Min Stock / Reorder', value: `${editMedicineData.minimum_stock} / ${editMedicineData.reorder_level}` },
+      ],
+      onConfirm: async () => {
+        setMedicineActionLoading(true);
+        try {
+          const res = await api.patch(`pharmacy/medicines/${editingMedicine.id}/`, editMedicineData);
+          setMedicines((prev) => prev.map((m) => (m.id === editingMedicine.id ? res.data : m)));
+          setEditingMedicine(null);
+          alert('Medicine updated successfully!');
+        } catch (err: any) {
+          alert(err.response?.data?.message || err.response?.data?.generic_name?.[0] || 'Failed to update medicine');
+        } finally {
+          setMedicineActionLoading(false);
+        }
+      },
+    });
   };
 
   const handleDeleteMedicine = async (id: number) => {
     if (!canDeleteMedicine) return;
-    if (!window.confirm('Are you sure you want to remove this medicine from the master catalog?')) return;
-    try {
-      await api.delete(`pharmacy/medicines/${id}/`);
-      setMedicines((prev) => prev.filter((m) => m.id !== id));
-      alert('Medicine deleted successfully!');
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to delete medicine');
-    }
+    const med = medicines.find((m) => m.id === id);
+    await confirm({
+      title: 'Confirm Medicine Deletion',
+      message: `Are you sure you want to remove "${med?.generic_name || `Medicine #${id}`}" from the master catalog?`,
+      confirmText: 'Delete Medicine',
+      variant: 'danger',
+      details: [
+        { label: 'Generic Name', value: med?.generic_name || `#${id}` },
+        { label: 'Brand Name', value: med?.brand_name || 'N/A' },
+        { label: 'Category', value: med?.category || 'N/A' },
+      ],
+      warning: 'Warning: This action may be irreversible and will affect inventory records linked to this medicine.',
+      onConfirm: async () => {
+        try {
+          await api.delete(`pharmacy/medicines/${id}/`);
+          setMedicines((prev) => prev.filter((m) => m.id !== id));
+          alert('Medicine deleted successfully!');
+        } catch (err: any) {
+          alert(err.response?.data?.message || 'Failed to delete medicine');
+        }
+      },
+    });
   };
 
   // Vendor Action Handlers
   const handleAddVendor = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await api.post('pharmacy/vendors/', newVendorData);
-      alert('Vendor registered successfully!');
-      setShowAddVendorModal(false);
-      setNewVendorData({
-        vendor_code: '',
-        name: '',
-        contact_person: '',
-        phone: '',
-        email: '',
-        address: '',
-        gstin: '',
-      });
-      loadData();
-    } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to create vendor');
-    }
+    await confirm({
+      title: 'Confirm Vendor Registration',
+      message: `Are you sure you want to register vendor "${newVendorData.name}"?`,
+      confirmText: 'Register Vendor',
+      variant: 'primary',
+      details: [
+        { label: 'Vendor Name', value: newVendorData.name },
+        { label: 'Contact Person', value: newVendorData.contact_person || 'N/A' },
+        { label: 'Phone', value: newVendorData.phone },
+        { label: 'GSTIN', value: newVendorData.gstin || 'N/A' },
+      ],
+      onConfirm: async () => {
+        try {
+          await api.post('pharmacy/vendors/', newVendorData);
+          alert('Vendor registered successfully!');
+          setShowAddVendorModal(false);
+          setNewVendorData({
+            vendor_code: '',
+            name: '',
+            contact_person: '',
+            phone: '',
+            email: '',
+            address: '',
+            gstin: '',
+          });
+          loadData();
+        } catch (e: any) {
+          alert(e.response?.data?.error || 'Failed to create vendor');
+        }
+      },
+    });
   };
 
   const handleToggleVendorStatus = async (vendor: Vendor) => {
-    try {
-      const res = await api.post(`pharmacy/vendors/${vendor.id}/toggle_status/`);
-      alert(res.data?.message || `Vendor status updated.`);
-      loadData();
-      if (selectedVendorForDetails?.id === vendor.id) {
-        setSelectedVendorForDetails((prev) =>
-          prev ? { ...prev, status: res.data?.status || (prev.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE') } : null
-        );
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to toggle vendor status.');
-    }
+    const isDeactivating = vendor.status === 'ACTIVE';
+    await confirm({
+      title: isDeactivating ? 'Confirm Vendor Deactivation' : 'Confirm Vendor Activation',
+      message: isDeactivating
+        ? `Are you sure you want to deactivate vendor "${vendor.vendor_name || vendor.name}"? Inactive vendors cannot be selected for new purchase orders.`
+        : `Are you sure you want to activate vendor "${vendor.vendor_name || vendor.name}"?`,
+      confirmText: isDeactivating ? 'Deactivate Vendor' : 'Activate Vendor',
+      variant: isDeactivating ? 'warning' : 'primary',
+      details: [
+        { label: 'Vendor', value: vendor.vendor_name || vendor.name || '' },
+        { label: 'Current Status', value: vendor.status },
+        { label: 'New Status', value: isDeactivating ? 'INACTIVE' : 'ACTIVE' },
+      ],
+      onConfirm: async () => {
+        try {
+          const res = await api.post(`pharmacy/vendors/${vendor.id}/toggle_status/`);
+          alert(res.data?.message || `Vendor status updated.`);
+          loadData();
+          if (selectedVendorForDetails?.id === vendor.id) {
+            setSelectedVendorForDetails((prev) =>
+              prev ? { ...prev, status: res.data?.status || (prev.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE') } : null
+            );
+          }
+        } catch (err: any) {
+          alert(err.response?.data?.error || 'Failed to toggle vendor status.');
+        }
+      },
+    });
   };
 
   const handleViewVendorDetails = async (vendor: Vendor) => {
@@ -510,35 +657,62 @@ export const Pharmacy: React.FC = () => {
   const handleSaveEditVendor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingVendor) return;
-    try {
-      await api.patch(`pharmacy/vendors/${editingVendor.id}/`, {
-        vendor_name: editVendorData.name,
-        contact_person: editVendorData.contact_person,
-        phone: editVendorData.phone,
-        email: editVendorData.email,
-        address: editVendorData.address,
-        gst_number: editVendorData.gstin,
-      });
-      alert('Vendor details updated successfully!');
-      setEditingVendor(null);
-      loadData();
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to update vendor.');
-    }
+    await confirm({
+      title: 'Confirm Vendor Update',
+      message: `Are you sure you want to update vendor details for "${editingVendor.vendor_name || editingVendor.name}"?`,
+      confirmText: 'Save Vendor',
+      variant: 'primary',
+      details: [
+        { label: 'Vendor Name', value: editVendorData.name },
+        { label: 'Contact Person', value: editVendorData.contact_person || 'N/A' },
+        { label: 'Phone', value: editVendorData.phone },
+        { label: 'GSTIN', value: editVendorData.gstin || 'N/A' },
+      ],
+      onConfirm: async () => {
+        try {
+          await api.patch(`pharmacy/vendors/${editingVendor.id}/`, {
+            vendor_name: editVendorData.name,
+            contact_person: editVendorData.contact_person,
+            phone: editVendorData.phone,
+            email: editVendorData.email,
+            address: editVendorData.address,
+            gst_number: editVendorData.gstin,
+          });
+          alert('Vendor details updated successfully!');
+          setEditingVendor(null);
+          loadData();
+        } catch (err: any) {
+          alert(err.response?.data?.error || 'Failed to update vendor.');
+        }
+      },
+    });
   };
 
   const handleDeleteVendor = async (vendor: Vendor) => {
-    if (!window.confirm(`Are you sure you want to delete vendor "${vendor.vendor_name || vendor.name}"?`)) return;
-    try {
-      await api.delete(`pharmacy/vendors/${vendor.id}/`);
-      alert('Vendor deleted successfully.');
-      if (selectedVendorForDetails?.id === vendor.id) {
-        setSelectedVendorForDetails(null);
-      }
-      loadData();
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Cannot delete vendor. It has historical orders or inventory batches linked to it.');
-    }
+    await confirm({
+      title: 'Confirm Vendor Deletion',
+      message: `Are you sure you want to delete vendor "${vendor.vendor_name || vendor.name}"?`,
+      confirmText: 'Delete Vendor',
+      variant: 'danger',
+      details: [
+        { label: 'Vendor Name', value: vendor.vendor_name || vendor.name || '' },
+        { label: 'Vendor Code', value: vendor.vendor_code || 'N/A' },
+        { label: 'Contact', value: vendor.phone || vendor.email || 'N/A' },
+      ],
+      warning: 'Warning: This action may be irreversible. Vendors with purchase orders or batches cannot be deleted.',
+      onConfirm: async () => {
+        try {
+          await api.delete(`pharmacy/vendors/${vendor.id}/`);
+          alert('Vendor deleted successfully.');
+          if (selectedVendorForDetails?.id === vendor.id) {
+            setSelectedVendorForDetails(null);
+          }
+          loadData();
+        } catch (err: any) {
+          alert(err.response?.data?.error || 'Cannot delete vendor. It has historical orders or inventory batches linked to it.');
+        }
+      },
+    });
   };
 
   // PO Lifecycle Handlers
@@ -553,57 +727,102 @@ export const Pharmacy: React.FC = () => {
       alert('Please add at least one medicine item with quantity > 0.');
       return;
     }
-    try {
-      await api.post('pharmacy/purchase-orders/', {
-        vendor: newPOData.vendor,
-        expected_delivery: newPOData.expected_delivery || null,
-        notes: newPOData.notes,
-        items: validItems,
-      });
-      alert('Purchase Order created successfully in DRAFT mode!');
-      setShowCreatePOModal(false);
-      setNewPOData({
-        vendor: 0,
-        expected_delivery: '',
-        notes: '',
-        items: [{ medicine: 0, requested_quantity: 100, unit_cost: 10.0 }],
-      });
-      loadData();
-    } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to create Purchase Order');
-    }
+    const chosenVendor = vendors.find((v) => v.id === newPOData.vendor);
+    const estTotal = validItems.reduce((acc, it) => acc + Number(it.requested_quantity) * Number(it.unit_cost || 0), 0);
+
+    await confirm({
+      title: 'Confirm Purchase Order Creation',
+      message: 'Are you sure you want to create this purchase order in DRAFT mode?',
+      confirmText: 'Create Purchase Order',
+      variant: 'primary',
+      details: [
+        { label: 'Vendor', value: chosenVendor?.vendor_name || chosenVendor?.name || `Vendor #${newPOData.vendor}` },
+        { label: 'Total Items', value: `${validItems.length} item(s)` },
+        { label: 'Estimated Total', value: `₹${estTotal.toFixed(2)}` },
+        { label: 'Expected Delivery', value: newPOData.expected_delivery || 'Not specified' },
+      ],
+      onConfirm: async () => {
+        try {
+          await api.post('pharmacy/purchase-orders/', {
+            vendor: newPOData.vendor,
+            expected_delivery: newPOData.expected_delivery || null,
+            notes: newPOData.notes,
+            items: validItems,
+          });
+          alert('Purchase Order created successfully in DRAFT mode!');
+          setShowCreatePOModal(false);
+          setNewPOData({
+            vendor: 0,
+            expected_delivery: '',
+            notes: '',
+            items: [{ medicine: 0, requested_quantity: 100, unit_cost: 10.0 }],
+          });
+          loadData();
+        } catch (e: any) {
+          alert(e.response?.data?.error || 'Failed to create Purchase Order');
+        }
+      },
+    });
   };
 
   const handleSubmitPOForApproval = async (poId: number) => {
-    setPoActionLoading(true);
-    try {
-      const res = await api.post(`pharmacy/purchase-orders/${poId}/submit_approval/`);
-      alert(res.data?.message || 'PO submitted for administrative approval.');
-      loadData();
-      if (selectedPOForDetails?.id === poId) {
-        setSelectedPOForDetails(res.data?.po || null);
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to submit PO for approval.');
-    } finally {
-      setPoActionLoading(false);
-    }
+    const po = purchaseOrders.find((p) => p.id === poId) || selectedPOForDetails;
+    await confirm({
+      title: 'Confirm PO Submission for Approval',
+      message: `Are you sure you want to submit Purchase Order ${po?.po_number || `#${poId}`} for administrative approval?`,
+      confirmText: 'Submit for Approval',
+      variant: 'primary',
+      details: [
+        { label: 'PO Number', value: po?.po_number || `#${poId}` },
+        { label: 'Vendor', value: po?.vendor_name || 'N/A' },
+        { label: 'Total Amount', value: `₹${Number(po?.total_amount || 0).toFixed(2)}` },
+      ],
+      onConfirm: async () => {
+        setPoActionLoading(true);
+        try {
+          const res = await api.post(`pharmacy/purchase-orders/${poId}/submit_approval/`);
+          alert(res.data?.message || 'PO submitted for administrative approval.');
+          loadData();
+          if (selectedPOForDetails?.id === poId) {
+            setSelectedPOForDetails(res.data?.po || null);
+          }
+        } catch (err: any) {
+          alert(err.response?.data?.error || 'Failed to submit PO for approval.');
+        } finally {
+          setPoActionLoading(false);
+        }
+      },
+    });
   };
 
   const handleApprovePO = async (poId: number) => {
-    setPoActionLoading(true);
-    try {
-      const res = await api.post(`pharmacy/purchase-orders/${poId}/approve/`);
-      alert(res.data?.message || 'PO approved successfully.');
-      loadData();
-      if (selectedPOForDetails?.id === poId) {
-        setSelectedPOForDetails(res.data?.po || null);
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to approve PO.');
-    } finally {
-      setPoActionLoading(false);
-    }
+    const po = purchaseOrders.find((p) => p.id === poId) || selectedPOForDetails;
+    await confirm({
+      title: 'Confirm Purchase Order Approval',
+      message: `Are you sure you want to approve Purchase Order ${po?.po_number || `#${poId}`}?`,
+      confirmText: 'Approve PO',
+      variant: 'primary',
+      details: [
+        { label: 'PO Number', value: po?.po_number || `#${poId}` },
+        { label: 'Vendor', value: po?.vendor_name || 'N/A' },
+        { label: 'Total Amount', value: `₹${Number(po?.total_amount || 0).toFixed(2)}` },
+      ],
+      onConfirm: async () => {
+        setPoActionLoading(true);
+        try {
+          const res = await api.post(`pharmacy/purchase-orders/${poId}/approve/`);
+          alert(res.data?.message || 'PO approved successfully.');
+          loadData();
+          if (selectedPOForDetails?.id === poId) {
+            setSelectedPOForDetails(res.data?.po || null);
+          }
+        } catch (err: any) {
+          alert(err.response?.data?.error || 'Failed to approve PO.');
+        } finally {
+          setPoActionLoading(false);
+        }
+      },
+    });
   };
 
   const handleConfirmRejectPO = async () => {
@@ -612,54 +831,96 @@ export const Pharmacy: React.FC = () => {
       alert('Please provide a reason for rejecting the Purchase Order.');
       return;
     }
-    setPoActionLoading(true);
-    try {
-      const res = await api.post(`pharmacy/purchase-orders/${selectedPOForDetails.id}/reject/`, {
-        reason: rejectionReason.trim(),
-      });
-      alert(res.data?.message || 'Purchase Order returned to Draft.');
-      setShowRejectModal(false);
-      setRejectionReason('');
-      loadData();
-      setSelectedPOForDetails(res.data?.po || null);
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to reject PO.');
-    } finally {
-      setPoActionLoading(false);
-    }
+    await confirm({
+      title: 'Confirm Purchase Order Rejection',
+      message: `Are you sure you want to reject Purchase Order ${selectedPOForDetails.po_number || `#${selectedPOForDetails.id}`} and return it to Draft?`,
+      confirmText: 'Reject Purchase Order',
+      variant: 'danger',
+      details: [
+        { label: 'PO Number', value: selectedPOForDetails.po_number || `#${selectedPOForDetails.id}` },
+        { label: 'Vendor', value: selectedPOForDetails.vendor_name || 'N/A' },
+        { label: 'Reason', value: rejectionReason.trim() },
+      ],
+      warning: 'Warning: The purchase order will be moved back to Draft status and will require resubmission.',
+      onConfirm: async () => {
+        setPoActionLoading(true);
+        try {
+          const res = await api.post(`pharmacy/purchase-orders/${selectedPOForDetails.id}/reject/`, {
+            reason: rejectionReason.trim(),
+          });
+          alert(res.data?.message || 'Purchase Order returned to Draft.');
+          setShowRejectModal(false);
+          setRejectionReason('');
+          loadData();
+          setSelectedPOForDetails(res.data?.po || null);
+        } catch (err: any) {
+          alert(err.response?.data?.error || 'Failed to reject PO.');
+        } finally {
+          setPoActionLoading(false);
+        }
+      },
+    });
   };
 
   const handlePlaceOrder = async (poId: number) => {
-    setPoActionLoading(true);
-    try {
-      const res = await api.post(`pharmacy/purchase-orders/${poId}/place_order/`);
-      alert(res.data?.message || 'Purchase order marked as ORDERED with supplier.');
-      loadData();
-      if (selectedPOForDetails?.id === poId) {
-        setSelectedPOForDetails(res.data?.po || null);
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to place order.');
-    } finally {
-      setPoActionLoading(false);
-    }
+    const po = purchaseOrders.find((p) => p.id === poId) || selectedPOForDetails;
+    await confirm({
+      title: 'Confirm Placing Order with Supplier',
+      message: `Are you sure you want to mark Purchase Order ${po?.po_number || `#${poId}`} as ORDERED with the vendor?`,
+      confirmText: 'Place Order',
+      variant: 'primary',
+      details: [
+        { label: 'PO Number', value: po?.po_number || `#${poId}` },
+        { label: 'Vendor', value: po?.vendor_name || 'N/A' },
+        { label: 'Total Amount', value: `₹${Number(po?.total_amount || 0).toFixed(2)}` },
+      ],
+      onConfirm: async () => {
+        setPoActionLoading(true);
+        try {
+          const res = await api.post(`pharmacy/purchase-orders/${poId}/place_order/`);
+          alert(res.data?.message || 'Purchase order marked as ORDERED with supplier.');
+          loadData();
+          if (selectedPOForDetails?.id === poId) {
+            setSelectedPOForDetails(res.data?.po || null);
+          }
+        } catch (err: any) {
+          alert(err.response?.data?.error || 'Failed to place order.');
+        } finally {
+          setPoActionLoading(false);
+        }
+      },
+    });
   };
 
   const handleCancelPO = async (poId: number) => {
-    if (!window.confirm('Are you sure you want to cancel this Purchase Order?')) return;
-    setPoActionLoading(true);
-    try {
-      const res = await api.post(`pharmacy/purchase-orders/${poId}/cancel/`);
-      alert(res.data?.message || 'Purchase order cancelled.');
-      loadData();
-      if (selectedPOForDetails?.id === poId) {
-        setSelectedPOForDetails(res.data?.po || null);
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to cancel PO.');
-    } finally {
-      setPoActionLoading(false);
-    }
+    const po = purchaseOrders.find((p) => p.id === poId) || selectedPOForDetails;
+    await confirm({
+      title: 'Confirm Purchase Order Cancellation',
+      message: `Are you sure you want to cancel Purchase Order ${po?.po_number || `#${poId}`}?`,
+      confirmText: 'Cancel Purchase Order',
+      variant: 'danger',
+      details: [
+        { label: 'PO Number', value: po?.po_number || `#${poId}` },
+        { label: 'Vendor', value: po?.vendor_name || 'N/A' },
+        { label: 'Current Status', value: po?.status || 'N/A' },
+      ],
+      warning: 'Warning: This cancellation is irreversible. The order will be permanently closed.',
+      onConfirm: async () => {
+        setPoActionLoading(true);
+        try {
+          const res = await api.post(`pharmacy/purchase-orders/${poId}/cancel/`);
+          alert(res.data?.message || 'Purchase order cancelled.');
+          loadData();
+          if (selectedPOForDetails?.id === poId) {
+            setSelectedPOForDetails(res.data?.po || null);
+          }
+        } catch (err: any) {
+          alert(err.response?.data?.error || 'Failed to cancel PO.');
+        } finally {
+          setPoActionLoading(false);
+        }
+      },
+    });
   };
 
   // Goods Receiving Handler with Over-receiving & Expired batch guards
@@ -723,68 +984,95 @@ export const Pharmacy: React.FC = () => {
       return;
     }
 
-    try {
-      const payload = {
-        received_items: itemsToReceive.map((it) => ({
-          item_id: it.po_item_id,
-          batch_number: it.batch_number.trim(),
-          mfg_date: it.mfg_date || null,
-          expiry_date: it.expiry_date,
-          received_qty: Number(it.received_quantity),
-          unit_cost: Number(it.unit_cost),
-        })),
-        items: itemsToReceive.map((it) => ({
-          po_item_id: it.po_item_id,
-          batch_number: it.batch_number.trim(),
-          mfg_date: it.mfg_date || null,
-          expiry_date: it.expiry_date,
-          received_quantity: Number(it.received_quantity),
-          unit_cost: Number(it.unit_cost),
-        })),
-      };
-      const res = await api.post(`pharmacy/purchase-orders/${receivingPO.id}/receive_items/`, payload);
-      alert(res.data?.message || 'Goods received! Inventory batches and transactions updated.');
-      setReceivingPO(null);
-      loadData();
-      if (selectedPOForDetails?.id === receivingPO.id) {
-        setSelectedPOForDetails(res.data?.po || null);
-      }
-    } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to receive goods');
-    }
+    await confirm({
+      title: 'Confirm Goods Receipt into Inventory',
+      message: `Are you sure you want to receive these goods into inventory for PO ${receivingPO.po_number || `#${receivingPO.id}`}?`,
+      confirmText: 'Receive Goods',
+      variant: 'primary',
+      details: [
+        { label: 'PO Number', value: receivingPO.po_number || `#${receivingPO.id}` },
+        { label: 'Vendor', value: receivingPO.vendor_name || 'N/A' },
+        { label: 'Items Received', value: itemsToReceive.map((it) => `${it.medicine_name} (${it.received_quantity} units, Batch: ${it.batch_number})`).join(', ') },
+      ],
+      warning: 'Stock levels and inventory transaction audit logs will be updated immediately.',
+      onConfirm: async () => {
+        try {
+          const payload = {
+            received_items: itemsToReceive.map((it) => ({
+              item_id: it.po_item_id,
+              batch_number: it.batch_number.trim(),
+              mfg_date: it.mfg_date || null,
+              expiry_date: it.expiry_date,
+              received_qty: Number(it.received_quantity),
+              unit_cost: Number(it.unit_cost),
+            })),
+            items: itemsToReceive.map((it) => ({
+              po_item_id: it.po_item_id,
+              batch_number: it.batch_number.trim(),
+              mfg_date: it.mfg_date || null,
+              expiry_date: it.expiry_date,
+              received_quantity: Number(it.received_quantity),
+              unit_cost: Number(it.unit_cost),
+            })),
+          };
+          const res = await api.post(`pharmacy/purchase-orders/${receivingPO.id}/receive_items/`, payload);
+          alert(res.data?.message || 'Goods received! Inventory batches and transactions updated.');
+          setReceivingPO(null);
+          loadData();
+          if (selectedPOForDetails?.id === receivingPO.id) {
+            setSelectedPOForDetails(res.data?.po || null);
+          }
+        } catch (e: any) {
+          alert(e.response?.data?.error || 'Failed to receive goods');
+        }
+      },
+    });
   };
 
   // CSV Export Report
-  const exportCSVReport = () => {
+  const exportCSVReport = async () => {
     if (!reportSummary) return;
-    let csvContent = 'data:text/csv;charset=utf-8,';
+    await confirm({
+      title: 'Confirm Pharmacy Report Export',
+      message: 'Are you sure you want to export the Pharmacy Analytics & Stock Valuation report as a CSV file?',
+      confirmText: 'Export CSV',
+      variant: 'info',
+      details: [
+        { label: 'Report Type', value: 'Pharmacy Analytics & Stock Valuation' },
+        { label: 'Facility', value: activeFacility?.facility_name || 'All Facilities' },
+        { label: 'Generated Date', value: new Date().toLocaleDateString() },
+      ],
+      onConfirm: async () => {
+        let csvContent = 'data:text/csv;charset=utf-8,';
 
-    csvContent += 'PHARMACY ANALYTICS & STOCK VALUATION REPORT\n';
-    csvContent += `Facility,${activeFacility?.facility_name || 'All Facilities'}\n`;
-    csvContent += `Generated Date,${new Date().toLocaleDateString()}\n\n`;
+        csvContent += 'PHARMACY ANALYTICS & STOCK VALUATION REPORT\n';
+        csvContent += `Facility,${activeFacility?.facility_name || 'All Facilities'}\n`;
+        csvContent += `Generated Date,${new Date().toLocaleDateString()}\n\n`;
 
-    csvContent += 'DISPENSING SUMMARY\n';
-    csvContent += `Dispensed Today (Units),${reportSummary.dispensing_summary.dispensed_today}\n`;
-    csvContent += `Prescriptions Count,${reportSummary.dispensing_summary.prescriptions_count}\n\n`;
+        csvContent += 'DISPENSING SUMMARY\n';
+        csvContent += `Dispensed Today (Units),${reportSummary.dispensing_summary.dispensed_today}\n`;
+        csvContent += `Prescriptions Count,${reportSummary.dispensing_summary.prescriptions_count}\n\n`;
 
-    csvContent += 'STOCK VALUATION SUMMARY\n';
-    csvContent += `Total Batches,${reportSummary.stock_valuation.total_batches}\n`;
-    csvContent += `Total Quantity in Stock,${reportSummary.stock_valuation.total_quantity}\n`;
-    csvContent += `Total Valuation (INR),${reportSummary.stock_valuation.total_value}\n\n`;
+        csvContent += 'STOCK VALUATION SUMMARY\n';
+        csvContent += `Total Batches,${reportSummary.stock_valuation.total_batches}\n`;
+        csvContent += `Total Quantity in Stock,${reportSummary.stock_valuation.total_quantity}\n`;
+        csvContent += `Total Valuation (INR),${reportSummary.stock_valuation.total_value}\n\n`;
 
-    csvContent += 'TOP CONSUMED MEDICINES\n';
-    csvContent += 'Generic Name,Brand Name,Total Consumed Units\n';
-    reportSummary.consumption_summary.forEach((item) => {
-      csvContent += `"${item.batch__medicine__generic_name}","${item.batch__medicine__brand_name}",${item.total_consumed}\n`;
+        csvContent += 'TOP CONSUMED MEDICINES\n';
+        csvContent += 'Generic Name,Brand Name,Total Consumed Units\n';
+        reportSummary.consumption_summary.forEach((item) => {
+          csvContent += `"${item.batch__medicine__generic_name}","${item.batch__medicine__brand_name}",${item.total_consumed}\n`;
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        link.setAttribute('download', `pharmacy_report_${activeFacility?.facility_code || 'export'}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      },
     });
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `pharmacy_report_${activeFacility?.facility_code || 'export'}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   // Group batches for FEFO comparison display
@@ -803,12 +1091,19 @@ export const Pharmacy: React.FC = () => {
     reportSummary?.stock_valuation?.total_value ??
     batches.reduce((sum, b) => sum + (Number(b.quantity) || 0) * (Number(b.unit_cost) || 0), 0);
 
-  const pendingPrescriptionsCount = prescriptions.filter((p) =>
-    ['PENDING', 'ACTIVE', 'PARTIALLY_DISPENSED'].includes(p.status)
-  ).length;
+  const pendingPrescriptionsCount =
+    kpis?.pending_prescriptions_count ??
+    prescriptions.filter((p) =>
+      ['PENDING', 'ACTIVE', 'PARTIALLY_DISPENSED'].includes(p.status)
+    ).length;
 
   const activeAlertsCount = alerts.length;
-  const activePOCount = purchaseOrders.filter((p) => ['ORDERED', 'PENDING', 'DRAFT'].includes(p.status)).length;
+  const activePOCount =
+    procurementKpis?.pending_orders ??
+    kpis?.pending_purchase_orders_count ??
+    purchaseOrders.filter((p) =>
+      ['DRAFT', 'PENDING_APPROVAL', 'PENDING', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(p.status)
+    ).length;
 
   const filteredMedicines = medicines.filter((m) => {
     const query = medicineSearchQuery.toLowerCase();
@@ -881,12 +1176,12 @@ export const Pharmacy: React.FC = () => {
             id: 'PRESCRIPTIONS',
             label: 'Prescriptions Queue',
             icon: ClipboardList,
-            badge: pendingPrescriptionsCount > 0 ? `${pendingPrescriptionsCount} Pending` : `${prescriptions.length}`,
+            badge: pendingPrescriptionsCount > 0 ? `${pendingPrescriptionsCount} Pending` : `${prescriptionsTotalCount}`,
             badgeColor: pendingPrescriptionsCount > 0 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-slate-200/80 text-slate-700 border-slate-300'
           },
-          { id: 'INVENTORY', label: 'Inventory Ledger', icon: Pill, badge: `${medicines.length}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
-          { id: 'BATCHES', label: 'Batches', icon: Layers, badge: `${batches.length}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
-          { id: 'TRANSACTIONS', label: 'Stock Transactions', icon: History, badge: `${transactions.length}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
+          { id: 'INVENTORY', label: 'Inventory Ledger', icon: Pill, badge: `${medicinesTotalCount}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
+          { id: 'BATCHES', label: 'Batches', icon: Layers, badge: `${batchesTotalCount}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
+          { id: 'TRANSACTIONS', label: 'Stock Transactions', icon: History, badge: `${transactionsTotalCount}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
           {
             id: 'PURCHASE_ORDERS',
             label: 'Purchase Orders',
@@ -894,7 +1189,7 @@ export const Pharmacy: React.FC = () => {
             badge: activePOCount > 0 ? `${activePOCount}` : null,
             badgeColor: 'bg-blue-100 text-blue-800 border-blue-200'
           },
-          { id: 'VENDORS', label: 'Vendors', icon: Building2, badge: `${vendors.length}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
+          { id: 'VENDORS', label: 'Vendors', icon: Building2, badge: `${vendorsTotalCount}`, badgeColor: 'bg-slate-200/80 text-slate-700 border-slate-300' },
           {
             id: 'ALERTS',
             label: 'Stock Alerts',
@@ -941,7 +1236,7 @@ export const Pharmacy: React.FC = () => {
                   <Pill className="w-4 h-4" />
                 </div>
               </div>
-              <span className="text-[10px] text-slate-400 block">{kpis?.total_medicines ?? medicines.length} EDL Drugs</span>
+              <span className="text-[10px] text-slate-400 block">{kpis?.total_medicines ?? medicinesTotalCount} EDL Drugs</span>
             </div>
 
             <div className="p-4 rounded-2xl bg-white border border-emerald-200/80 shadow-xs space-y-1 hover:border-emerald-300 transition">
@@ -954,7 +1249,7 @@ export const Pharmacy: React.FC = () => {
                   <DollarSign className="w-4 h-4" />
                 </div>
               </div>
-              <span className="text-[10px] text-emerald-600 block">{batches.length} Active Batches</span>
+              <span className="text-[10px] text-emerald-600 block">{reportSummary?.stock_valuation?.total_batches ?? batchesTotalCount} Active Batches</span>
             </div>
 
             <div className="p-4 rounded-2xl bg-white border border-teal-200/80 shadow-xs space-y-1 hover:border-teal-300 transition">
@@ -998,7 +1293,7 @@ export const Pharmacy: React.FC = () => {
                   <Truck className="w-4 h-4" />
                 </div>
               </div>
-              <span className="text-[10px] text-purple-600 block">{vendors.length} Active Suppliers</span>
+              <span className="text-[10px] text-purple-600 block">{kpis?.total_vendors_count ?? vendorsTotalCount} Active Suppliers</span>
             </div>
           </div>
 
@@ -1082,7 +1377,7 @@ export const Pharmacy: React.FC = () => {
                   <Layers className="w-4 h-4 text-emerald-600" /> Active Batches (FEFO Priority Order)
                 </h3>
                 <button onClick={() => setActiveTab('BATCHES')} className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer">
-                  Manage Batches ({batches.length})
+                  Manage Batches ({batchesTotalCount})
                 </button>
               </div>
 
@@ -1105,7 +1400,7 @@ export const Pharmacy: React.FC = () => {
                           <span className="font-mono font-bold text-emerald-900 flex items-center gap-1">
                             🎯 Next Target: <span className="text-slate-800">{earliest.batch_number}</span>
                           </span>
-                          <span className="text-[10px] font-bold text-rose-600">Expires: {earliest.expiry_date}</span>
+                          <span className="text-[10px] font-bold text-rose-600">Expires: {formatDateOnly(earliest.expiry_date)}</span>
                         </div>
                       )}
                     </div>
@@ -1172,7 +1467,7 @@ export const Pharmacy: React.FC = () => {
                 onChange={(e) => setPrescriptionStatusFilter(e.target.value)}
                 className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
-                <option value="ALL">All Prescriptions ({prescriptions.length})</option>
+                <option value="ALL">All Prescriptions ({prescriptionsTotalCount})</option>
                 <option value="PENDING">Waiting for Dispense ({pendingPrescriptionsCount})</option>
                 <option value="PARTIALLY_DISPENSED">Partially Dispensed</option>
                 <option value="DISPENSED">Completed & Dispensed</option>
@@ -1236,6 +1531,11 @@ export const Pharmacy: React.FC = () => {
                             {(p as any).token_number && (
                               <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-mono font-bold border border-emerald-200">
                                 Token #{(p as any).token_number}
+                              </span>
+                            )}
+                            {p.date && (
+                              <span className="block text-[10px] text-slate-400 font-sans font-normal mt-0.5">
+                                {formatDateOnly(p.date)}
                               </span>
                             )}
                           </td>
@@ -1342,7 +1642,7 @@ export const Pharmacy: React.FC = () => {
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
-                All Categories ({medicines.length})
+                All Categories ({medicinesTotalCount})
               </button>
               {medicineCategories.map((cat) => (
                 <button
@@ -1457,10 +1757,13 @@ export const Pharmacy: React.FC = () => {
       {activeTab === 'BATCHES' && (
         <div className="space-y-4">
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-2">
-              <Layers className="w-4 h-4 text-amber-600" />
-              FEFO Priority Batch Comparison Matrix (Earliest Expiry First)
-            </h2>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <Layers className="w-4 h-4 text-amber-600" />
+                FEFO Priority Batch Comparison Matrix (Earliest Expiry First)
+              </h2>
+              <span className="text-xs text-slate-500 font-bold">{batchesTotalCount} Total Batches</span>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Object.keys(groupedBatches).map((medName) => {
@@ -1498,7 +1801,7 @@ export const Pharmacy: React.FC = () => {
                                 )}
                               </div>
                               <span className="text-[10px] text-slate-500 block font-medium mt-0.5">
-                                Vendor: {b.vendor_name || b.supplier} • Mfg: {b.mfg_date || 'N/A'} • Qty:{' '}
+                                Vendor: {b.vendor_name || b.supplier} • Mfg: {formatDateOnly(b.mfg_date)} • Qty:{' '}
                                 <strong className="text-slate-900">{b.quantity} units</strong>
                               </span>
                             </div>
@@ -1509,7 +1812,7 @@ export const Pharmacy: React.FC = () => {
                                   isEarliest ? 'text-amber-800' : 'text-slate-700'
                                 }`}
                               >
-                                Exp: {b.expiry_date}
+                                Exp: {formatDateOnly(b.expiry_date)}
                               </span>
                               <span
                                 className={`px-2 py-0.5 rounded text-[9px] font-bold mt-1 inline-block ${
@@ -1542,7 +1845,7 @@ export const Pharmacy: React.FC = () => {
             <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
               <History className="w-4 h-4 text-amber-600" /> Stock Audit & Transaction Log
             </h2>
-            <span className="text-xs text-slate-500">{transactions.length} Total Audit Entries</span>
+            <span className="text-xs text-slate-500">{transactionsTotalCount} Total Audit Entries</span>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
@@ -1570,7 +1873,7 @@ export const Pharmacy: React.FC = () => {
                     transactions.map((t) => (
                       <tr key={t.id} className="hover:bg-slate-50 transition">
                         <td className="p-4 font-mono text-slate-500 text-[11px]">
-                          {new Date(t.timestamp).toLocaleString()}
+                          {formatDateTime(t.created_at || t.timestamp)}
                         </td>
                         <td className="p-4">
                           <span
@@ -1594,8 +1897,13 @@ export const Pharmacy: React.FC = () => {
                         <td className="p-4 font-mono font-bold text-slate-900">
                           {t.quantity > 0 ? `+${t.quantity}` : t.quantity}
                         </td>
-                        <td className="p-4 font-mono text-slate-500">{t.reference_id || '-'}</td>
-                        <td className="p-4 text-slate-600">{t.created_by_name || 'System User'}</td>
+                        <td className="p-4 font-mono text-slate-500">
+                          {t.reference_id || '-'}
+                          {t.facility_name && (
+                            <span className="block text-[10px] text-slate-400 font-sans">{t.facility_name}</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-slate-600">{t.performed_by_name || t.created_by_name || 'Pharmacist'}</td>
                         <td className="p-4 text-slate-500 max-w-xs truncate">{t.notes || '-'}</td>
                       </tr>
                     ))
@@ -1616,7 +1924,7 @@ export const Pharmacy: React.FC = () => {
                 <Building2 className="w-4 h-4 text-amber-600" /> Pharmaceutical Suppliers & Vendor Directory
               </h2>
               <p className="text-[11px] text-slate-500">
-                Manage registered pharmaceutical vendors, order history, and procurement relationships.
+                Manage registered pharmaceutical vendors, order history, and procurement relationships ({vendorsTotalCount} registered suppliers).
               </p>
             </div>
             {!isReadOnly && (
@@ -1707,9 +2015,20 @@ export const Pharmacy: React.FC = () => {
                       <div className="space-y-2.5">
                         <div className="flex justify-between items-start">
                           <div>
-                            <span className="font-mono text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                              {v.vendor_code || `VEND-${v.id}`}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                {v.vendor_code || `VEND-${v.id}`}
+                              </span>
+                              {!v.facility ? (
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                  CENTRAL / STATE
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-50 text-slate-600 border border-slate-200">
+                                  FACILITY
+                                </span>
+                              )}
+                            </div>
                             <h3 className="font-bold text-slate-900 text-sm mt-1">{v.vendor_name || v.name}</h3>
                           </div>
                           <span
@@ -1908,10 +2227,20 @@ export const Pharmacy: React.FC = () => {
               ).map((tab) => {
                 const count =
                   tab.id === 'ALL'
-                    ? purchaseOrders.length
+                    ? (procurementKpis?.total_orders ?? purchaseOrdersTotalCount)
+                    : tab.id === 'DRAFT'
+                    ? (procurementKpis?.draft ?? purchaseOrders.filter((p) => p.status === 'DRAFT').length)
                     : tab.id === 'PENDING_APPROVAL'
-                    ? purchaseOrders.filter((p) => ['PENDING_APPROVAL', 'PENDING'].includes(p.status)).length
-                    : purchaseOrders.filter((p) => p.status === tab.id).length;
+                    ? (procurementKpis?.pending_approval ?? purchaseOrders.filter((p) => ['PENDING_APPROVAL', 'PENDING'].includes(p.status)).length)
+                    : tab.id === 'APPROVED'
+                    ? (procurementKpis?.approved ?? purchaseOrders.filter((p) => p.status === 'APPROVED').length)
+                    : tab.id === 'ORDERED'
+                    ? (procurementKpis?.ordered ?? purchaseOrders.filter((p) => p.status === 'ORDERED').length)
+                    : tab.id === 'PARTIALLY_RECEIVED'
+                    ? (procurementKpis?.partially_received ?? purchaseOrders.filter((p) => p.status === 'PARTIALLY_RECEIVED').length)
+                    : tab.id === 'RECEIVED'
+                    ? (procurementKpis?.received ?? purchaseOrders.filter((p) => p.status === 'RECEIVED').length)
+                    : (procurementKpis?.cancelled ?? purchaseOrders.filter((p) => p.status === 'CANCELLED').length);
 
                 return (
                   <button
@@ -2014,11 +2343,11 @@ export const Pharmacy: React.FC = () => {
                               <td className="p-4 space-y-0.5 text-slate-600">
                                 <div>
                                   <span className="text-[10px] text-slate-400 block">Ordered:</span>
-                                  <span>{po.order_date}</span>
+                                  <span>{formatDateOnly(po.order_date)}</span>
                                 </div>
                                 {po.expected_delivery && (
                                   <div className="text-[10px] text-slate-500">
-                                    Expected: <span className="font-mono">{po.expected_delivery}</span>
+                                    Expected: <span className="font-mono">{formatDateOnly(po.expected_delivery)}</span>
                                   </div>
                                 )}
                               </td>
@@ -2144,6 +2473,9 @@ export const Pharmacy: React.FC = () => {
                     <span className="font-bold text-sm flex items-center gap-2">
                       <AlertCircle className="w-4 h-4" /> {alt.title}
                     </span>
+                    {alt.facility_name && (
+                      <span className="text-[10px] text-slate-500 font-mono block">Facility: {alt.facility_name}</span>
+                    )}
                     <p className="text-xs opacity-90">{alt.description}</p>
                   </div>
 
@@ -2151,7 +2483,7 @@ export const Pharmacy: React.FC = () => {
                     <span className="px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-white/90 border border-current shadow-2xs">
                       {alt.severity}
                     </span>
-                    {(alt.type === 'LOW_STOCK' || alt.type === 'OUT_OF_STOCK') && !isReadOnly && (
+                    {(alt.alert_type === 'LOW_STOCK' || alt.alert_type === 'OUT_OF_STOCK' || alt.type === 'LOW_STOCK' || alt.type === 'OUT_OF_STOCK') && !isReadOnly && (
                       <button
                         onClick={() => {
                           const medId = alt.medicine_id || 0;
@@ -2211,7 +2543,7 @@ export const Pharmacy: React.FC = () => {
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-500">Total Active Batches:</span>
                   <span className="font-bold text-slate-900 font-mono">
-                    {reportSummary?.stock_valuation?.total_batches ?? batches.length}
+                    {reportSummary?.stock_valuation?.total_batches ?? batchesTotalCount}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
@@ -2699,7 +3031,7 @@ export const Pharmacy: React.FC = () => {
                         {vendorHistory.map((po) => (
                           <tr key={po.id} className="hover:bg-slate-50">
                             <td className="p-2.5 font-mono font-bold text-amber-700">{po.po_number}</td>
-                            <td className="p-2.5 text-slate-600">{po.order_date}</td>
+                            <td className="p-2.5 text-slate-600">{formatDateOnly(po.order_date)}</td>
                             <td className="p-2.5 text-slate-600">{po.items?.length || 0} items</td>
                             <td className="p-2.5 font-mono font-bold text-slate-900">₹{Number(po.total_amount).toLocaleString()}</td>
                             <td className="p-2.5">
@@ -3024,7 +3356,7 @@ export const Pharmacy: React.FC = () => {
                   </span>
                   {selectedPOForDetails.approved_at && (
                     <span className="font-mono text-[11px] text-emerald-700">
-                      {new Date(selectedPOForDetails.approved_at).toLocaleDateString()}
+                      {formatDateOnly(selectedPOForDetails.approved_at)}
                     </span>
                   )}
                 </div>
@@ -3091,11 +3423,11 @@ export const Pharmacy: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase block">Order Date</span>
-                  <span className="text-slate-800">{selectedPOForDetails.order_date}</span>
+                  <span className="text-slate-800">{formatDateOnly(selectedPOForDetails.order_date)}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase block">Expected Delivery</span>
-                  <span className="text-slate-800">{selectedPOForDetails.expected_delivery || 'Not specified'}</span>
+                  <span className="text-slate-800">{formatDateOnly(selectedPOForDetails.expected_delivery) || 'Not specified'}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase block">Created By</span>

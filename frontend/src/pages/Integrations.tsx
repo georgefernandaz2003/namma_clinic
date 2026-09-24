@@ -3,7 +3,10 @@ import api from '../services/api';
 import type { IntegrationConfiguration } from '../types';
 import { Sliders, RefreshCw, Server, AlertCircle } from 'lucide-react';
 
+import { useConfirm } from '../context/ConfirmContext';
+
 export const Integrations: React.FC = () => {
+  const { confirm } = useConfirm();
   const [integrations, setIntegrations] = useState<IntegrationConfiguration[]>([]);
   const [syncing, setSyncing] = useState<Record<string, boolean>>({});
 
@@ -20,12 +23,26 @@ export const Integrations: React.FC = () => {
     loadData();
   }, []);
 
-  const handleSimulateSync = (sysName: string) => {
-    setSyncing((prev) => ({ ...prev, [sysName]: true }));
-    setTimeout(() => {
-      setSyncing((prev) => ({ ...prev, [sysName]: false }));
-      alert(`Simulated sync complete for ${sysName}! No external internet connection used.`);
-    }, 1200);
+  const handleSimulateSync = (item: IntegrationConfiguration) => {
+    confirm({
+      title: 'Confirm Ecosystem Sync Simulation',
+      message: `Are you sure you want to trigger local simulated synchronization for ${item.display_name}?`,
+      confirmText: 'Trigger Sync',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Executing Simulated Sync...',
+      details: [
+        { label: 'System Name', value: item.system_name },
+        { label: 'Connector', value: item.display_name },
+        { label: 'Current Status', value: item.status },
+        { label: 'Mode', value: 'Local Mock / Sandbox (Offline)' },
+      ],
+      onConfirm: async () => {
+        setSyncing((prev) => ({ ...prev, [item.system_name]: true }));
+        await new Promise((r) => setTimeout(r, 1000));
+        setSyncing((prev) => ({ ...prev, [item.system_name]: false }));
+      },
+    });
   };
 
   return (
@@ -63,7 +80,7 @@ export const Integrations: React.FC = () => {
             <p className="text-xs text-slate-600 font-medium bg-slate-50 p-3 rounded-xl border border-slate-200">{item.notes}</p>
 
             <button
-              onClick={() => handleSimulateSync(item.system_name)}
+              onClick={() => handleSimulateSync(item)}
               disabled={syncing[item.system_name]}
               className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition"
             >

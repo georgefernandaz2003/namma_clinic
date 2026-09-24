@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import type { Referral } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { Share2, CheckCircle2, Stethoscope, RefreshCw, Repeat, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const Referrals: React.FC = () => {
   const { activeFacility } = useAuth();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [selectedReferral, setSelectedReferral] = useState<Referral | null>(null);
@@ -31,25 +33,40 @@ export const Referrals: React.FC = () => {
     loadData();
   }, [activeFacility]);
 
-  const handleRespondReferral = async (e: React.FormEvent) => {
+  const handleRespondReferral = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedReferral) return;
-    setSubmitting(true);
 
-    try {
-      await api.post(`referrals/${selectedReferral.id}/respond/`, {
-        specialist_findings: findings,
-        treatment_summary: treatment,
-        return_advice: advice
-      });
-      alert(`Specialist feedback sent back to ${selectedReferral.source_facility_name}! Closed-loop referral completed.`);
-      setSelectedReferral(null);
-      loadData();
-    } catch (e) {
-      alert('Failed to save specialist referral response.');
-    } finally {
-      setSubmitting(false);
-    }
+    confirm({
+      title: 'Confirm Specialist Referral Feedback',
+      message: `Are you sure you want to submit this specialist response and complete the referral for ${selectedReferral.patient_name}?`,
+      confirmText: 'Submit Feedback & Close Loop',
+      cancelText: 'Cancel',
+      variant: 'success',
+      loadingText: 'Submitting Feedback...',
+      details: [
+        { label: 'Patient Name', value: selectedReferral.patient_name },
+        { label: 'Source Facility', value: selectedReferral.source_facility_name },
+        { label: 'Receiving Facility', value: selectedReferral.destination_facility_name },
+        { label: 'Urgency', value: selectedReferral.urgency },
+        { label: 'Reason for Referral', value: selectedReferral.reason },
+        { label: 'Treatment Summary', value: treatment }
+      ],
+      onConfirm: async () => {
+        setSubmitting(true);
+        try {
+          await api.post(`referrals/${selectedReferral.id}/respond/`, {
+            specialist_findings: findings,
+            treatment_summary: treatment,
+            return_advice: advice
+          });
+          setSelectedReferral(null);
+          await loadData();
+        } finally {
+          setSubmitting(false);
+        }
+      }
+    });
   };
 
   return (

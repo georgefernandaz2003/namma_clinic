@@ -11,26 +11,50 @@ const reportTypes = [
 ];
 
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 
 export const Reports: React.FC = () => {
   const { activeFacility } = useAuth();
+  const { confirm } = useConfirm();
 
   const handleExportCSV = (type: string) => {
-    const token = localStorage.getItem('access_token');
-    const facParam = activeFacility?.id ? `&facility=${activeFacility.id}` : '';
-    const url = `http://localhost:8000/api/reports/export/?type=${type}${facParam}`;
-    
-    fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then((res) => res.blob())
-      .then((blob) => {
+    const reportItem = reportTypes.find((r) => r.id === type);
+    const reportTitle = reportItem?.title || type.toUpperCase();
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    confirm({
+      title: 'Confirm Report Export',
+      message: 'Are you sure you want to generate and download this structured dataset export?',
+      confirmText: 'Export CSV',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Generating CSV Export...',
+      details: [
+        { label: 'Report Type', value: reportTitle },
+        { label: 'Facility Scope', value: activeFacility?.facility_name || 'All Facilities (District)' },
+        { label: 'Export Date', value: todayStr },
+        { label: 'Format', value: 'Comma-Separated Values (.csv)' },
+      ],
+      onConfirm: async () => {
+        const token = localStorage.getItem('access_token');
+        const facParam = activeFacility?.id ? `&facility=${activeFacility.id}` : '';
+        const url = `http://localhost:8000/api/reports/export/?type=${type}${facParam}`;
+
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+          throw new Error(`Server returned HTTP ${res.status}: Failed to export report.`);
+        }
+
+        const blob = await res.blob();
         const a = document.createElement('a');
         a.href = window.URL.createObjectURL(blob);
-        a.download = `namma_clinic_${type}_report_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download = `namma_clinic_${type}_report_${todayStr}.csv`;
         a.click();
-      })
-      .catch(() => alert('Failed to download CSV report.'));
+      }
+    });
   };
 
   return (

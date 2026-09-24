@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import type { Visit, Patient } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import {
   Clock, ArrowRight, Plus, X, ChevronLeft, ChevronRight,
   ShieldAlert, CheckCircle, Lock, History, Eye, Play
@@ -10,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 
 export const Queue: React.FC = () => {
   const { activeFacility, user } = useAuth();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
 
   // Helper for YYYY-MM-DD
@@ -110,7 +112,7 @@ export const Queue: React.FC = () => {
   };
 
   // Issue Token Handler
-  const handleIssueToken = async (e: React.FormEvent) => {
+  const handleIssueToken = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isToday) {
       alert('OPD tokens can only be issued for the current operational day (Today).');
@@ -120,63 +122,85 @@ export const Queue: React.FC = () => {
       alert('Please select a patient and facility');
       return;
     }
-    setSubmitting(true);
-    try {
-      const res = await api.post('visits/', {
-        patient: selectedPatientId,
-        facility: activeFacility.id,
-        visit_type: visitType,
-        priority,
-        chief_complaint: chiefComplaint
-      });
-      const newVisit = res.data;
-      const tokNum = newVisit.token_details?.token_number || newVisit.id;
-      alert(`OPD Token #${tokNum} Issued Successfully!\nUnique Scope: ${activeFacility.facility_name} • Date: ${selectedDate} • Token #${tokNum}`);
-      setShowTokenModal(false);
-      setChiefComplaint('');
-      loadQueue();
-      loadHistorySummary();
-    } catch (e: any) {
-      let msg = 'Failed to issue OPD Token.';
-      if (e.response?.data?.error) {
-        msg = e.response.data.error;
-      } else if (e.response?.data?.detail) {
-        msg = e.response.data.detail;
+
+    const patientObj = patients.find((p) => p.id === Number(selectedPatientId));
+    const patientName = patientObj?.name || `Patient #${selectedPatientId}`;
+
+    confirm({
+      title: 'Confirm OPD Visit Registration',
+      message: `Are you sure you want to register an OPD visit and issue a token for ${patientName}?`,
+      confirmText: 'Issue OPD Token',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      loadingText: 'Generating Token...',
+      details: [
+        { label: 'Patient Name', value: patientName },
+        { label: 'Facility', value: activeFacility.facility_name },
+        { label: 'Visit Type', value: visitType },
+        { label: 'Priority', value: priority },
+        { label: 'Chief Complaint', value: chiefComplaint || 'Routine OPD' },
+        { label: 'Date', value: selectedDate }
+      ],
+      onConfirm: async () => {
+        setSubmitting(true);
+        try {
+          await api.post('visits/', {
+            patient: selectedPatientId,
+            facility: activeFacility.id,
+            visit_type: visitType,
+            priority,
+            chief_complaint: chiefComplaint
+          });
+          setShowTokenModal(false);
+          setChiefComplaint('');
+          await loadQueue();
+          await loadHistorySummary();
+        } finally {
+          setSubmitting(false);
+        }
       }
-      alert(msg);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   // Call Next Patient Handler
-  const handleCallNext = async () => {
+  const handleCallNext = () => {
     if (!isToday) {
       alert('Calling next patient is disabled on historical or future dates.');
       return;
     }
     if (!activeFacility) return;
-    setCallingNext(true);
-    try {
-      const targetQueue = activeTab !== 'ALL' ? activeTab : (user?.role === 'NURSE' ? 'TRIAGE' : 'DOCTOR');
-      const res = await api.post('visits/call-next/', {
-        facility: activeFacility.id,
-        queue: targetQueue
-      });
-      
-      if (res.data.message) {
-        alert(res.data.message);
-      } else {
-        const called = res.data;
-        const tokNum = called.token_details?.token_number || called.id;
-        alert(`Patient Called Successfully!\nToken #${tokNum} (${called.patient_details?.name}) assigned to ${called.assigned_doctor_name || 'Workstation'}.`);
-        loadQueue();
+
+    const targetQueue = activeTab !== 'ALL' ? activeTab : (user?.role === 'NURSE' ? 'TRIAGE' : 'DOCTOR');
+
+    confirm({
+      title: 'Confirm Call Next Patient',
+      message: `Are you sure you want to advance the queue and call the next waiting patient into ${targetQueue === 'TRIAGE' ? 'Nurse Triage' : 'Doctor Consultation'}?`,
+      confirmText: 'Call Next Patient',
+      cancelText: 'Cancel',
+      variant: 'warning',
+      loadingText: 'Advancing Queue...',
+      details: [
+        { label: 'Facility', value: activeFacility.facility_name },
+        { label: 'Target Queue Stage', value: targetQueue },
+        { label: 'Calling Staff Role', value: user?.role_display || user?.role || 'Staff' },
+        { label: 'Operational Date', value: selectedDate }
+      ],
+      onConfirm: async () => {
+        setCallingNext(true);
+        try {
+          const res = await api.post('visits/call-next/', {
+            facility: activeFacility.id,
+            queue: targetQueue
+          });
+          if (res.data.message) {
+            alert(res.data.message);
+          }
+          await loadQueue();
+        } finally {
+          setCallingNext(false);
+        }
       }
-    } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to call next patient.');
-    } finally {
-      setCallingNext(false);
-    }
+    });
   };
 
   // Authoritative KPI Calculations from backend queueSummary with table fallback
