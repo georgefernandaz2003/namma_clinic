@@ -69,7 +69,6 @@ class InventoryLedgerSerializer(serializers.ModelSerializer):
     class Meta:
         model = InventoryLedger
         fields = '__all__'
-        read_only_fields = fields
 
 
 class MedicineMasterViewSet(viewsets.ModelViewSet):
@@ -109,6 +108,82 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         fac = serializer.validated_data['facility']
         check_facility_permission(fac, staff, self.request.user)
         serializer.save()
+
+    @action(detail=True, methods=['post'], url_path='verify')
+    def verify(self, request, pk=None):
+        from django.utils import timezone
+        prescription = self.get_object()
+        staff = get_request_staff(request)
+        check_facility_permission(prescription.facility, staff, request.user)
+
+        is_pharm = (
+            request.user.is_superuser or
+            getattr(request.user, 'role', '') == 'PHARMACIST' or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
+            staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists()
+        )
+        if not is_pharm:
+            return Response({'error': 'Only pharmacists are authorized to verify prescriptions.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if prescription.status not in ['PENDING_VERIFICATION', 'ON_HOLD']:
+            return Response({'error': f"Cannot verify prescription in status '{prescription.status}'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        prescription.status = 'VERIFIED'
+        prescription.verified_by = request.user
+        prescription.verified_at = timezone.now()
+        prescription.verification_notes = request.data.get('notes', '')
+        prescription.save(update_fields=['status', 'verified_by', 'verified_at', 'verification_notes'])
+        return Response(self.get_serializer(prescription).data)
+
+    @action(detail=True, methods=['post'], url_path='hold')
+    def hold(self, request, pk=None):
+        prescription = self.get_object()
+        staff = get_request_staff(request)
+        check_facility_permission(prescription.facility, staff, request.user)
+
+        is_pharm = (
+            request.user.is_superuser or
+            getattr(request.user, 'role', '') == 'PHARMACIST' or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
+            staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists()
+        )
+        if not is_pharm:
+            return Response({'error': 'Only pharmacists are authorized to place prescriptions on hold.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if prescription.status in ['DISPENSED', 'REJECTED', 'CANCELLED']:
+            return Response({'error': f"Cannot hold prescription in status '{prescription.status}'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        prescription.status = 'ON_HOLD'
+        prescription.verification_notes = request.data.get('notes', prescription.verification_notes)
+        prescription.save(update_fields=['status', 'verification_notes'])
+        return Response(self.get_serializer(prescription).data)
+
+    @action(detail=True, methods=['post'], url_path='reject')
+    def reject(self, request, pk=None):
+        from django.utils import timezone
+        prescription = self.get_object()
+        staff = get_request_staff(request)
+        check_facility_permission(prescription.facility, staff, request.user)
+
+        is_pharm = (
+            request.user.is_superuser or
+            getattr(request.user, 'role', '') == 'PHARMACIST' or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
+            staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists()
+        )
+        if not is_pharm:
+            return Response({'error': 'Only pharmacists are authorized to reject prescriptions.'}, status=status.HTTP_403_FORBIDDEN)
+
+        reason = request.data.get('reason', '')
+        if not reason:
+            return Response({'error': 'Rejection reason is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        prescription.status = 'REJECTED'
+        prescription.rejection_reason = reason
+        prescription.verified_by = request.user
+        prescription.verified_at = timezone.now()
+        prescription.save(update_fields=['status', 'rejection_reason', 'verified_by', 'verified_at'])
+        return Response(self.get_serializer(prescription).data)
 
 class DispensationViewSet(viewsets.ModelViewSet):
     queryset = Dispensation.objects.all().select_related('prescription', 'facility', 'dispensed_by_staff').prefetch_related('items')

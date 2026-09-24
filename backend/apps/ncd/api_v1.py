@@ -206,7 +206,6 @@ class AuditLogEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = AuditLogEntry
         fields = '__all__'
-        read_only_fields = fields
 
 class AuditLogEntryViewSet(viewsets.ReadOnlyModelViewSet):
     """
