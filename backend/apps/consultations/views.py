@@ -110,7 +110,10 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                     patient_id=patient_id,
                     doctor=request.user,
                     facility_id=facility_id,
-                    status='PENDING'
+                    status='PENDING',
+                    notes=data.get('notes', '') or '',
+                    rejection_reason='',
+                    verification_notes=''
                 )
             else:
                 prescription.status = 'PENDING'
@@ -120,12 +123,14 @@ class ConsultationViewSet(viewsets.ModelViewSet):
             for item in prescription_items:
                 PrescriptionItem.objects.create(
                     prescription=prescription,
-                    medicine_name=item.get('medicine_name'),
+                    medicine_id=item.get('medicine_id') or item.get('medicine'),
+                    medicine_name=item.get('medicine_name') or 'Medicine',
                     dosage=item.get('dosage', '1-0-1 After Food'),
                     frequency=item.get('frequency', 'Twice Daily'),
                     duration_days=item.get('duration_days', 7),
                     quantity=item.get('quantity', 14),
-                    status='PENDING'
+                    dispensed_quantity=item.get('dispensed_quantity', 0),
+                    status=item.get('status', 'PENDING')
                 )
 
         # Handle Lab Diagnostic Orders if provided directly

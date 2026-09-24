@@ -27,19 +27,25 @@ class Prescription(models.Model):
     doctor = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE)
     date = models.DateField(auto_now_add=True)
-    status = models.CharField(max_length=20, default='ACTIVE')
-    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=30, default='ACTIVE')
+    notes = models.TextField(blank=True, default='')
+    rejection_reason = models.TextField(blank=True, default='')
+    verification_notes = models.TextField(blank=True, default='')
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_prescriptions')
 
     def __str__(self):
         return f"Prescription #{self.id} for {self.patient.name}"
 
 class PrescriptionItem(models.Model):
     prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='items')
+    medicine = models.ForeignKey('pharmacy.MedicineMaster', on_delete=models.SET_NULL, null=True, blank=True)
     medicine_name = models.CharField(max_length=150)
     dosage = models.CharField(max_length=50, default='1-0-1 After Food')
     frequency = models.CharField(max_length=50, default='Twice Daily')
     duration_days = models.IntegerField(default=7)
     quantity = models.IntegerField(default=14)
+    dispensed_quantity = models.IntegerField(default=0)
     status = models.CharField(max_length=20, default='PENDING') # PENDING or DISPENSED
 
     def __str__(self):
