@@ -19,8 +19,12 @@ from apps.pharmacy.services import (
 from apps.pharmacy.procurement_services import (
     create_purchase_order, approve_purchase_order, receive_goods_receipt
 )
-from apps.common.permissions import IsActiveStaff, IsAdministrativeStaff, FacilityScopedPermission, get_request_staff
+from apps.common.permissions import (
+    IsActiveStaff, IsAdministrativeStaff, FacilityScopedPermission, get_request_staff,
+    get_user_permitted_facilities, check_facility_permission
+)
 
+# --- Serializers ---
 class MedicineMasterSerializer(serializers.ModelSerializer):
     class Meta:
         model = MedicineMaster
@@ -79,15 +83,46 @@ class MedicineBatchViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = MedicineBatchSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(facility_id__in=permitted)
+        return qs
+
 class PrescriptionViewSet(viewsets.ModelViewSet):
-    queryset = Prescription.objects.all().select_related('visit', 'patient', 'facility').prefetch_related('items')
+    queryset = Prescription.objects.all().select_related('consultation', 'patient', 'facility').prefetch_related('items')
     serializer_class = PrescriptionSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(facility_id__in=permitted)
+        return qs
+
+    def perform_create(self, serializer):
+        staff = get_request_staff(self.request)
+        fac = serializer.validated_data['facility']
+        check_facility_permission(fac, staff, self.request.user)
+        serializer.save()
 
 class DispensationViewSet(viewsets.ModelViewSet):
     queryset = Dispensation.objects.all().select_related('prescription', 'facility', 'dispensed_by_staff').prefetch_related('items')
     serializer_class = DispensationSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(facility_id__in=permitted)
+        return qs
 
     def create(self, request, *args, **kwargs):
         serializer = DispenseRequestSerializer(data=request.data)
@@ -97,6 +132,7 @@ class DispensationViewSet(viewsets.ModelViewSet):
         from apps.facilities.models import Facility
         rx = Prescription.objects.get(pk=serializer.validated_data['prescription_id'])
         fac = Facility.objects.get(pk=serializer.validated_data['facility_id'])
+        check_facility_permission(fac, staff, request.user)
 
         allocations = []
         for itm in serializer.validated_data['items']:
@@ -121,6 +157,14 @@ class InventoryLedgerViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = InventoryLedger.objects.all().select_related('batch', 'facility', 'performed_by_staff')
     serializer_class = InventoryLedgerSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(facility_id__in=permitted)
+        return qs
 
 
 # --- Procurement ---
@@ -179,10 +223,19 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     serializer_class = PurchaseOrderSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(facility_id__in=permitted)
+        return qs
+
     def create(self, request, *args, **kwargs):
         from apps.facilities.models import Facility
         staff = get_request_staff(request)
         fac = Facility.objects.get(pk=request.data['facility'])
+        check_facility_permission(fac, staff, request.user)
         ven = Vendor.objects.get(pk=request.data['vendor'])
 
         po = create_purchase_order(
@@ -199,6 +252,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         serializer = ApprovePOSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         staff = get_request_staff(request)
+        check_facility_permission(po.facility, staff, request.user)
 
         approval = approve_purchase_order(
             purchase_order=po,
@@ -214,6 +268,15 @@ class GoodsReceiptNoteViewSet(viewsets.ModelViewSet):
     queryset = GoodsReceiptNote.objects.all().select_related('purchase_order', 'facility').prefetch_related('items')
     serializer_class = GoodsReceiptNoteSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(facility_id__in=permitted)
+        return qs
 
     def create(self, request, *args, **kwargs):
         serializer = ReceiveGRNSerializer(data=request.data)
@@ -223,6 +286,7 @@ class GoodsReceiptNoteViewSet(viewsets.ModelViewSet):
         from apps.facilities.models import Facility
         po = PurchaseOrder.objects.get(pk=serializer.validated_data['purchase_order_id'])
         fac = Facility.objects.get(pk=serializer.validated_data['facility_id'])
+        check_facility_permission(fac, staff, request.user)
 
         items = []
         for itm in serializer.validated_data['items_received']:

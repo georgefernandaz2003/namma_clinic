@@ -1,5 +1,5 @@
 """
-Backend Authoritative Permission & Scope Classes for Namma Clinic REST API.
+Backend Authoritative Permission and Scope Classes for Namma Clinic REST API.
 Enforces active StaffProfile resolution, administrative privileges, and facility/district isolation.
 """
 from rest_framework.permissions import BasePermission
@@ -19,7 +19,6 @@ def get_request_staff(request, required=True):
 
     staff = getattr(user, "staff_profile", None)
     if not staff:
-        # Fallback check through Person link if applicable
         person = getattr(user, "person", None)
         if person:
             staff = person.staff_profiles.filter(status="ACTIVE").first()
@@ -37,7 +36,6 @@ def get_user_permitted_facilities(staff_profile, user=None):
     if user and user.is_superuser:
         return None
     if staff_profile and is_administrative_staff(staff_profile):
-        # District Health Officer / State admin check
         if staff_profile.designation == "District Health Officer" and user and user.assigned_district_id:
             from apps.facilities.models import Facility
             return list(Facility.objects.filter(district_id=user.assigned_district_id).values_list("id", flat=True))
@@ -52,6 +50,21 @@ def get_user_permitted_facilities(staff_profile, user=None):
         facility_ids.add(user.assigned_facility_id)
 
     return list(facility_ids)
+
+
+def check_facility_permission(facility, staff_profile, user):
+    """
+    Validates that the user/staff is authorized to perform mutations in the given facility.
+    Raises UnauthorizedDomainAction if unauthorized.
+    """
+    if user and user.is_superuser:
+        return
+    permitted = get_user_permitted_facilities(staff_profile, user)
+    if permitted is None:
+        return  # Global/statewide administrative authority
+    facility_id = getattr(facility, "id", facility)
+    if facility_id not in permitted:
+        raise UnauthorizedDomainAction(f"User is not authorized for facility ID {facility_id}.")
 
 
 class IsActiveStaff(BasePermission):
@@ -91,7 +104,7 @@ class FacilityScopedPermission(BasePermission):
         staff = get_request_staff(request, required=False)
         permitted_facilities = get_user_permitted_facilities(staff, request.user)
         if permitted_facilities is None:
-            return True # Statewide / Superuser
+            return True  # Statewide / Superuser
 
         target_facility_id = None
         if hasattr(obj, "facility_id"):
@@ -99,7 +112,11 @@ class FacilityScopedPermission(BasePermission):
         elif hasattr(obj, "registered_at_facility_id"):
             target_facility_id = obj.registered_at_facility_id
         elif hasattr(obj, "source_facility_id"):
-            target_facility_id = obj.source_facility_id
+            if obj.source_facility_id in permitted_facilities:
+                return True
+            if hasattr(obj, "destination_facility_id") and obj.destination_facility_id in permitted_facilities:
+                return True
+            return False
 
         if target_facility_id is None:
             return True

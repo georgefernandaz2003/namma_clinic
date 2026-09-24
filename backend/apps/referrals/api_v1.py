@@ -1,7 +1,9 @@
 """
 Referrals & Follow-Up REST API (v1).
 State machine transitions and cross-encounter completion via domain services.
+Enforces facility scoping on querysets and mutation payloads.
 """
+from django.db import models
 from rest_framework import serializers, viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -9,7 +11,10 @@ from apps.referrals.models import ReferralOrder, ReferralEvent, FollowUpTask
 from apps.referrals.services import (
     create_referral_order, transition_referral_state, create_followup_task, complete_followup
 )
-from apps.common.permissions import IsActiveStaff, FacilityScopedPermission, get_request_staff
+from apps.common.permissions import (
+    IsActiveStaff, FacilityScopedPermission, get_request_staff,
+    get_user_permitted_facilities, check_facility_permission
+)
 
 class ReferralEventSerializer(serializers.ModelSerializer):
     class Meta:
@@ -44,15 +49,26 @@ class ReferralOrderViewSet(viewsets.ModelViewSet):
     serializer_class = ReferralOrderSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(models.Q(source_facility_id__in=permitted) | models.Q(destination_facility_id__in=permitted))
+        return qs
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         staff = get_request_staff(request)
 
+        src_fac = serializer.validated_data['source_facility']
+        check_facility_permission(src_fac, staff, request.user)
+
         order = create_referral_order(
             patient=serializer.validated_data['patient'],
             visit=serializer.validated_data['visit'],
-            source_facility=serializer.validated_data['source_facility'],
+            source_facility=src_fac,
             destination_facility=serializer.validated_data['destination_facility'],
             referring_doctor_staff=staff,
             reason=serializer.validated_data['reason'],
@@ -81,13 +97,25 @@ class FollowUpTaskViewSet(viewsets.ModelViewSet):
     serializer_class = FollowUpTaskSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(facility_id__in=permitted)
+        return qs
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        staff = get_request_staff(request)
+
+        fac = serializer.validated_data['facility']
+        check_facility_permission(fac, staff, request.user)
 
         task = create_followup_task(
             patient=serializer.validated_data['patient'],
-            facility=serializer.validated_data['facility'],
+            facility=fac,
             due_date=serializer.validated_data['due_date'],
             category=serializer.validated_data.get('category', 'GENERAL'),
             originating_visit=serializer.validated_data.get('originating_visit'),

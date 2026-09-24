@@ -1,6 +1,7 @@
 """
 Diagnostics REST API (v1).
 Delegates requisition, specimen collection, result entry, verification, and amendment to domain services.
+Enforces facility isolation and verification immutability.
 """
 from rest_framework import serializers, viewsets, status
 from rest_framework.decorators import action
@@ -13,7 +14,10 @@ from apps.laboratory.services import (
     create_diagnostic_order, create_test_request, collect_specimen,
     record_diagnostic_result, verify_diagnostic_result, amend_diagnostic_result
 )
-from apps.common.permissions import IsActiveStaff, FacilityScopedPermission, get_request_staff
+from apps.common.permissions import (
+    IsActiveStaff, FacilityScopedPermission, get_request_staff,
+    get_user_permitted_facilities, check_facility_permission
+)
 
 class DiagnosticTestMasterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -64,14 +68,25 @@ class DiagnosticOrderViewSet(viewsets.ModelViewSet):
     serializer_class = DiagnosticOrderSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(facility_id__in=permitted)
+        return qs
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         staff = get_request_staff(request)
 
+        fac = serializer.validated_data['facility']
+        check_facility_permission(fac, staff, request.user)
+
         order = create_diagnostic_order(
             visit=serializer.validated_data['visit'],
-            facility=serializer.validated_data['facility'],
+            facility=fac,
             ordering_doctor_staff=staff,
             priority=serializer.validated_data.get('priority', 'ROUTINE'),
             clinical_indication=serializer.validated_data.get('clinical_indication', ''),
@@ -84,12 +99,24 @@ class TestRequestViewSet(viewsets.ModelViewSet):
     serializer_class = TestRequestSerializer
     permission_classes = [IsActiveStaff]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(diagnostic_order__facility_id__in=permitted)
+        return qs
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        staff = get_request_staff(request)
+
+        diag_order = serializer.validated_data['diagnostic_order']
+        check_facility_permission(diag_order.facility, staff, request.user)
 
         req = create_test_request(
-            diagnostic_order=serializer.validated_data['diagnostic_order'],
+            diagnostic_order=diag_order,
             test_master=serializer.validated_data['test_master'],
             specimen=serializer.validated_data.get('specimen')
         )
@@ -100,16 +127,27 @@ class SpecimenViewSet(viewsets.ModelViewSet):
     serializer_class = SpecimenSerializer
     permission_classes = [IsActiveStaff]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(diagnostic_order__facility_id__in=permitted)
+        return qs
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         staff = get_request_staff(request)
 
+        diag_order = serializer.validated_data['diagnostic_order']
+        check_facility_permission(diag_order.facility, staff, request.user)
+
         tr_ids = serializer.validated_data.get('test_request_ids', [])
         test_reqs = TestRequest.objects.filter(id__in=tr_ids) if tr_ids else None
 
         specimen = collect_specimen(
-            diagnostic_order=serializer.validated_data['diagnostic_order'],
+            diagnostic_order=diag_order,
             barcode_identifier=serializer.validated_data['barcode_identifier'],
             specimen_type=serializer.validated_data['specimen_type'],
             collected_by_staff=staff,
@@ -118,17 +156,36 @@ class SpecimenViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(specimen).data, status=status.HTTP_201_CREATED)
 
 class DiagnosticResultViewSet(viewsets.ModelViewSet):
+    """
+    Diagnostic results endpoint.
+    Direct PUT/PATCH/DELETE is disabled to guarantee verification immutability.
+    Draft creation: POST /
+    Verification: POST /{id}/verify/
+    Amendment: POST /{id}/amend/
+    """
     queryset = DiagnosticResult.objects.all().select_related('test_request', 'entered_by_staff', 'verified_by_staff')
     serializer_class = DiagnosticResultSerializer
     permission_classes = [IsActiveStaff]
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(test_request__diagnostic_order__facility_id__in=permitted)
+        return qs
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         staff = get_request_staff(request)
 
+        tr = serializer.validated_data['test_request']
+        check_facility_permission(tr.diagnostic_order.facility, staff, request.user)
+
         result = record_diagnostic_result(
-            test_request=serializer.validated_data['test_request'],
+            test_request=tr,
             entered_by_staff=staff,
             result_value_text=serializer.validated_data.get('result_value_text', ''),
             result_value_numeric=serializer.validated_data.get('result_value_numeric'),
@@ -142,6 +199,7 @@ class DiagnosticResultViewSet(viewsets.ModelViewSet):
     def verify(self, request, pk=None):
         diag_res = self.get_object()
         staff = get_request_staff(request)
+        check_facility_permission(diag_res.test_request.diagnostic_order.facility, staff, request.user)
         verified = verify_diagnostic_result(diag_res, verified_by_staff=staff)
         return Response(self.get_serializer(verified).data)
 
@@ -151,6 +209,7 @@ class DiagnosticResultViewSet(viewsets.ModelViewSet):
         serializer = AmendResultSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         staff = get_request_staff(request)
+        check_facility_permission(diag_res.test_request.diagnostic_order.facility, staff, request.user)
 
         amended_res, amendment = amend_diagnostic_result(
             diagnostic_result=diag_res,

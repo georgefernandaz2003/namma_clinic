@@ -8,7 +8,10 @@ from rest_framework.response import Response
 from apps.visits.models import Visit
 from apps.visits.services import issue_opd_token, issue_lab_token
 from apps.laboratory.models import DiagnosticOrder
-from apps.common.permissions import IsActiveStaff, FacilityScopedPermission, get_request_staff, get_user_permitted_facilities
+from apps.common.permissions import (
+    IsActiveStaff, FacilityScopedPermission, get_request_staff,
+    get_user_permitted_facilities, check_facility_permission
+)
 
 class VisitSerializer(serializers.ModelSerializer):
     class Meta:
@@ -17,7 +20,7 @@ class VisitSerializer(serializers.ModelSerializer):
             'id', 'visit_id', 'patient', 'facility', 'visit_type',
             'opd_date', 'current_queue', 'status', 'token_number', 'created_at'
         ]
-        read_only_fields = ['token_number', 'created_at']
+        read_only_fields = ['visit_id', 'token_number', 'created_at']
 
 class VisitViewSet(viewsets.ModelViewSet):
     queryset = Visit.objects.all().select_related('patient', 'facility')
@@ -34,6 +37,10 @@ class VisitViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         import uuid, datetime
+        staff = get_request_staff(self.request)
+        fac = serializer.validated_data['facility']
+        check_facility_permission(fac, staff, self.request.user)
+
         vis_id = f"VIS-{datetime.date.today().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
         visit = serializer.save(visit_id=vis_id)
         # Issue OPD token automatically on visit encounter creation

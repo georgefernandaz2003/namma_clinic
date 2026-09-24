@@ -5,7 +5,10 @@ Registration, retrieval, and facility-scoped demographic management.
 from rest_framework import serializers, viewsets, filters
 from apps.patients.models import Patient
 from apps.accounts.models import Person
-from apps.common.permissions import IsActiveStaff, FacilityScopedPermission, get_request_staff, get_user_permitted_facilities
+from apps.common.permissions import (
+    IsActiveStaff, FacilityScopedPermission, get_request_staff,
+    get_user_permitted_facilities, check_facility_permission
+)
 
 class PatientSerializer(serializers.ModelSerializer):
     class Meta:
@@ -37,6 +40,9 @@ class PatientViewSet(viewsets.ModelViewSet):
         fac = serializer.validated_data.get('registered_at_facility')
         if not fac and staff.facility_assignments.filter(is_active=True).exists():
             fac = staff.facility_assignments.filter(is_active=True).first().facility
+
+        if fac:
+            check_facility_permission(fac, staff, self.request.user)
 
         pat_id = f"PAT-{datetime.date.today().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
         serializer.save(patient_id=pat_id, registered_at_facility=fac)

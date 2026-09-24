@@ -366,3 +366,78 @@ class Phase13RestAPITests(TestCase):
         self.client.force_authenticate(user=self.admin_user)
         res_audit_admin = self.client.get('/api/v1/audit/')
         self.assertEqual(res_audit_admin.status_code, status.HTTP_200_OK)
+
+    # -------------------------------------------------------------------------
+    # 9. FACILITY SCOPING & IMMUTABILITY REGRESSION TESTS (PHASE 13A)
+    # -------------------------------------------------------------------------
+    def test_12_cross_facility_listing_and_mutation_isolation(self):
+        """Ordinary clinical staff can only list and mutate data in assigned facilities."""
+        visit_b = Visit.objects.create(
+            visit_id="VIS-API-B1", patient=self.patient_b, facility=self.clinic_b,
+            visit_type="OPD", opd_date=datetime.date.today(), status="IN_CONSULTATION"
+        )
+        consultation_b = Consultation.objects.create(
+            visit=visit_b, patient=self.patient_b, facility=self.clinic_b,
+            doctor_staff=self.doc_staff, chief_complaint="Fever"
+        )
+        rx_a = Prescription.objects.create(
+            consultation=self.consultation_a, patient=self.patient_a, facility=self.clinic_a, status="VERIFIED"
+        )
+        rx_b = Prescription.objects.create(
+            consultation=consultation_b, patient=self.patient_b, facility=self.clinic_b, status="VERIFIED"
+        )
+
+        # Authenticate as Doctor assigned only to Clinic A
+        self.client.force_authenticate(user=self.doc_user)
+
+        # Listing consultations returns only Clinic A consultations
+        res_c = self.client.get('/api/v1/clinical/consultations/')
+        self.assertEqual(res_c.status_code, status.HTTP_200_OK)
+        c_ids = [c['id'] for c in (res_c.data['results'] if 'results' in res_c.data else res_c.data)]
+        self.assertIn(self.consultation_a.id, c_ids)
+        self.assertNotIn(consultation_b.id, c_ids)
+
+        # Listing prescriptions returns only Clinic A prescriptions
+        res_rx = self.client.get('/api/v1/pharmacy/prescriptions/')
+        self.assertEqual(res_rx.status_code, status.HTTP_200_OK)
+        rx_ids = [r['id'] for r in (res_rx.data['results'] if 'results' in res_rx.data else res_rx.data)]
+        self.assertIn(rx_a.id, rx_ids)
+        self.assertNotIn(rx_b.id, rx_ids)
+
+        # Attempt to create consultation under Clinic B returns 403 Forbidden
+        mut_payload = {
+            "visit": visit_b.id,
+            "patient": self.patient_b.id,
+            "facility": self.clinic_b.id,
+            "chief_complaint": "Unauthorized clinic post"
+        }
+        res_mut = self.client.post('/api/v1/clinical/consultations/', mut_payload, format='json')
+        self.assertEqual(res_mut.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_13_diagnostic_result_immutability_and_alert_acknowledgment(self):
+        """Direct PATCH on DiagnosticResult is 405; alert acknowledgment updates lifecycle."""
+        self.client.force_authenticate(user=self.doc_user)
+        test_master = DiagnosticTestMaster.objects.create(test_code="TEST-IMMUT", test_name="Immutability Test")
+        diag_order = DiagnosticOrder.objects.create(
+            order_number="ORD-IMMUT-1", visit=self.visit_a, facility=self.clinic_a,
+            ordering_doctor_staff=self.doc_staff, order_date=datetime.date.today()
+        )
+        test_req = TestRequest.objects.create(diagnostic_order=diag_order, test_master=test_master)
+        diag_result = DiagnosticResult.objects.create(
+            test_request=test_req, result_value_text="12.0", entered_by_staff=self.doc_staff, status="ENTERED"
+        )
+
+        # Direct PATCH forbidden (405 Method Not Allowed)
+        res_patch = self.client.patch(f'/api/v1/diagnostics/results/{diag_result.id}/', {"result_value_text": "99.9"}, format='json')
+        self.assertEqual(res_patch.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+        # OperationalAlert Acknowledgment
+        alert = OperationalAlert.objects.create(
+            facility=self.clinic_a, alert_category="SYSTEM", title="Test Alert", is_active=True
+        )
+        res_ack = self.client.post(f'/api/v1/alerts/{alert.id}/acknowledge/')
+        self.assertEqual(res_ack.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertFalse(alert.is_active)
+        self.assertEqual(alert.acknowledged_by_staff_id, self.doc_staff.id)
+        self.assertIsNotNone(alert.acknowledged_at)

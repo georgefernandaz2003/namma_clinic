@@ -1,11 +1,15 @@
 """
 Clinical Consultations & Triage REST API (v1).
 Captures clinical encounters and vitals linked to durable StaffProfile authorship.
+Enforces facility scoping on querysets and mutation payloads.
 """
 from rest_framework import serializers, viewsets
 from apps.consultations.models import Consultation
 from apps.triage.models import TriageVitals
-from apps.common.permissions import IsActiveStaff, FacilityScopedPermission, get_request_staff
+from apps.common.permissions import (
+    IsActiveStaff, FacilityScopedPermission, get_request_staff,
+    get_user_permitted_facilities, check_facility_permission
+)
 
 class TriageVitalsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -18,17 +22,29 @@ class ConsultationSerializer(serializers.ModelSerializer):
         model = Consultation
         fields = [
             'id', 'visit', 'patient', 'facility', 'doctor_staff',
-            'chief_complaint', 'clinical_findings', 'diagnosis_text',
-            'status', 'created_at', 'updated_at'
+            'consultation_sequence', 'chief_complaint', 'clinical_history',
+            'clinical_assessment', 'diagnosis_code', 'diagnosis_name',
+            'treatment_plan', 'follow_up_date', 'clinical_notes', 'created_at'
         ]
-        read_only_fields = ['doctor_staff', 'created_at', 'updated_at']
+        read_only_fields = ['doctor_staff', 'created_at']
 
 class TriageVitalsViewSet(viewsets.ModelViewSet):
     queryset = TriageVitals.objects.all().select_related('visit', 'patient')
     serializer_class = TriageVitalsSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(visit__facility_id__in=permitted)
+        return qs
+
     def perform_create(self, serializer):
+        staff = get_request_staff(self.request)
+        visit = serializer.validated_data['visit']
+        check_facility_permission(visit.facility, staff, self.request.user)
         serializer.save(recorded_by=self.request.user)
 
 class ConsultationViewSet(viewsets.ModelViewSet):
@@ -36,6 +52,16 @@ class ConsultationViewSet(viewsets.ModelViewSet):
     serializer_class = ConsultationSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(facility_id__in=permitted)
+        return qs
+
     def perform_create(self, serializer):
         staff = get_request_staff(self.request)
+        fac = serializer.validated_data['facility']
+        check_facility_permission(fac, staff, self.request.user)
         serializer.save(doctor_staff=staff)

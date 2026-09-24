@@ -105,3 +105,11 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsAdministrativeStaff()]
         return [IsActiveStaff()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, self.request.user)
+        if permitted is not None:
+            qs = qs.filter(facility_id__in=permitted)
+        return qs

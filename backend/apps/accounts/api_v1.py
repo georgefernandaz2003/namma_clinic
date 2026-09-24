@@ -1,6 +1,7 @@
 """
 IAM REST API (v1).
 Delegates all identity, role, and facility mutations to domain services.
+Direct PUT/PATCH/DELETE mutations are disabled to enforce service workflows and audit trails.
 """
 from rest_framework import serializers, viewsets, status
 from rest_framework.decorators import action
@@ -57,6 +58,7 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
     queryset = StaffProfile.objects.all().select_related('person', 'department')
     serializer_class = StaffProfileSerializer
     permission_classes = [IsActiveStaff]
+    http_method_names = ['get', 'post', 'head', 'options']
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -88,6 +90,7 @@ class RoleAssignmentViewSet(viewsets.ModelViewSet):
     queryset = StaffRoleAssignment.objects.all().select_related('staff', 'role')
     serializer_class = RoleAssignmentSerializer
     permission_classes = [IsAdministrativeStaff]
+    http_method_names = ['get', 'post', 'head', 'options']
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -118,6 +121,7 @@ class FacilityAssignmentViewSet(viewsets.ModelViewSet):
     queryset = StaffFacilityAssignment.objects.all().select_related('staff', 'facility')
     serializer_class = FacilityAssignmentSerializer
     permission_classes = [IsAdministrativeStaff]
+    http_method_names = ['get', 'post', 'head', 'options']
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
