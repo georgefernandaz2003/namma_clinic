@@ -246,7 +246,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         )
         return Response(self.get_serializer(po).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], url_path='approve')
+    @action(detail=True, methods=['post'], url_path='approve', permission_classes=[IsAdministrativeStaff])
     def approve(self, request, pk=None):
         po = self.get_object()
         serializer = ApprovePOSerializer(data=request.data)

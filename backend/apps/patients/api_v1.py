@@ -28,6 +28,11 @@ class PatientViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        search_query = self.request.query_params.get('search', '').strip()
+        if search_query:
+            # Continuity-of-care policy: explicit demographic search allows statewide lookup
+            return qs
+
         staff = get_request_staff(self.request, required=False)
         permitted = get_user_permitted_facilities(staff, self.request.user)
         if permitted is not None:

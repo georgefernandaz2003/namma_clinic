@@ -14,13 +14,15 @@ from apps.common.permissions import (
 )
 
 class VisitSerializer(serializers.ModelSerializer):
+    token_number = serializers.CharField(source='token.token_number', read_only=True)
+
     class Meta:
         model = Visit
         fields = [
             'id', 'visit_id', 'patient', 'facility', 'visit_type',
-            'opd_date', 'current_queue', 'status', 'token_number', 'created_at'
+            'opd_date', 'current_queue', 'status', 'token_number'
         ]
-        read_only_fields = ['visit_id', 'token_number', 'created_at']
+        read_only_fields = ['visit_id']
 
 class VisitViewSet(viewsets.ModelViewSet):
     queryset = Visit.objects.all().select_related('patient', 'facility')

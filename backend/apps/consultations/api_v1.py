@@ -15,7 +15,7 @@ class TriageVitalsSerializer(serializers.ModelSerializer):
     class Meta:
         model = TriageVitals
         fields = '__all__'
-        read_only_fields = ['recorded_by']
+        read_only_fields = ['nurse']
 
 class ConsultationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -45,7 +45,7 @@ class TriageVitalsViewSet(viewsets.ModelViewSet):
         staff = get_request_staff(self.request)
         visit = serializer.validated_data['visit']
         check_facility_permission(visit.facility, staff, self.request.user)
-        serializer.save(recorded_by=self.request.user)
+        serializer.save(nurse=self.request.user)
 
 class ConsultationViewSet(viewsets.ModelViewSet):
     queryset = Consultation.objects.all().select_related('visit', 'patient', 'facility', 'doctor_staff')

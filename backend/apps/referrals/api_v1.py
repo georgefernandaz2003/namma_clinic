@@ -28,7 +28,7 @@ class ReferralOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReferralOrder
         fields = '__all__'
-        read_only_fields = ['referral_number', 'status', 'created_at', 'updated_at']
+        read_only_fields = ['referral_number', 'status', 'referring_doctor', 'created_at', 'updated_at']
 
 class TransitionReferralSerializer(serializers.Serializer):
     new_status = serializers.CharField(max_length=64)

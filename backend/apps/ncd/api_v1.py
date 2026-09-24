@@ -98,7 +98,7 @@ class DiseaseSurveillanceCaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = DiseaseSurveillanceCase
         fields = '__all__'
-        read_only_fields = ['case_identifier', 'reporting_staff', 'created_at']
+        read_only_fields = ['case_number', 'reporting_staff', 'reported_at', 'updated_at']
 
 class PublicHealthNotificationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -128,14 +128,15 @@ class DiseaseSurveillanceCaseViewSet(viewsets.ModelViewSet):
         check_facility_permission(fac, staff, request.user)
 
         case = report_surveillance_case(
-            disease_name=serializer.validated_data['disease_name'],
-            suspected_or_confirmed=serializer.validated_data['suspected_or_confirmed'],
             patient=serializer.validated_data['patient'],
             facility=fac,
+            disease=serializer.validated_data['disease'],
             reporting_staff=staff,
-            onset_date=serializer.validated_data.get('onset_date'),
-            symptoms_description=serializer.validated_data.get('symptoms_description', ''),
-            epidemiological_notes=serializer.validated_data.get('epidemiological_notes', '')
+            case_number=serializer.validated_data.get('case_number'),
+            severity=serializer.validated_data.get('severity', 'MODERATE'),
+            status=serializer.validated_data.get('status', 'CONFIRMED'),
+            ward=serializer.validated_data.get('ward'),
+            investigation_notes=serializer.validated_data.get('investigation_notes', '')
         )
         return Response(self.get_serializer(case).data, status=status.HTTP_201_CREATED)
 
