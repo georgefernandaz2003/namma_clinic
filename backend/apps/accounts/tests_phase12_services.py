@@ -104,6 +104,18 @@ class Phase12DomainServiceTests(TestCase):
         self.role_doc = RoleMaster.objects.create(code="DOCTOR", name="Medical Officer")
         self.role_admin = RoleMaster.objects.create(code="ADMIN", name="Facility Administrator")
 
+        self.person_admin = Person.objects.create(
+            first_name="Admin", last_name="User", gender="MALE",
+            date_of_birth=datetime.date(1975, 1, 1), phone_number="9800099999"
+        )
+        self.admin_staff = StaffProfile.objects.create(
+            person=self.person_admin, employee_id="ADM-001", designation="Hospital Administrator",
+            department=self.dept_opd, status="ACTIVE"
+        )
+        StaffRoleAssignment.objects.create(
+            staff=self.admin_staff, role=self.role_admin, effective_from=datetime.date(2026, 1, 1), is_active=True
+        )
+
         # 3. Patient & Visit Encounter
         self.patient = Patient.objects.create(
             patient_id="PAT-001", person=self.person_doc, name="Raju G",
@@ -143,7 +155,7 @@ class Phase12DomainServiceTests(TestCase):
         # Assign role
         assignment = assign_role(
             staff_profile=staff, role=self.role_admin,
-            effective_from=datetime.date(2026, 1, 1), actor_staff=self.doc_staff
+            effective_from=datetime.date(2026, 1, 1), actor_staff=self.admin_staff
         )
         self.assertTrue(assignment.is_active)
 
@@ -311,13 +323,17 @@ class Phase12DomainServiceTests(TestCase):
                 completing_staff=self.doc_staff
             )
 
-        # 3. Valid completion succeeds atomically
+        # 3. Valid completion succeeds atomically with a COMPLETED visit
+        completed_visit = Visit.objects.create(
+            visit_id="VIS-COMP-FOLL", patient=self.patient, facility=self.clinic_a,
+            visit_type="OPD", opd_date=datetime.date.today(), status="COMPLETED"
+        )
         completed = complete_followup(
-            followup_task=followup, completed_in_visit=self.visit,
+            followup_task=followup, completed_in_visit=completed_visit,
             completing_staff=self.doc_staff
         )
         self.assertEqual(completed.status, "COMPLETED")
-        self.assertEqual(completed.completed_in_visit, self.visit)
+        self.assertEqual(completed.completed_in_visit, completed_visit)
         self.assertEqual(completed.completed_by_staff, self.doc_staff)
 
         # 4. Attempting to complete an already completed task rejected

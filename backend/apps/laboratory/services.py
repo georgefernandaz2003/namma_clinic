@@ -11,6 +11,7 @@ from apps.laboratory.models import (
     TestRequest, DiagnosticResult, DiagnosticResultAmendment
 )
 from apps.common.exceptions import (
+    UnauthorizedDomainAction,
     DomainValidationError,
     DiagnosticResultAlreadyExistsError,
     VerifiedResultImmutableError
@@ -136,6 +137,8 @@ def verify_diagnostic_result(diagnostic_result, verified_by_staff):
     Locks and formally verifies a diagnostic result.
     Once verified, values cannot be silently updated (must use amendment).
     """
+    if not verified_by_staff or verified_by_staff.status != "ACTIVE":
+        raise UnauthorizedDomainAction("Only active clinical staff may verify diagnostic results.")
     with transaction.atomic():
         locked_result = DiagnosticResult.objects.select_for_update().get(pk=diagnostic_result.pk)
         if locked_result.status == "VERIFIED":
@@ -168,6 +171,8 @@ def amend_diagnostic_result(
     """
     Amends a previously verified diagnostic result, preserving complete immutable history.
     """
+    if not amended_by_staff or amended_by_staff.status != "ACTIVE":
+        raise UnauthorizedDomainAction("Only active clinical staff may amend verified results.")
     if not amendment_reason:
         raise DomainValidationError("amendment_reason is mandatory when amending a verified result.")
 

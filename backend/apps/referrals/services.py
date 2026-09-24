@@ -8,6 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 from apps.referrals.models import ReferralOrder, ReferralEvent, FollowUpTask
 from apps.common.exceptions import (
+    UnauthorizedDomainAction,
     DomainValidationError,
     InvalidStateTransition,
     InvalidFollowUpCompletionError
@@ -120,15 +121,25 @@ def complete_followup(followup_task, completed_in_visit, completing_staff):
     Formally completes a FollowUpTask.
     Enforces cross-encounter integrity:
     1. Task must be in PENDING status.
-    2. completed_in_visit.patient == followup_task.patient.
-    3. completed_in_visit.facility == followup_task.facility.
-    4. completing_staff must be specified.
-    5. Sets completed_in_visit, completed_by_staff, completed_at atomically.
+    2. completed_in_visit must be COMPLETED.
+    3. completed_in_visit.patient == followup_task.patient.
+    4. completed_in_visit.facility == followup_task.facility.
+    5. completing_staff must be an active staff profile.
+    6. Sets completed_in_visit, completed_by_staff, completed_at atomically.
     """
     if followup_task.status != "PENDING":
         raise InvalidFollowUpCompletionError(
             followup_task.id,
             f"FollowUpTask is in '{followup_task.status}' status. Only PENDING tasks can be completed."
+        )
+
+    if not completing_staff or completing_staff.status != "ACTIVE":
+        raise UnauthorizedDomainAction("Only active clinical staff may complete follow-up tasks.")
+
+    if completed_in_visit.status != "COMPLETED":
+        raise InvalidFollowUpCompletionError(
+            followup_task.id,
+            f"Visit #{completed_in_visit.id} is in status '{completed_in_visit.status}'. FollowUp completion requires a COMPLETED visit."
         )
 
     if completed_in_visit.patient_id != followup_task.patient_id:
@@ -142,9 +153,6 @@ def complete_followup(followup_task, completed_in_visit, completing_staff):
             followup_task.id,
             f"Facility mismatch: FollowUp is at Facility #{followup_task.facility_id}, but Visit is at Facility #{completed_in_visit.facility_id}."
         )
-
-    if not completing_staff:
-        raise InvalidFollowUpCompletionError(followup_task.id, "Completing staff profile must be provided.")
 
     with transaction.atomic():
         locked_task = FollowUpTask.objects.select_for_update().get(pk=followup_task.pk)

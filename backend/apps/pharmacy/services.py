@@ -15,6 +15,7 @@ from apps.pharmacy.models import (
 )
 from apps.consultations.models import Prescription, PrescriptionItem
 from apps.common.exceptions import (
+    UnauthorizedDomainAction,
     DomainValidationError,
     InsufficientStockError,
     InvalidBatchOperationError,
@@ -40,6 +41,8 @@ def post_inventory_movement(
     Posts immutable journal record to InventoryLedger and atomically reconciles
     MedicineBatch fast-read quantity buckets under SELECT FOR UPDATE row lock.
     """
+    if not performed_by_staff or performed_by_staff.status != "ACTIVE":
+        raise UnauthorizedDomainAction("Only active staff may perform inventory stock movements.")
     with transaction.atomic():
         locked_batch = MedicineBatch.objects.select_for_update().get(pk=batch.pk)
         current_balance = locked_batch.quantity
@@ -282,114 +285,10 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
         return dispensation
 
 
-def approve_purchase_order(purchase_order, approver_staff, approval_tier=1, status="APPROVED", remarks=""):
-    """
-    Records an auditable procurement approval.
-    PO creation and approval alone DO NOT mutate inventory balance.
-    """
-    if PurchaseOrderApproval.objects.filter(purchase_order=purchase_order, approval_tier=approval_tier).exists():
-        raise InvalidProcurementStateError(
-            purchase_order.id,
-            f"Approval Tier {approval_tier} has already been recorded for PO #{purchase_order.po_number}."
-        )
 
-    with transaction.atomic():
-        approval = PurchaseOrderApproval.objects.create(
-            purchase_order=purchase_order,
-            approver_staff=approver_staff,
-            approval_tier=approval_tier,
-            status=status,
-            remarks=remarks
-        )
-
-        if status == "APPROVED":
-            purchase_order.status = "APPROVED"
-            purchase_order.save(update_fields=["status"])
-
-        return approval
-
-
-def receive_goods_receipt(purchase_order, grn_number, items_received, receiving_staff, facility):
-    """
-    Processes Goods Receipt Note (GRN) for a Purchase Order.
-    Atomically creates batches and posts accepted quantities to InventoryLedger.
-    """
-    if purchase_order.status not in ["APPROVED", "ORDERED", "PARTIALLY_RECEIVED"]:
-        raise InvalidProcurementStateError(
-            purchase_order.id,
-            f"Cannot receive goods for PO #{purchase_order.po_number} in status '{purchase_order.status}'."
-        )
-
-    with transaction.atomic():
-        grn = GoodsReceiptNote.objects.create(
-            purchase_order=purchase_order,
-            vendor=purchase_order.vendor,
-            grn_number=grn_number,
-            facility=facility,
-            received_by=None
-        )
-
-        for entry in items_received:
-            med = entry["medicine"]
-            bn = entry["batch_number"]
-            exp = entry["expiry_date"]
-            cost = entry.get("unit_cost", 1.50)
-            qty_rec = entry["quantity_received"]
-            qty_acc = entry["quantity_accepted"]
-            qty_rej = entry.get("quantity_rejected", 0)
-
-            po_item = entry.get("po_item")
-            if not po_item:
-                po_item = PurchaseOrderItem.objects.filter(purchase_order=purchase_order, medicine=med).first()
-                if not po_item:
-                    po_item = PurchaseOrderItem.objects.create(
-                        purchase_order=purchase_order,
-                        medicine=med,
-                        ordered_quantity=entry.get("ordered_quantity", qty_rec),
-                        unit_price=cost,
-                        total_price=cost * qty_rec
-                    )
-
-            GoodsReceiptItem.objects.create(
-                grn=grn,
-                po_item=po_item,
-                medicine=med,
-                batch_number=bn,
-                expiry_date=exp,
-                unit_cost=cost,
-                ordered_quantity=entry.get("ordered_quantity", qty_rec),
-                received_quantity=qty_rec,
-                accepted_quantity=qty_acc,
-                rejected_quantity=qty_rej,
-                rejection_reason=entry.get("rejection_reason", ""),
-            )
-
-            if qty_acc > 0:
-                batch, _ = MedicineBatch.objects.get_or_create(
-                    facility=facility,
-                    medicine=med,
-                    batch_number=bn,
-                    defaults={
-                        "expiry_date": exp,
-                        "unit_cost": cost,
-                        "vendor": purchase_order.vendor,
-                        "quantity": 0,
-                        "available_quantity": 0
-                    }
-                )
-
-                post_inventory_movement(
-                    batch=batch,
-                    facility=facility,
-                    performed_by_staff=receiving_staff,
-                    transaction_type="PURCHASE_RECEIPT",
-                    quantity_delta=qty_acc,
-                    reference_entity_type="GoodsReceiptNote",
-                    reference_entity_id=grn.id,
-                    remarks=f"GRN #{grn.grn_number} from PO #{purchase_order.po_number}",
-                    bucket_deltas={"available_quantity": qty_acc}
-                )
-
-        purchase_order.status = "PARTIALLY_RECEIVED"
-        purchase_order.save(update_fields=["status"])
-        return grn
+# Re-export decoupled procurement domain services for backward compatibility
+from apps.pharmacy.procurement_services import (
+    create_purchase_order,
+    approve_purchase_order,
+    receive_goods_receipt
+)

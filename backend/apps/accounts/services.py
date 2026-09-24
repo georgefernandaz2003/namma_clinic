@@ -18,6 +18,24 @@ from apps.common.exceptions import (
 )
 from apps.audit.services import record_audit_event
 
+def is_administrative_staff(staff_profile):
+    """Checks if a StaffProfile holds administrative privileges."""
+    if not staff_profile or staff_profile.status != "ACTIVE":
+        return False
+    admin_designations = [
+        "Hospital Administrator", "System Administrator",
+        "Medical Superintendent", "District Health Officer"
+    ]
+    if staff_profile.designation in admin_designations:
+        return True
+    admin_roles = ["ADMIN", "SYSTEM_ADMIN", "HOSPITAL_ADMIN", "DHO"]
+    return StaffRoleAssignment.objects.filter(
+        staff=staff_profile,
+        role__code__in=admin_roles,
+        is_active=True
+    ).exists()
+
+
 
 def create_staff_profile(
     person,
@@ -89,6 +107,14 @@ def assign_role(staff_profile, role, effective_from=None, effective_to=None, act
     """
     Assigns a dynamic role to a StaffProfile with effective-date validation and overlap prevention.
     """
+    if actor_staff:
+        if actor_staff.status != "ACTIVE":
+            raise UnauthorizedDomainAction(f"Inactive staff '{actor_staff.employee_id}' cannot assign roles.")
+        privileged_roles = ["ADMIN", "SYSTEM_ADMIN", "HOSPITAL_ADMIN", "SUPERUSER"]
+        if role.code in privileged_roles and not is_administrative_staff(actor_staff):
+            raise UnauthorizedDomainAction(
+                f"Staff '{actor_staff.employee_id}' lacks administrative authority to assign privileged role '{role.code}'."
+            )
     today = datetime.date.today()
     start_date = effective_from or today
 
@@ -169,6 +195,8 @@ def assign_facility(
     Assigns a StaffProfile to a healthcare Facility / Department.
     If is_primary=True, terminates any prior active primary facility assignment.
     """
+    if actor_staff and actor_staff.status != "ACTIVE":
+        raise UnauthorizedDomainAction(f"Inactive staff '{actor_staff.employee_id}' cannot assign facilities.")
     today = datetime.date.today()
     start_date = effective_from or today
 
@@ -218,6 +246,8 @@ def transfer_staff(staff_profile, new_facility, new_department=None, effective_d
     """
     Atomically transfers a staff member to a new primary facility.
     """
+    if actor_staff and actor_staff.status != "ACTIVE":
+        raise UnauthorizedDomainAction(f"Inactive staff '{actor_staff.employee_id}' cannot transfer staff.")
     transfer_date = effective_date or datetime.date.today()
     yesterday = transfer_date - datetime.timedelta(days=1)
 
