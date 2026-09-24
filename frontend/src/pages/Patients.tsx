@@ -3,7 +3,7 @@ import api from '../services/api';
 import type { Patient } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
-import { Users, Search, UserPlus, Clock, History, X, Activity, FileText, Pill, Share2, Stethoscope } from 'lucide-react';
+import { Users, Search, UserPlus, Clock, History, X, Activity, FileText, Pill, Share2, Stethoscope, CheckCircle, FileCheck, FileSpreadsheet, FolderOpen, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const Patients: React.FC = () => {
@@ -553,13 +553,21 @@ export const Patients: React.FC = () => {
                 {timelineEvents.map((ev, idx) => (
                   <div key={idx} className="relative group">
                     <div className="absolute -left-[31px] top-1 p-1 bg-white border-2 border-blue-600 rounded-full text-blue-600 shadow-xs">
-                      {ev.type === 'REGISTRATION' && <UserPlus className="w-3.5 h-3.5" />}
-                      {ev.type === 'VISIT' && <Clock className="w-3.5 h-3.5" />}
+                      {ev.type === 'REGISTRATION' && <UserPlus className="w-3.5 h-3.5 text-blue-600" />}
+                      {ev.type === 'VISIT' && <Clock className="w-3.5 h-3.5 text-emerald-600" />}
+                      {ev.type === 'VISIT_COMPLETED' && <CheckCircle className="w-3.5 h-3.5 text-slate-600" />}
                       {ev.type === 'TRIAGE' && <Activity className="w-3.5 h-3.5 text-rose-600" />}
                       {ev.type === 'CONSULTATION' && <Stethoscope className="w-3.5 h-3.5 text-indigo-600" />}
+                      {ev.type === 'RE_CONSULTATION' && <Stethoscope className="w-3.5 h-3.5 text-purple-700" />}
                       {ev.type === 'PRESCRIPTION' && <Pill className="w-3.5 h-3.5 text-amber-600" />}
-                      {ev.type === 'LAB' && <FileText className="w-3.5 h-3.5 text-teal-600" />}
+                      {ev.type === 'DISPENSING' && <CheckCircle className="w-3.5 h-3.5 text-green-600" />}
+                      {(ev.type === 'LAB' || ev.type === 'LAB_ORDER') && <FileText className="w-3.5 h-3.5 text-teal-600" />}
+                      {ev.type === 'SAMPLE_COLLECTION' && <FileSpreadsheet className="w-3.5 h-3.5 text-cyan-600" />}
+                      {ev.type === 'LAB_RESULT' && <FileCheck className="w-3.5 h-3.5 text-emerald-600" />}
                       {ev.type === 'REFERRAL' && <Share2 className="w-3.5 h-3.5 text-rose-600" />}
+                      {ev.type === 'REFERRAL_RESPONSE' && <Share2 className="w-3.5 h-3.5 text-purple-600" />}
+                      {ev.type === 'FOLLOWUP' && <Calendar className="w-3.5 h-3.5 text-blue-600" />}
+                      {ev.type === 'DOCUMENT' && <FolderOpen className="w-3.5 h-3.5 text-purple-600" />}
                     </div>
 
                     <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 hover:bg-white transition">

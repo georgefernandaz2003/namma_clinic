@@ -72,6 +72,7 @@ export const PatientDetail: React.FC = () => {
   const [quickFilter, setQuickFilter] = useState<'ALL' | 'TODAY' | '7DAYS' | '30DAYS' | '3MONTHS'>('ALL');
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('ALL');
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
+  const [expandedTimelineItems, setExpandedTimelineItems] = useState<Record<string, boolean>>({});
 
   const fetchPatientData = async () => {
     if (!id) return;
@@ -255,11 +256,22 @@ export const PatientDetail: React.FC = () => {
     setEventTypeFilter('ALL');
   };
 
-  const parseEventDate = (dateStr: string): Date => {
-    if (!dateStr) return new Date(0);
-    const normalized = dateStr.replace(' ', 'T');
+  const parseEventDate = (ev: any): number => {
+    const ts = ev?.timestamp || ev?.date;
+    if (!ts) return 0;
+    const normalized = ts.includes(' ') ? ts.replace(' ', 'T') : ts;
     const d = new Date(normalized);
-    return isNaN(d.getTime()) ? new Date(dateStr) : d;
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+  };
+
+  const getEventDateKey = (ev: any): string => {
+    if (ev.date && !ev.date.includes(' ') && !ev.date.includes('T')) {
+      return ev.date;
+    }
+    if (ev.timestamp) {
+      return ev.timestamp.split('T')[0];
+    }
+    return ev.date ? (ev.date.includes(' ') ? ev.date.split(' ')[0] : ev.date.split('T')[0]) : '1970-01-01';
   };
 
   const formatEventTime = (dateStr: string): string => {
@@ -278,26 +290,43 @@ export const PatientDetail: React.FC = () => {
     return `${padHours}:${padMinutes} ${ampm}`;
   };
 
+  const isItemExpanded = (itemKey: string) => {
+    return !!expandedTimelineItems[itemKey];
+  };
+
+  const toggleTimelineItem = (itemKey: string) => {
+    setExpandedTimelineItems((prev) => ({
+      ...prev,
+      [itemKey]: !prev[itemKey]
+    }));
+  };
+
   // Filtered EMR Timeline
   const filteredTimelineEvents = useMemo(() => {
     return timelineEvents.filter((ev) => {
       if (eventTypeFilter !== 'ALL') {
-        if (eventTypeFilter === 'VISIT' && ev.type !== 'VISIT' && ev.type !== 'TRIAGE') return false;
-        if (eventTypeFilter === 'CONSULTATION' && ev.type !== 'CONSULTATION') return false;
-        if (eventTypeFilter === 'PRESCRIPTION' && ev.type !== 'PRESCRIPTION') return false;
-        if (eventTypeFilter === 'LAB' && ev.type !== 'LAB') return false;
+        if (eventTypeFilter === 'VISIT' && !['VISIT', 'VISIT_COMPLETED'].includes(ev.type)) return false;
+        if (eventTypeFilter === 'TRIAGE' && ev.type !== 'TRIAGE') return false;
+        if (eventTypeFilter === 'CONSULTATION' && !['CONSULTATION', 'RE_CONSULTATION'].includes(ev.type)) return false;
+        if (eventTypeFilter === 'PRESCRIPTION' && !['PRESCRIPTION', 'DISPENSING'].includes(ev.type)) return false;
+        if (eventTypeFilter === 'LAB' && !['LAB', 'LAB_ORDER', 'SAMPLE_COLLECTION', 'LAB_RESULT'].includes(ev.type)) return false;
         if (eventTypeFilter === 'DOCUMENT' && ev.type !== 'DOCUMENT') return false;
-        if (eventTypeFilter === 'REFERRAL' && ev.type !== 'REFERRAL') return false;
-        if (eventTypeFilter === 'OTHER' && ['VISIT', 'TRIAGE', 'CONSULTATION', 'PRESCRIPTION', 'LAB', 'DOCUMENT', 'REFERRAL'].includes(ev.type)) return false;
+        if (eventTypeFilter === 'REFERRAL' && !['REFERRAL', 'REFERRAL_RESPONSE'].includes(ev.type)) return false;
+        if (eventTypeFilter === 'FOLLOWUP' && ev.type !== 'FOLLOWUP') return false;
+        if (eventTypeFilter === 'OTHER' && [
+          'REGISTRATION', 'VISIT', 'VISIT_COMPLETED', 'TRIAGE',
+          'CONSULTATION', 'RE_CONSULTATION', 'PRESCRIPTION',
+          'DISPENSING', 'LAB', 'LAB_ORDER', 'SAMPLE_COLLECTION',
+          'LAB_RESULT', 'DOCUMENT', 'REFERRAL',
+          'REFERRAL_RESPONSE', 'FOLLOWUP'
+        ].includes(ev.type)) return false;
       }
-      const evDate = parseEventDate(ev.date);
+      const evDateOnly = getEventDateKey(ev);
       if (fromDate) {
-        const fDate = new Date(`${fromDate}T00:00:00`);
-        if (evDate < fDate) return false;
+        if (evDateOnly < fromDate) return false;
       }
       if (toDate) {
-        const tDate = new Date(`${toDate}T23:59:59.999`);
-        if (evDate > tDate) return false;
+        if (evDateOnly > toDate) return false;
       }
       return true;
     });
@@ -305,27 +334,34 @@ export const PatientDetail: React.FC = () => {
 
   // Group timeline events by date
   const groupedTimelineEvents = useMemo(() => {
-    const groups: { [dateKey: string]: { displayDate: string; rawDate: Date; dateKey: string; events: any[] } } = {};
+    const groups: { [dateKey: string]: { displayDate: string; dateKey: string; events: any[] } } = {};
     filteredTimelineEvents.forEach((ev) => {
-      const evDate = parseEventDate(ev.date);
-      const dateKey = !isNaN(evDate.getTime()) ? evDate.toISOString().split('T')[0] : (ev.date ? ev.date.split(' ')[0] : '1970-01-01');
-      const displayDate = !isNaN(evDate.getTime())
-        ? evDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-        : ev.date;
+      const dateKey = getEventDateKey(ev);
+      let displayDate = dateKey;
+      const parts = dateKey.split('-');
+      if (parts.length === 3) {
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        if (!isNaN(d.getTime())) {
+          displayDate = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+      }
 
       if (!groups[dateKey]) {
-        groups[dateKey] = { displayDate, rawDate: evDate, dateKey, events: [] };
+        groups[dateKey] = { displayDate, dateKey, events: [] };
       }
       groups[dateKey].events.push(ev);
     });
 
+    // Sort newest event first within each date
     Object.keys(groups).forEach((key) => {
-      groups[key].events.sort((a, b) => parseEventDate(b.date).getTime() - parseEventDate(a.date).getTime());
+      groups[key].events.sort((a, b) => parseEventDate(b) - parseEventDate(a));
     });
 
+    // Sort dates in reverse chronological order (newest date first)
     return Object.keys(groups)
-      .map((key) => groups[key])
-      .sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
+      .sort()
+      .reverse()
+      .map((key) => groups[key]);
   }, [filteredTimelineEvents]);
 
   // Filtered Documents
@@ -350,6 +386,360 @@ export const PatientDetail: React.FC = () => {
       return true;
     });
   }, [recordsData.documents, docCategoryFilter, docSearchQuery]);
+
+  const renderExpandedEventDetails = (ev: any) => {
+    const sd = ev.structured_data || {};
+
+    switch (ev.type) {
+      case 'REGISTRATION':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs bg-white p-3.5 rounded-xl border border-slate-200/80">
+            <div><span className="text-slate-500 font-bold block">Patient UHID</span><span className="font-mono font-black text-emerald-800">{sd.patient_id}</span></div>
+            <div><span className="text-slate-500 font-bold block">Full Name</span><span className="font-bold text-slate-900">{sd.name}</span></div>
+            <div><span className="text-slate-500 font-bold block">Age & Gender</span><span className="font-semibold text-slate-800">{sd.age} yrs / {sd.gender}</span></div>
+            <div><span className="text-slate-500 font-bold block">Mobile Contact</span><span className="font-mono font-bold text-slate-800">{sd.mobile}</span></div>
+            <div><span className="text-slate-500 font-bold block">Residential Address</span><span className="text-slate-800">{sd.address}</span></div>
+            <div><span className="text-slate-500 font-bold block">ABHA Health ID</span><span className="font-mono text-slate-800">{sd.abha_id}</span></div>
+            <div><span className="text-slate-500 font-bold block">Vulnerability Category</span><span className="text-slate-800">{sd.vulnerability}</span></div>
+            <div><span className="text-slate-500 font-bold block">Emergency Contact</span><span className="text-slate-800">{sd.emergency_contact}</span></div>
+            <div><span className="text-slate-500 font-bold block">Registered Facility</span><span className="font-semibold text-slate-800">{sd.registered_facility}</span></div>
+            <div><span className="text-slate-500 font-bold block">Registration Date</span><span className="font-mono font-bold text-slate-800">{sd.registration_date}</span></div>
+            <div className="md:col-span-2"><span className="text-slate-500 font-bold block">Registration Time</span><span className="text-slate-500 italic">Registration time not recorded</span></div>
+          </div>
+        );
+
+      case 'VISIT':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs bg-white p-3.5 rounded-xl border border-slate-200/80">
+            <div><span className="text-slate-500 font-bold block">Visit ID</span><span className="font-mono font-bold text-emerald-800">{sd.visit_id}</span></div>
+            <div><span className="text-slate-500 font-bold block">OPD Token #</span><span className="font-mono font-black text-blue-700">#{sd.token_number}</span></div>
+            <div><span className="text-slate-500 font-bold block">Healthcare Facility</span><span className="font-semibold text-slate-800">{sd.facility}</span></div>
+            <div><span className="text-slate-500 font-bold block">Visit Category</span><span className="text-slate-800">{sd.visit_type}</span></div>
+            <div><span className="text-slate-500 font-bold block">Queue Priority</span><span className="font-bold text-slate-800">{sd.priority}</span></div>
+            <div><span className="text-slate-500 font-bold block">Queue & Status</span><span className="text-slate-800">{sd.status} ({sd.current_queue})</span></div>
+            <div><span className="text-slate-500 font-bold block">Assigned Doctor</span><span className="font-bold text-slate-800">{sd.assigned_doctor}</span></div>
+            <div><span className="text-slate-500 font-bold block">Arrival Timestamp</span><span className="font-mono text-slate-800">{sd.arrival_time}</span></div>
+            <div className="md:col-span-3"><span className="text-slate-500 font-bold block">Chief Complaint</span><span className="text-slate-900 font-medium">{sd.chief_complaint}</span></div>
+          </div>
+        );
+
+      case 'VISIT_COMPLETED':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs bg-white p-3.5 rounded-xl border border-slate-200/80">
+            <div><span className="text-slate-500 font-bold block">Visit ID</span><span className="font-mono font-bold text-emerald-800">{sd.visit_id}</span></div>
+            <div><span className="text-slate-500 font-bold block">Token #</span><span className="font-mono font-bold text-blue-700">#{sd.token_number}</span></div>
+            <div><span className="text-slate-500 font-bold block">Facility</span><span className="font-semibold text-slate-800">{sd.facility}</span></div>
+            <div><span className="text-slate-500 font-bold block">Arrival Time</span><span className="font-mono text-slate-800">{sd.arrival_time}</span></div>
+            <div><span className="text-slate-500 font-bold block">Completed Time</span><span className="font-mono font-bold text-emerald-700">{sd.completed_time}</span></div>
+            <div><span className="text-slate-500 font-bold block">Total Duration</span><span className="font-bold text-slate-900">{sd.duration_minutes !== null ? `${sd.duration_minutes} minutes` : 'Completed'}</span></div>
+          </div>
+        );
+
+      case 'TRIAGE':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-3 bg-white p-3.5 rounded-xl border border-slate-200/80 text-xs">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold block">Blood Pressure</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{sd.blood_pressure}</span>
+              </div>
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold block">Pulse Rate</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{sd.pulse_bpm} bpm</span>
+              </div>
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold block">Body Temperature</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{sd.temperature_f} °F</span>
+              </div>
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold block">Oxygen (SpO2)</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{sd.spo2_percent}%</span>
+              </div>
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold block">Blood Glucose</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{sd.blood_glucose_mgdl} mg/dL</span>
+              </div>
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold block">BMI</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{sd.bmi}</span>
+              </div>
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold block">Height & Weight</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{sd.height_cm} cm / {sd.weight_kg} kg</span>
+              </div>
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold block">Respiratory Rate</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{sd.respiratory_rate} /min</span>
+              </div>
+            </div>
+            {sd.active_flags && sd.active_flags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[11px] font-bold text-rose-700">Triage Alerts:</span>
+                {sd.active_flags.map((f: string, i: number) => (
+                  <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                    {f}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-between items-center pt-1 border-t border-slate-100 text-slate-600 text-[11px]">
+              <span>Nurse: <strong className="text-slate-900">{sd.nurse}</strong> | Visit: <strong className="text-slate-900">{sd.visit_id}</strong></span>
+              <span>Remarks: <strong className="text-slate-800">{sd.nurse_notes}</strong></span>
+            </div>
+          </div>
+        );
+
+      case 'CONSULTATION':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-3 bg-white p-3.5 rounded-xl border border-slate-200/80 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <span className="text-slate-500 font-bold block mb-1">Chief Complaint</span>
+                <p className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 font-medium">{sd.chief_complaint}</p>
+              </div>
+              <div>
+                <span className="text-slate-500 font-bold block mb-1">Clinical Diagnosis</span>
+                <div className="p-2.5 bg-indigo-50/70 rounded-lg border border-indigo-200 text-indigo-950 font-bold flex justify-between items-center">
+                  <span>{sd.diagnosis_name}</span>
+                  <span className="font-mono text-[10px] bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded">{sd.diagnosis_code}</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <span className="text-slate-500 font-bold block mb-1">Clinical History</span>
+                <p className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 font-medium">{sd.clinical_history}</p>
+              </div>
+              <div>
+                <span className="text-slate-500 font-bold block mb-1">Clinical Assessment</span>
+                <p className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 font-medium">{sd.clinical_assessment}</p>
+              </div>
+            </div>
+            <div>
+              <span className="text-slate-500 font-bold block mb-1">Treatment Plan & Clinical Notes</span>
+              <p className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 font-medium leading-relaxed">
+                {sd.treatment_plan || sd.clinical_notes}
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-between items-center pt-1 border-t border-slate-100 text-slate-600 text-[11px] gap-2">
+              <span>Attending Doctor: <strong className="text-slate-900">{sd.doctor}</strong> ({sd.facility})</span>
+              {sd.follow_up_date && sd.follow_up_date !== 'None scheduled' && (
+                <span className="px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 font-bold">
+                  Follow-up Advised: {sd.follow_up_date}
+                </span>
+              )}
+            </div>
+          </div>
+        );
+
+      case 'RE_CONSULTATION':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-2 bg-white p-3.5 rounded-xl border border-slate-200/80 text-xs">
+            <div className="p-2.5 bg-purple-50 rounded-lg border border-purple-200 text-purple-900 font-bold flex justify-between items-center">
+              <span>Confirmed Diagnosis: {sd.diagnosis}</span>
+              <span className="font-mono text-[10px] bg-purple-200 text-purple-900 px-2 py-0.5 rounded">Post-Lab Verified</span>
+            </div>
+            <div>
+              <span className="text-slate-500 font-bold block mb-1">Post-Lab Clinical Review Notes</span>
+              <p className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 font-medium">{sd.clinical_notes}</p>
+            </div>
+            <div>
+              <span className="text-slate-500 font-bold block mb-1">Finalized Therapeutic Regime</span>
+              <p className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 font-medium">{sd.treatment_plan}</p>
+            </div>
+            <div className="text-[11px] text-slate-600 pt-1 border-t border-slate-100">
+              Attending Clinician: <strong className="text-slate-900">{sd.doctor}</strong> | Facility: <strong className="text-slate-900">{sd.facility}</strong>
+            </div>
+          </div>
+        );
+
+      case 'LAB_ORDER':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs bg-white p-3.5 rounded-xl border border-slate-200/80">
+            <div><span className="text-slate-500 font-bold block">Order ID</span><span className="font-mono font-bold text-teal-700">{sd.order_id}</span></div>
+            <div><span className="text-slate-500 font-bold block">Test Name & Code</span><span className="font-bold text-slate-900">{sd.test_name} ({sd.test_code})</span></div>
+            <div><span className="text-slate-500 font-bold block">Lab Category</span><span className="text-slate-800">{sd.category}</span></div>
+            <div><span className="text-slate-500 font-bold block">Ordering Doctor</span><span className="font-semibold text-slate-800">{sd.ordering_doctor}</span></div>
+            <div><span className="text-slate-500 font-bold block">Healthcare Facility</span><span className="text-slate-800">{sd.facility}</span></div>
+            <div><span className="text-slate-500 font-bold block">Order Status</span><span className="font-bold text-slate-800">{sd.status}</span></div>
+            <div className="md:col-span-2"><span className="text-slate-500 font-bold block">Order Timestamp</span><span className="font-mono text-slate-800">{sd.order_time}</span></div>
+          </div>
+        );
+
+      case 'SAMPLE_COLLECTION':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs bg-white p-3.5 rounded-xl border border-slate-200/80">
+            <div><span className="text-slate-500 font-bold block">Lab Order Ref</span><span className="font-mono font-bold text-teal-700">{sd.order_id}</span></div>
+            <div><span className="text-slate-500 font-bold block">Specimen Type</span><span className="font-bold text-slate-900">{sd.sample_type}</span></div>
+            <div><span className="text-slate-500 font-bold block">Sample Barcode</span><span className="font-mono font-bold text-cyan-800">{sd.sample_code}</span></div>
+            <div><span className="text-slate-500 font-bold block">Collected By</span><span className="font-semibold text-slate-800">{sd.collected_by}</span></div>
+            <div><span className="text-slate-500 font-bold block">Facility</span><span className="text-slate-800">{sd.facility}</span></div>
+            <div><span className="text-slate-500 font-bold block">Collection Time</span><span className="font-mono text-slate-800">{sd.collection_time}</span></div>
+          </div>
+        );
+
+      case 'LAB_RESULT':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-3 bg-white p-3.5 rounded-xl border border-slate-200/80 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold block">Diagnostic Investigation</span>
+                <span className="font-bold text-slate-900">{sd.test_name}</span>
+                <span className="font-mono text-[10px] text-slate-400 block">{sd.test_code}</span>
+              </div>
+              <div className="bg-emerald-50/60 p-2.5 rounded-lg border border-emerald-200">
+                <span className="text-[10px] text-emerald-800 font-bold block">Lab Result Value</span>
+                <span className="font-mono font-black text-emerald-950 text-base">{sd.result_value} {sd.unit}</span>
+                <span className="text-[10px] text-slate-500 block">Ref: {sd.reference_range}</span>
+              </div>
+              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold block">Clinical Flag</span>
+                <span className={`inline-block px-2.5 py-0.5 rounded text-[11px] font-black mt-1 ${
+                  sd.interpretation_flag === 'CRITICAL' ? 'bg-rose-600 text-white' :
+                  sd.interpretation_flag === 'HIGH' ? 'bg-rose-100 text-rose-800 border border-rose-300' :
+                  sd.interpretation_flag === 'LOW' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
+                  'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                }`}>{sd.interpretation_flag}</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-between items-center pt-1 border-t border-slate-100 text-slate-600 text-[11px] gap-2">
+              <span>Verified by: <strong className="text-slate-900">{sd.verified_by}</strong> ({sd.verification_time})</span>
+              {sd.notes && <span>Notes: <strong className="text-slate-800">{sd.notes}</strong></span>}
+            </div>
+          </div>
+        );
+
+      case 'PRESCRIPTION':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-3 bg-white p-3.5 rounded-xl border border-slate-200/80 text-xs">
+            <div className="flex justify-between items-center text-slate-600 text-[11px] border-b border-slate-100 pb-2">
+              <span>Prescription ID: <strong className="font-mono text-slate-900">#{sd.prescription_id}</strong> | Status: <strong className="text-slate-900">{sd.status}</strong></span>
+              <span>Doctor: <strong className="text-slate-900">{sd.doctor}</strong> ({sd.facility})</span>
+            </div>
+            {sd.items && sd.items.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="text-slate-500 font-bold border-b border-slate-200">
+                      <th className="pb-1.5">Medicine</th>
+                      <th className="pb-1.5">Dosage</th>
+                      <th className="pb-1.5">Frequency</th>
+                      <th className="pb-1.5">Duration</th>
+                      <th className="pb-1.5">Quantity</th>
+                      <th className="pb-1.5">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {sd.items.map((it: any, idx: number) => (
+                      <tr key={idx}>
+                        <td className="py-1.5 font-bold text-slate-900">{it.medicine_name}</td>
+                        <td className="py-1.5 text-slate-700">{it.dosage}</td>
+                        <td className="py-1.5 text-slate-700">{it.frequency}</td>
+                        <td className="py-1.5 text-slate-700">{it.duration_days} Days</td>
+                        <td className="py-1.5 font-mono font-bold text-slate-900">{it.quantity}</td>
+                        <td className="py-1.5"><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">{it.status}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {sd.notes && sd.notes !== 'None' && (
+              <div className="text-[11px] text-slate-600 pt-1">
+                Instructions: <span className="font-medium text-slate-800">{sd.notes}</span>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'DISPENSING':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs bg-white p-3.5 rounded-xl border border-slate-200/80">
+            <div><span className="text-slate-500 font-bold block">Medicine (Generic)</span><span className="font-bold text-slate-900">{sd.medicine_name}</span></div>
+            <div><span className="text-slate-500 font-bold block">Batch Number</span><span className="font-mono font-bold text-slate-800">{sd.batch_number}</span></div>
+            <div><span className="text-slate-500 font-bold block">Expiry Date</span><span className="font-mono text-slate-800">{sd.expiry_date}</span></div>
+            <div><span className="text-slate-500 font-bold block">Quantity Dispensed</span><span className="font-mono font-black text-emerald-700">{sd.quantity_dispensed} Units</span></div>
+            <div><span className="text-slate-500 font-bold block">Dispensed By</span><span className="font-semibold text-slate-800">{sd.dispensed_by}</span></div>
+            <div><span className="text-slate-500 font-bold block">Healthcare Facility</span><span className="text-slate-800">{sd.facility}</span></div>
+            <div><span className="text-slate-500 font-bold block">Prescription Ref</span><span className="font-mono text-slate-800">{sd.reference_id}</span></div>
+            <div><span className="text-slate-500 font-bold block">Stock Allocation</span><span className="text-slate-600">{sd.notes}</span></div>
+          </div>
+        );
+
+      case 'REFERRAL':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-3 bg-white p-3.5 rounded-xl border border-slate-200/80 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div><span className="text-slate-500 font-bold block">Referral ID</span><span className="font-mono font-bold text-orange-800">{sd.referral_id}</span></div>
+              <div><span className="text-slate-500 font-bold block">Destination Facility</span><span className="font-bold text-slate-900">{sd.destination_facility}</span></div>
+              <div><span className="text-slate-500 font-bold block">Urgency & Service</span><span className="font-bold text-slate-800">{sd.urgency} ({sd.required_service})</span></div>
+            </div>
+            <div><span className="text-slate-500 font-bold block mb-1">Reason for Referral</span><p className="p-2 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 font-medium">{sd.reason}</p></div>
+            <div><span className="text-slate-500 font-bold block mb-1">Clinical Case Summary</span><p className="p-2 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 font-medium">{sd.clinical_summary}</p></div>
+            <div className="flex justify-between items-center pt-1 border-t border-slate-100 text-slate-600 text-[11px]">
+              <span>Referring Doctor: <strong className="text-slate-900">{sd.referring_doctor}</strong> ({sd.source_facility})</span>
+              <span>Status: <strong className="text-slate-900">{sd.status}</strong></span>
+            </div>
+          </div>
+        );
+
+      case 'REFERRAL_RESPONSE':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-3 bg-white p-3.5 rounded-xl border border-slate-200/80 text-xs">
+            <div className="flex justify-between items-center text-slate-600 text-[11px] border-b border-slate-100 pb-2">
+              <span>Hospital: <strong className="text-slate-900">{sd.hospital}</strong> | Specialist: <strong className="text-slate-900">Dr. {sd.specialist_doctor}</strong></span>
+              <span>Responded: <strong className="font-mono text-slate-800">{sd.responded_at}</strong></span>
+            </div>
+            <div><span className="text-slate-500 font-bold block mb-1">Specialist Clinical Findings</span><p className="p-2 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 font-medium">{sd.findings}</p></div>
+            <div><span className="text-slate-500 font-bold block mb-1">Hospital Treatment Administered</span><p className="p-2 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 font-medium">{sd.treatment_summary}</p></div>
+            <div><span className="text-slate-500 font-bold block mb-1">Return Care & Follow-up Advice</span><p className="p-2 bg-purple-50 rounded-lg border border-purple-200 text-purple-900 font-bold">{sd.return_advice}</p></div>
+          </div>
+        );
+
+      case 'FOLLOWUP':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs bg-white p-3.5 rounded-xl border border-slate-200/80">
+            <div><span className="text-slate-500 font-bold block">Follow-up Category</span><span className="font-bold text-slate-900">{sd.category}</span></div>
+            <div><span className="text-slate-500 font-bold block">Due Date</span><span className="font-mono font-bold text-blue-700">{sd.due_date}</span></div>
+            <div><span className="text-slate-500 font-bold block">Status</span><span className="font-bold text-slate-800">{sd.status}</span></div>
+            <div><span className="text-slate-500 font-bold block">Facility</span><span className="text-slate-800">{sd.facility}</span></div>
+            <div className="md:col-span-4"><span className="text-slate-500 font-bold block">Instructions & Notes</span><span className="text-slate-800 font-medium">{sd.notes}</span></div>
+          </div>
+        );
+
+      case 'DOCUMENT':
+        return (
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-2 bg-white p-3.5 rounded-xl border border-slate-200/80 text-xs">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-slate-700">
+              <div><span className="text-slate-500 font-bold block">Document Type</span><span className="font-semibold text-slate-900">{sd.document_type}</span></div>
+              <div><span className="text-slate-500 font-bold block">File Name</span><span className="font-mono text-slate-800 truncate block">{sd.file_name}</span></div>
+              <div><span className="text-slate-500 font-bold block">File Size</span><span className="font-mono text-slate-800">{sd.file_size_kb} KB</span></div>
+              <div><span className="text-slate-500 font-bold block">Uploaded By</span><span className="text-slate-800">{sd.uploaded_by}</span></div>
+            </div>
+            {sd.description && sd.description !== 'No description' && (
+              <div><span className="text-slate-500 font-bold block">Notes</span><p className="text-slate-700 font-medium">{sd.description}</p></div>
+            )}
+            {ev.document_id && (
+              <div className="pt-2 flex justify-end">
+                <button
+                  onClick={() => {
+                    const docObj = recordsData.documents.find(d => d.id === ev.document_id);
+                    if (docObj) handleDownloadDocument(docObj);
+                  }}
+                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg flex items-center gap-1.5 transition text-xs shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Document</span>
+                </button>
+              </div>
+            )}
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
 
   // Issue Token Submit
   const handleIssueTokenSubmit = (e: React.FormEvent) => {
@@ -481,10 +871,10 @@ export const PatientDetail: React.FC = () => {
 
           <div className="flex flex-wrap gap-2">
             <span className="px-3 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-900 border border-amber-200">
-              Vulnerability: {patient.vulnerability_information || 'General BPL'}
+              Vulnerability: {patient.vulnerability_information || 'General'}
             </span>
             <span className="px-3 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-900 border border-blue-200 font-mono">
-              ABHA: {patient.ABHA_ID_DEMO || 'ABHA-2026-PENDING'}
+              ABHA: {patient.ABHA_ID_DEMO || 'Not Assigned'}
             </span>
           </div>
         </div>
@@ -603,7 +993,7 @@ export const PatientDetail: React.FC = () => {
                   <Activity className="w-4 h-4 text-rose-600" />
                   Latest Triage Vitals
                 </h3>
-                <span className="text-[10px] text-slate-400 font-mono">{latestTriage?.date || 'Recent'}</span>
+                <span className="text-[10px] text-slate-400 font-mono">{latestTriage?.date || '-'}</span>
               </div>
               {latestTriage ? (
                 <p className="text-slate-700 leading-relaxed text-[11px] font-medium">{latestTriage.details}</p>
@@ -618,7 +1008,7 @@ export const PatientDetail: React.FC = () => {
                   <Stethoscope className="w-4 h-4 text-indigo-600" />
                   Latest Doctor Diagnosis
                 </h3>
-                <span className="text-[10px] text-slate-400 font-mono">{latestConsultation?.date || 'Recent'}</span>
+                <span className="text-[10px] text-slate-400 font-mono">{latestConsultation?.date || '-'}</span>
               </div>
               {latestConsultation ? (
                 <p className="text-slate-700 leading-relaxed text-[11px] font-medium">{latestConsultation.details}</p>
@@ -633,7 +1023,7 @@ export const PatientDetail: React.FC = () => {
                   <Pill className="w-4 h-4 text-amber-600" />
                   Active Prescriptions
                 </h3>
-                <span className="text-[10px] text-slate-400 font-mono">{activePrescription?.date || 'EDL'}</span>
+                <span className="text-[10px] text-slate-400 font-mono">{activePrescription?.date || '-'}</span>
               </div>
               {activePrescription ? (
                 <p className="text-slate-700 leading-relaxed text-[11px] font-medium">{activePrescription.details}</p>
@@ -700,14 +1090,15 @@ export const PatientDetail: React.FC = () => {
                       className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-medium min-w-[160px]"
                     >
                       <option value="ALL">All Events</option>
-                      <option value="VISIT">Clinic Visits</option>
-                      <option value="TRIAGE">Nurse Triage</option>
-                      <option value="CONSULTATION">Diagnoses</option>
-                      <option value="PRESCRIPTION">Prescriptions</option>
-                      <option value="LAB">Lab Investigations</option>
+                      <option value="VISIT">Clinic Visits & Completion</option>
+                      <option value="TRIAGE">Nurse Triage Vitals</option>
+                      <option value="CONSULTATION">Doctor Consultations</option>
+                      <option value="PRESCRIPTION">Prescriptions & Pharmacy</option>
+                      <option value="LAB">Lab Orders & Results</option>
                       <option value="DOCUMENT">Uploaded Documents</option>
-                      <option value="REFERRAL">Referrals</option>
-                      <option value="OTHER">Other Events</option>
+                      <option value="REFERRAL">Referrals & Responses</option>
+                      <option value="FOLLOWUP">Clinical Follow-ups</option>
+                      <option value="OTHER">Other Clinical Events</option>
                     </select>
                   </div>
                 </div>
@@ -766,47 +1157,74 @@ export const PatientDetail: React.FC = () => {
                       {expanded && (
                         <div className="relative pl-6 space-y-4 border-l-2 border-blue-500 ml-4 py-1 text-xs">
                           {group.events.map((ev, idx) => {
-                            const timeStr = formatEventTime(ev.date) || (ev.date.includes(' ') ? ev.date.split(' ')[1] : '');
+                            const timeStr = ev.time_display || formatEventTime(ev.date) || (ev.date.includes(' ') ? ev.date.split(' ')[1] : '');
+                            const itemKey = ev.id || `${group.dateKey}_${idx}`;
+                            const isExpanded = isItemExpanded(itemKey);
+
                             return (
                               <div key={idx} className="relative group">
                                 <div className="absolute -left-[31px] top-1.5 p-1 bg-white border-2 border-blue-600 rounded-full text-blue-600 shadow-xs">
-                                  {ev.type === 'REGISTRATION' && <UserPlus className="w-3.5 h-3.5" />}
-                                  {ev.type === 'VISIT' && <Clock className="w-3.5 h-3.5 text-blue-600" />}
+                                  {ev.type === 'REGISTRATION' && <UserPlus className="w-3.5 h-3.5 text-blue-600" />}
+                                  {ev.type === 'VISIT' && <Clock className="w-3.5 h-3.5 text-emerald-600" />}
+                                  {ev.type === 'VISIT_COMPLETED' && <CheckCircle className="w-3.5 h-3.5 text-slate-600" />}
                                   {ev.type === 'TRIAGE' && <Activity className="w-3.5 h-3.5 text-rose-600" />}
                                   {ev.type === 'CONSULTATION' && <Stethoscope className="w-3.5 h-3.5 text-indigo-600" />}
+                                  {ev.type === 'RE_CONSULTATION' && <Stethoscope className="w-3.5 h-3.5 text-purple-700" />}
                                   {ev.type === 'PRESCRIPTION' && <Pill className="w-3.5 h-3.5 text-amber-600" />}
-                                  {ev.type === 'LAB' && <FileText className="w-3.5 h-3.5 text-teal-600" />}
+                                  {ev.type === 'DISPENSING' && <CheckCircle className="w-3.5 h-3.5 text-green-600" />}
+                                  {(ev.type === 'LAB' || ev.type === 'LAB_ORDER') && <FileText className="w-3.5 h-3.5 text-teal-600" />}
+                                  {ev.type === 'SAMPLE_COLLECTION' && <FileSpreadsheet className="w-3.5 h-3.5 text-cyan-600" />}
+                                  {ev.type === 'LAB_RESULT' && <FileCheck className="w-3.5 h-3.5 text-emerald-600" />}
                                   {ev.type === 'DOCUMENT' && <FolderOpen className="w-3.5 h-3.5 text-purple-600" />}
-                                  {ev.type === 'REFERRAL' && <Share2 className="w-3.5 h-3.5 text-rose-600" />}
+                                  {ev.type === 'REFERRAL' && <Share2 className="w-3.5 h-3.5 text-orange-600" />}
+                                  {ev.type === 'REFERRAL_RESPONSE' && <Share2 className="w-3.5 h-3.5 text-purple-600" />}
+                                  {ev.type === 'FOLLOWUP' && <Calendar className="w-3.5 h-3.5 text-blue-600" />}
                                 </div>
 
-                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1.5 hover:bg-white transition shadow-2xs">
-                                  <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-2">
-                                      {timeStr && (
+                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 hover:bg-white transition shadow-2xs">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {ev.has_time === false ? (
+                                        <span className="font-mono text-[10px] font-bold text-slate-600 bg-slate-200/80 border border-slate-300 px-2 py-0.5 rounded-md">
+                                          {ev.time_display || 'Registration time not recorded'}
+                                        </span>
+                                      ) : (
                                         <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-100/80 border border-blue-200 px-2 py-0.5 rounded-md shadow-2xs">
                                           {timeStr}
                                         </span>
                                       )}
                                       <span className="font-bold text-slate-900 text-xs">{ev.title}</span>
                                     </div>
-                                    {!timeStr && <span className="font-mono text-[10px] text-slate-400">{ev.date}</span>}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleTimelineItem(itemKey)}
+                                      className="self-end sm:self-center flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 transition py-0.5 px-2 rounded-md hover:bg-blue-50 cursor-pointer"
+                                    >
+                                      {isExpanded ? (
+                                        <>
+                                          <span>Collapse Details</span>
+                                          <ChevronDown className="w-3.5 h-3.5" />
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span>View Structured EMR</span>
+                                          <ChevronRight className="w-3.5 h-3.5" />
+                                        </>
+                                      )}
+                                    </button>
                                   </div>
+
                                   <p className="text-[11px] text-slate-700 leading-relaxed font-medium">{ev.details}</p>
-                                  <div className="flex justify-between items-center pt-1">
-                                    <span className="text-[10px] text-slate-500 font-semibold">{ev.facility}</span>
-                                    {ev.document_id && (
-                                      <button
-                                        onClick={() => {
-                                          const docObj = recordsData.documents.find(d => d.id === ev.document_id);
-                                          if (docObj) handleDownloadDocument(docObj);
-                                        }}
-                                        className="text-[10px] font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1"
-                                      >
-                                        <Download className="w-3 h-3" /> Download Document
-                                      </button>
+
+                                  <div className="flex justify-between items-center text-[10px] text-slate-500 font-semibold pt-1 border-t border-slate-200/60">
+                                    <span>Facility: <strong className="text-slate-700">{ev.facility}</strong></span>
+                                    {ev.doctor_or_staff && (
+                                      <span>Clinician / Staff: <strong className="text-slate-700">{ev.doctor_or_staff}</strong></span>
                                     )}
                                   </div>
+
+                                  {isExpanded && renderExpandedEventDetails(ev)}
                                 </div>
                               </div>
                             );
@@ -849,7 +1267,9 @@ export const PatientDetail: React.FC = () => {
                     <th className="p-3">Visit Category</th>
                     <th className="p-3">Priority Tag</th>
                     <th className="p-3">Chief Symptoms</th>
+                    <th className="p-3">Attending Doctor</th>
                     <th className="p-3">Queue Status</th>
+                    <th className="p-3">Completed Time</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -872,11 +1292,13 @@ export const PatientDetail: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-3 text-slate-800">{v.chief_complaint || 'Routine OPD'}</td>
+                      <td className="p-3 text-slate-800 font-semibold">{v.assigned_doctor_name || 'Unassigned'}</td>
                       <td className="p-3">
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
                           {v.status}
                         </span>
                       </td>
+                      <td className="p-3 font-mono text-slate-600 text-[11px]">{v.completed_time || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -974,6 +1396,7 @@ export const PatientDetail: React.FC = () => {
                     <th className="p-3">Order Date</th>
                     <th className="p-3">Order ID</th>
                     <th className="p-3">Test Investigation</th>
+                    <th className="p-3">Specimen Sample</th>
                     <th className="p-3">Facility</th>
                     <th className="p-3">Status</th>
                     <th className="p-3">Lab Result Value</th>
@@ -990,6 +1413,20 @@ export const PatientDetail: React.FC = () => {
                         <span className="font-bold text-slate-900 block">{lo.test_name}</span>
                         <span className="font-mono text-[10px] text-slate-500">{lo.test_code}</span>
                       </td>
+                      <td className="p-3 text-[11px]">
+                        {lo.sample_code ? (
+                          <div>
+                            <strong className="font-mono text-cyan-800">{lo.sample_code}</strong> ({lo.sample_type})
+                            {lo.sample_collected_at && (
+                              <span className="block font-mono text-[10px] text-slate-400">
+                                {lo.sample_collected_at} {lo.sample_collected_by ? `• ${lo.sample_collected_by}` : ''}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 italic">Not collected</span>
+                        )}
+                      </td>
                       <td className="p-3 text-slate-800">{lo.facility_name}</td>
                       <td className="p-3">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -1000,8 +1437,17 @@ export const PatientDetail: React.FC = () => {
                           {lo.status}
                         </span>
                       </td>
-                      <td className="p-3 font-mono font-bold text-slate-900">
-                        {lo.result_value ? `${lo.result_value} ${lo.unit || ''}` : <span className="text-slate-400 italic">Pending Result</span>}
+                      <td className="p-3">
+                        {lo.result_value ? (
+                          <div>
+                            <span className="font-mono font-bold text-slate-900">{lo.result_value} {lo.unit || ''}</span>
+                            {lo.reference_range && (
+                              <span className="block text-[10px] text-slate-500 font-mono">Ref: {lo.reference_range}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 italic">Pending Result</span>
+                        )}
                       </td>
                       <td className="p-3">
                         {lo.interpretation_flag ? (
@@ -1094,6 +1540,39 @@ export const PatientDetail: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
+
+                  {p.dispensed_transactions && p.dispensed_transactions.length > 0 && (
+                    <div className="pt-2 border-t border-slate-200">
+                      <span className="text-[11px] font-bold text-slate-800 block mb-1.5 flex items-center gap-1.5">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        Pharmacy Dispensing Audit Records ({p.dispensed_transactions.length})
+                      </span>
+                      <div className="overflow-x-auto bg-white rounded-lg border border-slate-200 p-2">
+                        <table className="w-full text-left text-[11px]">
+                          <thead>
+                            <tr className="text-slate-500 font-bold border-b border-slate-100">
+                              <th className="pb-1">Medicine</th>
+                              <th className="pb-1">Batch #</th>
+                              <th className="pb-1">Qty Dispensed</th>
+                              <th className="pb-1">Dispensed At</th>
+                              <th className="pb-1">Pharmacist</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {p.dispensed_transactions.map((tx: any) => (
+                              <tr key={tx.id}>
+                                <td className="py-1 font-bold text-slate-900">{tx.medicine_name}</td>
+                                <td className="py-1 font-mono text-slate-700">{tx.batch_number}</td>
+                                <td className="py-1 font-mono font-bold text-emerald-700">{tx.quantity} Units</td>
+                                <td className="py-1 font-mono text-slate-600">{tx.dispensed_at}</td>
+                                <td className="py-1 text-slate-700">{tx.dispensed_by}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
