@@ -81,13 +81,29 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
-# Using SQLite as required by Master Prompt
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Configured for PostgreSQL staging/production via environment variables, defaulting safely to SQLite.
+DB_ENGINE = os.environ.get('DATABASE_ENGINE', 'django.db.backends.sqlite3')
+if 'postgresql' in DB_ENGINE:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DATABASE_NAME', 'namma_clinic_staging'),
+            'USER': os.environ.get('DATABASE_USER', 'postgres'),
+            'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
+            'HOST': os.environ.get('DATABASE_HOST', '127.0.0.1'),
+            'PORT': os.environ.get('DATABASE_PORT', '5432'),
+            'TEST': {
+                'NAME': os.environ.get('DATABASE_TEST_NAME', 'test_namma_clinic_staging'),
+            },
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Custom User Model
 AUTH_USER_MODEL = 'accounts.User'
