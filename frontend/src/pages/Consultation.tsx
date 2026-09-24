@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import type { Visit, TriageVitals } from '../types';
+import type { Visit, TriageVitals, LabOrder } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
-import { FileText, Pill, Share2, Plus, Trash2 } from 'lucide-react';
+import {
+  FileText, Pill, Share2, Plus, Trash2, TestTube,
+  Clock, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw,
+  ChevronDown, ChevronUp, FlaskConical
+} from 'lucide-react';
 
 export const Consultation: React.FC = () => {
   const { activeFacility, allFacilities, user } = useAuth();
@@ -17,6 +21,10 @@ export const Consultation: React.FC = () => {
   const [triagedVisits, setTriagedVisits] = useState<Visit[]>([]);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
   const [vitals, setVitals] = useState<TriageVitals | null>(null);
+  const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
+  const [loadingLab, setLoadingLab] = useState(false);
+  const [patientLabHistory, setPatientLabHistory] = useState<LabOrder[]>([]);
+  const [showPreviousLabHistory, setShowPreviousLabHistory] = useState(false);
 
   // Form states
   const [chiefComplaint, setChiefComplaint] = useState('');
@@ -77,18 +85,21 @@ export const Consultation: React.FC = () => {
         else {
           setSelectedVisit(null);
           setVitals(null);
+          setLabOrders([]);
+          setPatientLabHistory([]);
         }
       } else if (activeDoctorList.length > 0) {
         selectVisit(activeDoctorList[0]);
       } else {
         setSelectedVisit(null);
         setVitals(null);
+        setLabOrders([]);
+        setPatientLabHistory([]);
       }
     } catch (e) {
       console.error('Failed to load doctor queue', e);
     }
   };
-
 
   const selectVisit = async (v: Visit) => {
     setSelectedVisit(v);
@@ -101,6 +112,28 @@ export const Consultation: React.FC = () => {
       else setVitals(null);
     } catch (e) {
       setVitals(null);
+    }
+
+    try {
+      setLoadingLab(true);
+      const labRes = await api.get(`lab/orders/?visit=${v.id}`);
+      const labList: LabOrder[] = labRes.data.results || labRes.data || [];
+      setLabOrders(labList);
+
+      const patId = v.patient || v.patient_details?.id;
+      if (patId) {
+        const histRes = await api.get(`lab/orders/?patient=${patId}`);
+        const histList: LabOrder[] = histRes.data.results || histRes.data || [];
+        setPatientLabHistory(histList);
+      } else {
+        setPatientLabHistory([]);
+      }
+    } catch (e) {
+      console.error('Failed to load lab orders for consultation', e);
+      setLabOrders([]);
+      setPatientLabHistory([]);
+    } finally {
+      setLoadingLab(false);
     }
   };
 
@@ -360,6 +393,156 @@ export const Consultation: React.FC = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Laboratory Diagnostic Results */}
+                <div className="pt-3 border-t border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                      <FlaskConical className="w-4 h-4 text-purple-600" />
+                      <span>Lab Diagnostic Results</span>
+                      {labOrders.length > 0 && (
+                        <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-purple-100 text-purple-800 font-mono font-bold">
+                          {labOrders.length} test{labOrders.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    {patientLabHistory.length > labOrders.length && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPreviousLabHistory(!showPreviousLabHistory)}
+                        className="text-[10px] font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1 hover:underline cursor-pointer"
+                      >
+                        {showPreviousLabHistory ? (
+                          <>Hide Past Lab Records ({patientLabHistory.length}) <ChevronUp className="w-3 h-3" /></>
+                        ) : (
+                          <>Show All Patient Lab Records ({patientLabHistory.length}) <ChevronDown className="w-3 h-3" /></>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {loadingLab ? (
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                      <span>Loading laboratory investigations...</span>
+                    </div>
+                  ) : (labOrders.length === 0 && !showPreviousLabHistory) ? (
+                    <div className="p-3 bg-white/70 rounded-lg border border-slate-200 text-slate-500 text-[11px] flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <TestTube className="w-4 h-4 text-slate-400" />
+                        <span>No lab tests ordered for this current visit yet.</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">Order from EDL Diagnostic Tests below</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {(showPreviousLabHistory ? patientLabHistory : labOrders).map((order) => {
+                        const hasResult = Boolean(order.result && order.result.result_value);
+                        const flag = order.result?.interpretation_flag;
+                        const isCritical = flag === 'CRITICAL';
+                        const isAbnormal = flag && ['HIGH', 'LOW', 'CRITICAL'].includes(flag);
+
+                        return (
+                          <div
+                            key={order.id}
+                            className={`p-2.5 rounded-lg border transition text-[11px] flex flex-col justify-between ${
+                              isCritical
+                                ? 'bg-rose-50/90 border-rose-300 ring-1 ring-rose-200'
+                                : isAbnormal
+                                ? 'bg-amber-50/80 border-amber-300 ring-1 ring-amber-200'
+                                : order.status === 'VERIFIED'
+                                ? 'bg-emerald-50/60 border-emerald-300'
+                                : 'bg-white border-slate-200'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-1.5 pb-1 border-b border-slate-100">
+                              <div>
+                                <span className="font-bold text-slate-900 block leading-snug">
+                                  {order.test_name || `Test #${order.test_master}`}
+                                </span>
+                                {order.test_code && (
+                                  <span className="text-[9px] font-mono text-slate-400 block">
+                                    {order.test_code}
+                                  </span>
+                                )}
+                              </div>
+                              <span
+                                className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0 font-mono ${
+                                  order.status === 'VERIFIED'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                    : order.status === 'SAMPLE_COLLECTED'
+                                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                    : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                }`}
+                              >
+                                {order.status === 'VERIFIED' ? 'Verified' : order.status.replace('_', ' ')}
+                              </span>
+                            </div>
+
+                            {hasResult ? (
+                              <div className="pt-1.5 space-y-1">
+                                <div className="flex items-baseline justify-between">
+                                  <div className="flex items-baseline gap-1">
+                                    <span className="text-[10px] text-slate-500 font-medium">Result:</span>
+                                    <span
+                                      className={`text-base font-extrabold font-mono ${
+                                        isCritical
+                                          ? 'text-rose-700'
+                                          : isAbnormal
+                                          ? 'text-amber-700'
+                                          : 'text-emerald-700'
+                                      }`}
+                                    >
+                                      {order.result?.result_value}
+                                    </span>
+                                    <span className="text-[10px] text-slate-600 font-medium">
+                                      {order.result?.unit}
+                                    </span>
+                                  </div>
+
+                                  {flag && (
+                                    <span
+                                      className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase font-mono ${
+                                        isCritical
+                                          ? 'bg-rose-200 text-rose-900 animate-pulse'
+                                          : isAbnormal
+                                          ? 'bg-amber-200 text-amber-900'
+                                          : 'bg-emerald-100 text-emerald-800'
+                                      }`}
+                                    >
+                                      {flag}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {order.result?.reference_range && (
+                                  <div className="text-[10px] text-slate-500 font-mono">
+                                    <span className="font-semibold text-slate-600">Ref:</span> {order.result.reference_range}
+                                  </div>
+                                )}
+
+                                {order.result?.notes && (
+                                  <div className="text-[10px] text-slate-600 italic bg-white/60 p-1 rounded border border-slate-200/50">
+                                    &ldquo;{order.result.notes}&rdquo;
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="pt-2 flex items-center gap-1.5 text-[10px] text-slate-500">
+                                <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>
+                                  {order.status === 'SAMPLE_COLLECTED'
+                                    ? 'Sample collected in lab. Analysis pending.'
+                                    : 'Lab order created. Specimen collection pending.'}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Chief Complaint & Assessment */}

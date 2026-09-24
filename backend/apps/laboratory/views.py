@@ -86,6 +86,14 @@ class LabOrderViewSet(viewsets.ModelViewSet):
         if facility_param:
             queryset = queryset.filter(facility_id=facility_param)
 
+        visit_param = self.request.query_params.get('visit')
+        if visit_param:
+            queryset = queryset.filter(visit_id=visit_param)
+
+        patient_param = self.request.query_params.get('patient')
+        if patient_param:
+            queryset = queryset.filter(patient_id=patient_param)
+
         # Date filtering (supports YYYY-MM-DD or 'all')
         req_date = self.request.query_params.get('date', None)
         if req_date and req_date != 'all':
