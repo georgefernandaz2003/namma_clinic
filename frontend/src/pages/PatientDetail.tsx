@@ -290,6 +290,22 @@ export const PatientDetail: React.FC = () => {
     return `${padHours}:${padMinutes} ${ampm}`;
   };
 
+  const getEventTimeDisplay = (ev: any): string => {
+    if (ev.has_time === false) {
+      return ev.time_display || 'Registration time not recorded';
+    }
+    if (ev.time_display && ev.time_display !== 'Registration time not recorded') {
+      return ev.time_display;
+    }
+    if (ev.timestamp) {
+      const d = new Date(ev.timestamp);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+      }
+    }
+    return formatEventTime(ev.date) || (ev.date && ev.date.includes(' ') ? ev.date.split(' ')[1] : '');
+  };
+
   const isItemExpanded = (itemKey: string) => {
     return !!expandedTimelineItems[itemKey];
   };
@@ -1157,7 +1173,7 @@ export const PatientDetail: React.FC = () => {
                       {expanded && (
                         <div className="relative pl-6 space-y-4 border-l-2 border-blue-500 ml-4 py-1 text-xs">
                           {group.events.map((ev, idx) => {
-                            const timeStr = ev.time_display || formatEventTime(ev.date) || (ev.date.includes(' ') ? ev.date.split(' ')[1] : '');
+                            const timeStr = getEventTimeDisplay(ev);
                             const itemKey = ev.id || `${group.dateKey}_${idx}`;
                             const isExpanded = isItemExpanded(itemKey);
 

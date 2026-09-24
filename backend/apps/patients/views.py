@@ -90,6 +90,54 @@ class PatientViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+
+def to_local_datetime(dt):
+    """Convert an aware or naive datetime to the active timezone (Asia/Kolkata)."""
+    if not dt:
+        return None
+    if isinstance(dt, datetime.datetime):
+        if timezone.is_aware(dt):
+            return timezone.localtime(dt)
+        else:
+            return timezone.make_aware(dt, timezone.get_current_timezone())
+    return dt
+
+def format_time_12h(dt):
+    """Returns '02:37 PM' in local timezone."""
+    ldt = to_local_datetime(dt)
+    if isinstance(ldt, datetime.datetime):
+        return ldt.strftime('%I:%M %p')
+    return ""
+
+def format_date_ymd(dt):
+    """Returns '2026-09-24' in local timezone."""
+    ldt = to_local_datetime(dt)
+    if hasattr(ldt, 'strftime'):
+        return ldt.strftime('%Y-%m-%d')
+    return str(dt) if dt else ""
+
+def format_datetime_str(dt):
+    """Returns '2026-09-24 14:37' in local timezone."""
+    ldt = to_local_datetime(dt)
+    if isinstance(ldt, datetime.datetime):
+        return ldt.strftime('%Y-%m-%d %H:%M')
+    return ""
+
+def format_datetime_12h_str(dt):
+    """Returns '2026-09-24 02:37 PM' in local timezone."""
+    ldt = to_local_datetime(dt)
+    if isinstance(ldt, datetime.datetime):
+        return ldt.strftime('%Y-%m-%d %I:%M %p')
+    return ""
+
+def to_iso_format(dt):
+    """Returns ISO format with timezone offset e.g. 2026-09-24T14:37:00+05:30."""
+    ldt = to_local_datetime(dt)
+    if isinstance(ldt, datetime.datetime):
+        return ldt.isoformat()
+    return str(dt) if dt else ""
+
+
 class PatientTimelineView(APIView):
     permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
     required_permission = 'patients.view'
@@ -155,16 +203,16 @@ class PatientTimelineView(APIView):
 
         for v in visits:
             v_token = v.token.token_number if hasattr(v, 'token') and v.token else v.id
-            v_time = v.visit_date
-            v_date_str = v_time.strftime('%Y-%m-%d')
-            v_time_display = v_time.strftime('%I:%M %p')
+            v_time = v.arrival_time or v.visit_date
+            v_date_str = format_date_ymd(v_time)
+            v_time_display = format_time_12h(v_time)
 
             # 2a. Visit Check-in Event
             timeline.append({
                 'id': f"VISIT_{v.id}",
                 'type': 'VISIT',
                 'title': f"Clinic Visit Check-in (#{v_token})",
-                'timestamp': v_time.isoformat(),
+                'timestamp': to_iso_format(v_time),
                 'date': v_date_str,
                 'has_time': True,
                 'time_display': v_time_display,
@@ -181,7 +229,7 @@ class PatientTimelineView(APIView):
                     'status': v.status,
                     'assigned_doctor': v.assigned_doctor.full_name if v.assigned_doctor else 'Unassigned',
                     'facility': v.facility.facility_name,
-                    'arrival_time': v.arrival_time.strftime('%Y-%m-%d %I:%M %p') if v.arrival_time else v_time_display
+                    'arrival_time': format_datetime_12h_str(v.arrival_time or v_time)
                 }
             })
 
@@ -204,10 +252,10 @@ class PatientTimelineView(APIView):
                     'id': f"TRIAGE_{tr.id}",
                     'type': 'TRIAGE',
                     'title': 'Nurse Triage & Vital Signs',
-                    'timestamp': tr_time.isoformat(),
-                    'date': tr_time.strftime('%Y-%m-%d'),
+                    'timestamp': to_iso_format(tr_time),
+                    'date': format_date_ymd(tr_time),
                     'has_time': True,
-                    'time_display': tr_time.strftime('%I:%M %p'),
+                    'time_display': format_time_12h(tr_time),
                     'facility': v.facility.facility_name,
                     'doctor_or_staff': nurse_name,
                     'details': f"BP: {tr.blood_pressure_systolic}/{tr.blood_pressure_diastolic} mmHg, Pulse: {tr.pulse_bpm} bpm, SpO2: {tr.spo2_percent}%, Temp: {tr.temperature_f}°F, Glucose: {tr.blood_glucose_mgdl} mg/dL, BMI: {tr.bmi}{flag_str}",
@@ -240,10 +288,10 @@ class PatientTimelineView(APIView):
                     'id': f"CONSULT_{c.id}",
                     'type': 'CONSULTATION',
                     'title': f"Doctor Clinical Consultation - {c.diagnosis_name}",
-                    'timestamp': c_time.isoformat(),
-                    'date': c_time.strftime('%Y-%m-%d'),
+                    'timestamp': to_iso_format(c_time),
+                    'date': format_date_ymd(c_time),
                     'has_time': True,
-                    'time_display': c_time.strftime('%I:%M %p'),
+                    'time_display': format_time_12h(c_time),
                     'facility': c.facility.facility_name if c.facility else v.facility.facility_name,
                     'doctor_or_staff': doc_name,
                     'details': f"Dr. {doc_name} | Diagnosis: [{c.diagnosis_code}] {c.diagnosis_name}. Assessment: {c.clinical_assessment or 'Clinical evaluation recorded'}.",
@@ -258,7 +306,7 @@ class PatientTimelineView(APIView):
                         'diagnosis_name': c.diagnosis_name,
                         'treatment_plan': c.treatment_plan or 'None specified',
                         'clinical_notes': c.clinical_notes or 'None recorded',
-                        'follow_up_date': c.follow_up_date.strftime('%Y-%m-%d') if c.follow_up_date else 'None scheduled'
+                        'follow_up_date': format_date_ymd(c.follow_up_date) if c.follow_up_date else 'None scheduled'
                     }
                 })
 
@@ -283,10 +331,10 @@ class PatientTimelineView(APIView):
                             'id': f"RECONSULT_{c.id}",
                             'type': 'RE_CONSULTATION',
                             'title': 'Doctor Re-Consultation (Post-Lab Diagnostic Review)',
-                            'timestamp': reconsult_time.isoformat(),
-                            'date': reconsult_time.strftime('%Y-%m-%d'),
+                            'timestamp': to_iso_format(reconsult_time),
+                            'date': format_date_ymd(reconsult_time),
                             'has_time': True,
-                            'time_display': reconsult_time.strftime('%I:%M %p'),
+                            'time_display': format_time_12h(reconsult_time),
                             'facility': c.facility.facility_name if c.facility else v.facility.facility_name,
                             'doctor_or_staff': doc_name,
                             'details': f"Consultation updated after lab result: Dr. {doc_name} reviewed diagnostic lab findings, confirmed diagnosis [{c.diagnosis_code}] {c.diagnosis_name}, and finalized treatment regime.",
@@ -312,17 +360,17 @@ class PatientTimelineView(APIView):
                         'id': f"PRESCR_{p.id}",
                         'type': 'PRESCRIPTION',
                         'title': f"Medical Prescription Issued (#{p.id})",
-                        'timestamp': p_time.isoformat(),
-                        'date': p.date.strftime('%Y-%m-%d'),
+                        'timestamp': to_iso_format(p_time),
+                        'date': format_date_ymd(p.date),
                         'has_time': True,
-                        'time_display': p_time.strftime('%I:%M %p'),
+                        'time_display': format_time_12h(p_time),
                         'facility': p.facility.facility_name if p.facility else v.facility.facility_name,
                         'doctor_or_staff': doc_name,
                         'details': f"Prescription #{p.id} ({p.status}) | Prescribed Medicines: {items_desc or 'Standard formulation'}",
                         'structured_data': {
                             'prescription_id': p.id,
-                            'prescription_date': p.date.strftime('%Y-%m-%d'),
-                            'created_at': p_time.strftime('%Y-%m-%d %I:%M %p'),
+                            'prescription_date': format_date_ymd(p.date),
+                            'created_at': format_datetime_12h_str(p_time),
                             'doctor': doc_name,
                             'facility': p.facility.facility_name if p.facility else v.facility.facility_name,
                             'status': p.status,
@@ -347,10 +395,10 @@ class PatientTimelineView(APIView):
                     'id': f"VISIT_COMPL_{v.id}",
                     'type': 'VISIT_COMPLETED',
                     'title': f"OPD Visit Completed (#{v_token})",
-                    'timestamp': comp_time.isoformat(),
-                    'date': comp_time.strftime('%Y-%m-%d'),
+                    'timestamp': to_iso_format(comp_time),
+                    'date': format_date_ymd(comp_time),
                     'has_time': True,
-                    'time_display': comp_time.strftime('%I:%M %p'),
+                    'time_display': format_time_12h(comp_time),
                     'facility': v.facility.facility_name,
                     'doctor_or_staff': v.assigned_doctor.full_name if v.assigned_doctor else None,
                     'details': f"Patient OPD visit concluded. Duration: {f'{dur_mins} mins' if dur_mins is not None else 'Completed'}.",
@@ -358,8 +406,8 @@ class PatientTimelineView(APIView):
                         'visit_id': v.visit_id,
                         'token_number': v_token,
                         'facility': v.facility.facility_name,
-                        'arrival_time': v.arrival_time.strftime('%Y-%m-%d %I:%M %p') if v.arrival_time else 'N/A',
-                        'completed_time': comp_time.strftime('%Y-%m-%d %I:%M %p'),
+                        'arrival_time': format_datetime_12h_str(v.arrival_time) if v.arrival_time else 'N/A',
+                        'completed_time': format_datetime_12h_str(comp_time),
                         'duration_minutes': dur_mins
                     }
                 })
@@ -376,17 +424,17 @@ class PatientTimelineView(APIView):
                 'id': f"PRESCR_{p.id}",
                 'type': 'PRESCRIPTION',
                 'title': f"Medical Prescription Issued (#{p.id})",
-                'timestamp': p_time.isoformat(),
-                'date': p.date.strftime('%Y-%m-%d'),
+                'timestamp': to_iso_format(p_time),
+                'date': format_date_ymd(p.date),
                 'has_time': has_c,
-                'time_display': p_time.strftime('%I:%M %p') if has_c else 'Prescription date only',
+                'time_display': format_time_12h(p_time) if has_c else 'Prescription date only',
                 'facility': p.facility.facility_name if p.facility else 'Namma Clinic',
                 'doctor_or_staff': p_doc,
                 'details': f"Prescription #{p.id} ({p.status}) | Prescribed Medicines: {items_desc or 'Standard formulation'}",
                 'structured_data': {
                     'prescription_id': p.id,
-                    'prescription_date': p.date.strftime('%Y-%m-%d'),
-                    'created_at': p_time.strftime('%Y-%m-%d %I:%M %p') if has_c else p.date.strftime('%Y-%m-%d'),
+                    'prescription_date': format_date_ymd(p.date),
+                    'created_at': format_datetime_12h_str(p_time) if has_c else format_date_ymd(p.date),
                     'doctor': p_doc,
                     'facility': p.facility.facility_name if p.facility else 'Namma Clinic',
                     'status': p.status,
@@ -417,10 +465,10 @@ class PatientTimelineView(APIView):
                 'id': f"LAB_ORD_{lo.id}",
                 'type': 'LAB_ORDER',
                 'title': f"Diagnostic Lab Order: {lo.test_master.name}",
-                'timestamp': lo_time.isoformat(),
-                'date': lo_time.strftime('%Y-%m-%d'),
+                'timestamp': to_iso_format(lo_time),
+                'date': format_date_ymd(lo_time),
                 'has_time': True,
-                'time_display': lo_time.strftime('%I:%M %p'),
+                'time_display': format_time_12h(lo_time),
                 'facility': lo.facility.facility_name,
                 'doctor_or_staff': lo.doctor.full_name if lo.doctor else 'Ordering Doctor',
                 'details': f"Order LAB-{lo.id:04d} [{lo.test_master.code}] | Category: {lo.test_master.category} | Status: {lo.status}",
@@ -432,7 +480,7 @@ class PatientTimelineView(APIView):
                     'ordering_doctor': lo.doctor.full_name if lo.doctor else 'Clinician',
                     'facility': lo.facility.facility_name,
                     'status': lo.status,
-                    'order_time': lo_time.strftime('%Y-%m-%d %I:%M %p')
+                    'order_time': format_datetime_12h_str(lo_time)
                 }
             })
 
@@ -445,10 +493,10 @@ class PatientTimelineView(APIView):
                     'id': f"LAB_SMP_{s.id}",
                     'type': 'SAMPLE_COLLECTION',
                     'title': f"Lab Specimen Collected: {lo.test_master.name}",
-                    'timestamp': s_time.isoformat(),
-                    'date': s_time.strftime('%Y-%m-%d'),
+                    'timestamp': to_iso_format(s_time),
+                    'date': format_date_ymd(s_time),
                     'has_time': True,
-                    'time_display': s_time.strftime('%I:%M %p'),
+                    'time_display': format_time_12h(s_time),
                     'facility': lo.facility.facility_name,
                     'doctor_or_staff': tech_name,
                     'details': f"Specimen: {s.sample_type} | Sample Barcode: {s.sample_code} | Collected by: {tech_name}",
@@ -459,7 +507,7 @@ class PatientTimelineView(APIView):
                         'sample_type': s.sample_type,
                         'collected_by': tech_name,
                         'facility': lo.facility.facility_name,
-                        'collection_time': s_time.strftime('%Y-%m-%d %I:%M %p')
+                        'collection_time': format_datetime_12h_str(s_time)
                     }
                 })
 
@@ -473,10 +521,10 @@ class PatientTimelineView(APIView):
                     'id': f"LAB_RES_{res.id}",
                     'type': 'LAB_RESULT',
                     'title': f"Lab Result Verified: {lo.test_master.name}",
-                    'timestamp': res_time.isoformat(),
-                    'date': res_time.strftime('%Y-%m-%d'),
+                    'timestamp': to_iso_format(res_time),
+                    'date': format_date_ymd(res_time),
                     'has_time': True,
-                    'time_display': res_time.strftime('%I:%M %p'),
+                    'time_display': format_time_12h(res_time),
                     'facility': lo.facility.facility_name,
                     'doctor_or_staff': verifier,
                     'details': f"Result: {res.result_value} {res.unit or lo.test_master.unit} [{res.interpretation_flag}]{ref_str} | Verified by {verifier}",
@@ -490,7 +538,7 @@ class PatientTimelineView(APIView):
                         'interpretation_flag': res.interpretation_flag,
                         'verified_by': verifier,
                         'facility': lo.facility.facility_name,
-                        'verification_time': res_time.strftime('%Y-%m-%d %I:%M %p'),
+                        'verification_time': format_datetime_12h_str(res_time),
                         'notes': res.notes or 'Result verified within protocol'
                     }
                 })
@@ -511,15 +559,15 @@ class PatientTimelineView(APIView):
             tx_time = tx.created_at
             pharma_name = tx.created_by.full_name if tx.created_by else 'Pharmacist'
             batch_num = tx.batch.batch_number if tx.batch else 'FEFO'
-            exp_date = tx.batch.expiry_date.strftime('%Y-%m-%d') if (tx.batch and tx.batch.expiry_date) else 'N/A'
+            exp_date = format_date_ymd(tx.batch.expiry_date) if (tx.batch and tx.batch.expiry_date) else 'N/A'
             timeline.append({
                 'id': f"DISP_{tx.id}",
                 'type': 'DISPENSING',
                 'title': f"Pharmacy Dispensed: {tx.medicine.generic_name}",
-                'timestamp': tx_time.isoformat(),
-                'date': tx_time.strftime('%Y-%m-%d'),
+                'timestamp': to_iso_format(tx_time),
+                'date': format_date_ymd(tx_time),
                 'has_time': True,
-                'time_display': tx_time.strftime('%I:%M %p'),
+                'time_display': format_time_12h(tx_time),
                 'facility': tx.facility.facility_name,
                 'doctor_or_staff': pharma_name,
                 'details': f"Dispensed {tx.quantity} units of {tx.medicine.generic_name} (Batch: {batch_num}, Exp: {exp_date}) by {pharma_name}",
@@ -549,10 +597,10 @@ class PatientTimelineView(APIView):
                 'id': f"REF_{r.id}",
                 'type': 'REFERRAL',
                 'title': f"Referral to {r.destination_facility.facility_name}",
-                'timestamp': ref_time.isoformat(),
-                'date': ref_time.strftime('%Y-%m-%d'),
+                'timestamp': to_iso_format(ref_time),
+                'date': format_date_ymd(ref_time),
                 'has_time': True,
-                'time_display': ref_time.strftime('%I:%M %p'),
+                'time_display': format_time_12h(ref_time),
                 'facility': r.source_facility.facility_name,
                 'doctor_or_staff': ref_doc,
                 'details': f"Referral {r.referral_id} | Urgency: {r.urgency} | Service: {r.required_service} | Reason: {r.reason} | Status: {r.get_status_display()}",
@@ -577,10 +625,10 @@ class PatientTimelineView(APIView):
                     'id': f"REF_RESP_{resp.id}",
                     'type': 'REFERRAL_RESPONSE',
                     'title': f"Specialist Response from {r.destination_facility.facility_name}",
-                    'timestamp': resp_time.isoformat(),
-                    'date': resp_time.strftime('%Y-%m-%d'),
+                    'timestamp': to_iso_format(resp_time),
+                    'date': format_date_ymd(resp_time),
                     'has_time': True,
-                    'time_display': resp_time.strftime('%I:%M %p'),
+                    'time_display': format_time_12h(resp_time),
                     'facility': r.destination_facility.facility_name,
                     'doctor_or_staff': hosp_doc,
                     'details': f"Dr. {hosp_doc} | Findings: {resp.specialist_findings} | Return Advice: {resp.return_advice}",
@@ -591,14 +639,14 @@ class PatientTimelineView(APIView):
                         'findings': resp.specialist_findings,
                         'treatment_summary': resp.treatment_summary,
                         'return_advice': resp.return_advice,
-                        'responded_at': resp_time.strftime('%Y-%m-%d %I:%M %p')
+                        'responded_at': format_datetime_12h_str(resp_time)
                     }
                 })
 
         # 6. Follow-up Scheduled
         followups = FollowUp.objects.filter(patient=patient).select_related('facility', 'visit').order_by('due_date')
         for fu in followups:
-            fu_date_str = fu.due_date.strftime('%Y-%m-%d')
+            fu_date_str = format_date_ymd(fu.due_date)
             timeline.append({
                 'id': f"FU_{fu.id}",
                 'type': 'FOLLOWUP',
@@ -628,10 +676,10 @@ class PatientTimelineView(APIView):
                 'id': f"DOC_{doc.id}",
                 'type': 'DOCUMENT',
                 'title': f"Medical Document: {doc.title}",
-                'timestamp': doc_time.isoformat(),
-                'date': doc_time.strftime('%Y-%m-%d'),
+                'timestamp': to_iso_format(doc_time),
+                'date': format_date_ymd(doc_time),
                 'has_time': True,
-                'time_display': doc_time.strftime('%I:%M %p'),
+                'time_display': format_time_12h(doc_time),
                 'facility': doc.facility.facility_name if doc.facility else 'Namma Clinic',
                 'doctor_or_staff': uploader,
                 'details': f"Type: {doc.get_document_type_display()} | File: {doc.file_name} ({round(doc.file_size/1024.0, 1) if doc.file_size else 0} KB) | Uploaded by {uploader}",
@@ -645,7 +693,7 @@ class PatientTimelineView(APIView):
                     'file_size_kb': round(doc.file_size / 1024.0, 1) if doc.file_size else 0,
                     'mime_type': doc.mime_type,
                     'uploaded_by': uploader,
-                    'uploaded_at': doc_time.strftime('%Y-%m-%d %I:%M %p'),
+                    'uploaded_at': format_datetime_12h_str(doc_time),
                     'description': doc.description or 'No description'
                 }
             })
@@ -694,9 +742,9 @@ class PatientRecordsView(APIView):
             visits_data.append({
                 'id': v.id,
                 'visit_id': v.visit_id,
-                'visit_date': v.visit_date.strftime('%Y-%m-%d %H:%M'),
-                'arrival_time': v.arrival_time.strftime('%Y-%m-%d %H:%M') if v.arrival_time else None,
-                'completed_time': v.completed_time.strftime('%Y-%m-%d %H:%M') if v.completed_time else None,
+                'visit_date': format_datetime_str(v.visit_date),
+                'arrival_time': format_datetime_str(v.arrival_time) if v.arrival_time else None,
+                'completed_time': format_datetime_str(v.completed_time) if v.completed_time else None,
                 'facility_name': v.facility.facility_name,
                 'token_number': v.token.token_number if hasattr(v, 'token') and v.token else None,
                 'visit_type': v.visit_type,
@@ -714,7 +762,7 @@ class PatientRecordsView(APIView):
             consultations_data.append({
                 'id': c.id,
                 'visit_id': c.visit.visit_id if c.visit else None,
-                'created_at': c.created_at.strftime('%Y-%m-%d %H:%M'),
+                'created_at': format_datetime_str(c.created_at),
                 'facility_name': c.facility.facility_name if c.facility else 'Namma Clinic',
                 'doctor_name': c.doctor.full_name if c.doctor else 'Medical Officer',
                 'chief_complaint': c.chief_complaint,
@@ -724,7 +772,7 @@ class PatientRecordsView(APIView):
                 'diagnosis_name': c.diagnosis_name,
                 'treatment_plan': c.treatment_plan,
                 'clinical_notes': c.clinical_notes,
-                'follow_up_date': c.follow_up_date.strftime('%Y-%m-%d') if c.follow_up_date else None
+                'follow_up_date': format_date_ymd(c.follow_up_date) if c.follow_up_date else None
             })
 
         # 3. Lab Reports
@@ -740,7 +788,7 @@ class PatientRecordsView(APIView):
             lab_data.append({
                 'id': lo.id,
                 'order_id': f"LAB-{lo.id:04d}",
-                'order_date': lo.order_date.strftime('%Y-%m-%d %H:%M'),
+                'order_date': format_datetime_str(lo.order_date),
                 'test_name': lo.test_master.name,
                 'test_code': lo.test_master.code,
                 'category': lo.test_master.category,
@@ -749,14 +797,14 @@ class PatientRecordsView(APIView):
                 'status': lo.status,
                 'sample_code': lo.sample.sample_code if has_smp else None,
                 'sample_type': lo.sample.sample_type if has_smp else None,
-                'sample_collected_at': lo.sample.collected_at.strftime('%Y-%m-%d %H:%M') if (has_smp and lo.sample.collected_at) else None,
+                'sample_collected_at': format_datetime_str(lo.sample.collected_at) if (has_smp and lo.sample.collected_at) else None,
                 'sample_collected_by': lo.sample.collected_by.full_name if (has_smp and lo.sample.collected_by) else None,
                 'result_value': lo.result.result_value if has_res else None,
                 'unit': lo.result.unit or lo.test_master.unit if has_res else lo.test_master.unit,
                 'reference_range': lo.result.reference_range or lo.test_master.reference_range if has_res else lo.test_master.reference_range,
                 'interpretation_flag': lo.result.interpretation_flag if has_res else None,
                 'verified_by': lo.result.verified_by.full_name if (has_res and lo.result.verified_by) else None,
-                'verified_at': lo.result.verified_at.strftime('%Y-%m-%d %H:%M') if (has_res and lo.result.verified_at) else None,
+                'verified_at': format_datetime_str(lo.result.verified_at) if (has_res and lo.result.verified_at) else None,
                 'notes': lo.result.notes if has_res else ''
             })
 
@@ -793,7 +841,7 @@ class PatientRecordsView(APIView):
                     'medicine_name': tx.medicine.generic_name,
                     'batch_number': tx.batch.batch_number if tx.batch else 'FEFO',
                     'quantity': tx.quantity,
-                    'dispensed_at': tx.created_at.strftime('%Y-%m-%d %H:%M'),
+                    'dispensed_at': format_datetime_str(tx.created_at),
                     'dispensed_by': tx.created_by.full_name if tx.created_by else 'Pharmacist'
                 }
                 for tx in dispense_txs if tx.reference_id == p_ref or str(p.id) in tx.reference_id
@@ -801,8 +849,8 @@ class PatientRecordsView(APIView):
 
             rx_data.append({
                 'id': p.id,
-                'date': p.date.strftime('%Y-%m-%d'),
-                'created_at': p.consultation.created_at.strftime('%Y-%m-%d %H:%M') if hasattr(p, 'consultation') and p.consultation else None,
+                'date': format_date_ymd(p.date),
+                'created_at': format_datetime_str(p.consultation.created_at) if hasattr(p, 'consultation') and p.consultation else None,
                 'facility_name': p.facility.facility_name if p.facility else 'Namma Clinic',
                 'doctor_name': p.doctor.full_name if p.doctor else 'Medical Officer',
                 'status': p.status,
