@@ -21,3 +21,6 @@ frontend/build/
 # Media / Uploads
 media/
 backend/media/
+
+# PostgreSQL data
+pgdata/
