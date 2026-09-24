@@ -1,10 +1,17 @@
 ﻿import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { isPathAllowedForRole } from './utils/permissions';
-import { DashboardLayout } from './layouts/DashboardLayout';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/common/ProtectedRoute';
 import { Login } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
+import DashboardIndex from './pages/dashboards/DashboardIndex';
+import DistrictDashboard from './pages/dashboards/DistrictDashboard';
+import AdminDashboard from './pages/dashboards/AdminDashboard';
+import DoctorDashboard from './pages/dashboards/DoctorDashboard';
+import NurseDashboard from './pages/dashboards/NurseDashboard';
+import LabDashboard from './pages/dashboards/LabDashboard';
+import PharmacyDashboard from './pages/dashboards/PharmacyDashboard';
+import NotFound from './pages/NotFound';
+
 import { HealthcareNetwork } from './pages/HealthcareNetwork';
 import { Facilities } from './pages/Facilities';
 import { Patients } from './pages/Patients';
@@ -28,49 +35,84 @@ import { Alerts } from './pages/Alerts';
 import { Integrations } from './pages/Integrations';
 import { Compliance } from './pages/Compliance';
 import { Audit } from './pages/Audit';
-import LoadingSpinner from './components/common/LoadingSpinner';
-import ForbiddenCard from './components/common/ForbiddenCard';
-
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { token, user, loading } = useAuth();
-  const location = useLocation();
-
-  if (loading) {
-    return (
-      <div className="h-screen bg-slate-50 flex items-center justify-center">
-        <LoadingSpinner size="lg" label="Initializing Namma Clinic Console..." />
-      </div>
-    );
-  }
-
-  if (!token) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
-  }
-
-  const isAllowed = isPathAllowedForRole(user?.role, location.pathname);
-
-  return (
-    <DashboardLayout>
-      {isAllowed ? (
-        children
-      ) : (
-        <ForbiddenCard
-          role={user?.role}
-          roleDisplay={user?.role_display}
-          requestedPath={location.pathname}
-        />
-      )}
-    </DashboardLayout>
-  );
-};
 
 export const App: React.FC = () => {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          {/* Public Authentication Route */}
           <Route path="/login" element={<Login />} />
-          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+
+          {/* Root and Dashboard Index Redirectors */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <DashboardIndex />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardIndex />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Role-Specific Dashboard Landing Routes */}
+          <Route
+            path="/dashboard/district"
+            element={
+              <ProtectedRoute allowedRoles={['DISTRICT_OFFICER']}>
+                <DistrictDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin"
+            element={
+              <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/doctor"
+            element={
+              <ProtectedRoute allowedRoles={['DOCTOR']}>
+                <DoctorDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/nurse"
+            element={
+              <ProtectedRoute allowedRoles={['NURSE']}>
+                <NurseDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/lab"
+            element={
+              <ProtectedRoute allowedRoles={['LAB_TECHNICIAN']}>
+                <LabDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/pharmacy"
+            element={
+              <ProtectedRoute allowedRoles={['PHARMACIST']}>
+                <PharmacyDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Operational & Clinical Module Routes */}
           <Route path="/network" element={<ProtectedRoute><HealthcareNetwork /></ProtectedRoute>} />
           <Route path="/facilities" element={<ProtectedRoute><Facilities /></ProtectedRoute>} />
           <Route path="/patients" element={<ProtectedRoute><Patients /></ProtectedRoute>} />
@@ -94,7 +136,9 @@ export const App: React.FC = () => {
           <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
           <Route path="/compliance" element={<ProtectedRoute><Compliance /></ProtectedRoute>} />
           <Route path="/audit" element={<ProtectedRoute><Audit /></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+
+          {/* Fallback & Not Found Handling */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

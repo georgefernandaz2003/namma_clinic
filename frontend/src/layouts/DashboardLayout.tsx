@@ -1,7 +1,12 @@
 ﻿import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { isPathAllowedForRole } from '../utils/permissions';
+import {
+  getRoleNavigation,
+  formatScopeDisplay,
+  type NavSection,
+  type NavItem,
+} from '../navigation/navigationConfig';
 import api from '../services/api';
 import {
   LayoutDashboard,
@@ -34,167 +39,30 @@ import {
   X,
 } from 'lucide-react';
 
-import type { Role } from '../types';
-
-interface NavItem {
-  name: string;
-  path: string;
-  icon: React.ReactNode;
-}
-
-interface NavSection {
-  title: string;
-  items: NavItem[];
-}
-
-const ROLE_NAV_SECTIONS: Record<Role, NavSection[]> = {
-  DOCTOR: [
-    {
-      title: 'CLINICAL CARE',
-      items: [
-        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-blue-600" /> },
-        { name: 'Patients', path: '/patients', icon: <Users className="w-4 h-4 text-blue-600" /> },
-        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-emerald-600" /> },
-        { name: 'Doctor Consultation', path: '/consultation', icon: <FileText className="w-4 h-4 text-blue-600" /> },
-        { name: 'Diagnostics Lab', path: '/lab', icon: <TestTube className="w-4 h-4 text-purple-600" /> },
-        { name: 'Referral Network', path: '/referrals', icon: <Share2 className="w-4 h-4 text-rose-600" /> },
-        { name: 'Follow-up Care', path: '/followups', icon: <CalendarCheck className="w-4 h-4 text-teal-600" /> },
-        { name: 'NCD Management', path: '/ncd', icon: <Activity className="w-4 h-4 text-rose-500" /> },
-      ],
-    },
-    {
-      title: 'SYSTEM',
-      items: [
-        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
-      ],
-    },
-  ],
-  NURSE: [
-    {
-      title: 'PRIMARY CARE & TRIAGE',
-      items: [
-        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-emerald-600" /> },
-        { name: 'Patients', path: '/patients', icon: <Users className="w-4 h-4 text-emerald-600" /> },
-        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-emerald-600" /> },
-        { name: 'Nurse Triage', path: '/triage', icon: <Stethoscope className="w-4 h-4 text-emerald-600" /> },
-        { name: 'Follow-up Care', path: '/followups', icon: <CalendarCheck className="w-4 h-4 text-teal-600" /> },
-        { name: 'NCD Management', path: '/ncd', icon: <Activity className="w-4 h-4 text-rose-500" /> },
-      ],
-    },
-    {
-      title: 'COMMUNITY HEALTH',
-      items: [
-        { name: 'Outreach & Camps', path: '/outreach', icon: <MapPin className="w-4 h-4 text-emerald-600" /> },
-        { name: 'Wellness Sessions', path: '/wellness', icon: <Smile className="w-4 h-4 text-teal-600" /> },
-      ],
-    },
-    {
-      title: 'SYSTEM',
-      items: [
-        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
-      ],
-    },
-  ],
-  LAB_TECHNICIAN: [
-    {
-      title: 'DIAGNOSTICS',
-      items: [
-        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-purple-600" /> },
-        { name: 'Diagnostics Lab', path: '/lab', icon: <TestTube className="w-4 h-4 text-purple-600" /> },
-      ],
-    },
-    {
-      title: 'SYSTEM',
-      items: [
-        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
-      ],
-    },
-  ],
-  PHARMACIST: [
-    {
-      title: 'PHARMACY & DRUG LEDGER',
-      items: [
-        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-amber-600" /> },
-        { name: 'Pharmacy & FEFO', path: '/pharmacy', icon: <Pill className="w-4 h-4 text-amber-600" /> },
-        { name: 'Clinic Infra & Maintenance', path: '/infrastructure', icon: <Wrench className="w-4 h-4 text-amber-600" /> },
-      ],
-    },
-    {
-      title: 'SYSTEM',
-      items: [
-        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
-      ],
-    },
-  ],
-  HOSPITAL_ADMIN: [
-    {
-      title: 'FACILITY OPERATIONS',
-      items: [
-        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-indigo-600" /> },
-        { name: 'Facilities Master', path: '/facilities', icon: <Building2 className="w-4 h-4 text-indigo-600" /> },
-        { name: 'Patients', path: '/patients', icon: <Users className="w-4 h-4 text-blue-600" /> },
-        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-emerald-600" /> },
-        { name: 'Pharmacy & FEFO', path: '/pharmacy', icon: <Pill className="w-4 h-4 text-amber-600" /> },
-        { name: 'Referral Network', path: '/referrals', icon: <Share2 className="w-4 h-4 text-rose-600" /> },
-        { name: 'Follow-up Care', path: '/followups', icon: <CalendarCheck className="w-4 h-4 text-teal-600" /> },
-        { name: 'Clinic Infra & Maintenance', path: '/infrastructure', icon: <Wrench className="w-4 h-4 text-amber-600" /> },
-      ],
-    },
-    {
-      title: 'GOVERNANCE & QUALITY',
-      items: [
-        { name: 'ARS Committee', path: '/ars', icon: <Users2 className="w-4 h-4 text-indigo-600" /> },
-        { name: 'Quality & Waste', path: '/quality', icon: <ShieldCheck className="w-4 h-4 text-emerald-600" /> },
-        { name: 'Reports & CSV', path: '/reports', icon: <FileSpreadsheet className="w-4 h-4 text-teal-600" /> },
-      ],
-    },
-    {
-      title: 'SYSTEM',
-      items: [
-        { name: 'Integrations (Mock)', path: '/integrations', icon: <Sliders className="w-4 h-4 text-slate-600" /> },
-        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
-      ],
-    },
-  ],
-  DISTRICT_OFFICER: [
-    {
-      title: 'DISTRICT OVERSIGHT',
-      items: [
-        { name: 'Dashboard', path: '/', icon: <LayoutDashboard className="w-4 h-4 text-teal-700" /> },
-        { name: 'Healthcare Network', path: '/network', icon: <Network className="w-4 h-4 text-teal-600" /> },
-        { name: 'Facilities Master', path: '/facilities', icon: <Building2 className="w-4 h-4 text-indigo-600" /> },
-        { name: 'Patients', path: '/patients', icon: <Users className="w-4 h-4 text-blue-600" /> },
-        { name: 'OPD Queue', path: '/queue', icon: <Clock className="w-4 h-4 text-emerald-600" /> },
-        { name: 'Pharmacy & FEFO', path: '/pharmacy', icon: <Pill className="w-4 h-4 text-amber-600" /> },
-        { name: 'Referral Network', path: '/referrals', icon: <Share2 className="w-4 h-4 text-rose-600" /> },
-      ],
-    },
-    {
-      title: 'PUBLIC HEALTH',
-      items: [
-        { name: 'NCD Management', path: '/ncd', icon: <Activity className="w-4 h-4 text-rose-500" /> },
-        { name: 'Disease Surveillance', path: '/surveillance', icon: <Radio className="w-4 h-4 text-red-600" /> },
-      ],
-    },
-    {
-      title: 'GOVERNANCE, AUDIT & COMPLIANCE',
-      items: [
-        { name: 'ARS Committee', path: '/ars', icon: <Users2 className="w-4 h-4 text-indigo-600" /> },
-        { name: 'Quality & Waste', path: '/quality', icon: <ShieldCheck className="w-4 h-4 text-emerald-600" /> },
-        { name: 'Clinic Infra & Maintenance', path: '/infrastructure', icon: <Wrench className="w-4 h-4 text-amber-600" /> },
-        { name: 'Reports & CSV', path: '/reports', icon: <FileSpreadsheet className="w-4 h-4 text-teal-600" /> },
-        { name: 'Namma Compliance', path: '/compliance', icon: <CheckSquare className="w-4 h-4 text-emerald-600" /> },
-        { name: 'Audit Trail', path: '/audit', icon: <Lock className="w-4 h-4 text-slate-600" /> },
-      ],
-    },
-    {
-      title: 'SYSTEM',
-      items: [
-        { name: 'Integrations (Mock)', path: '/integrations', icon: <Sliders className="w-4 h-4 text-slate-600" /> },
-        { name: 'Alert Engine', path: '/alerts', icon: <Bell className="w-4 h-4 text-yellow-600" /> },
-      ],
-    },
-  ],
+const ICON_MAP: Record<string, React.ReactNode> = {
+  LayoutDashboard: <LayoutDashboard className="w-4 h-4 text-emerald-600" />,
+  Network: <Network className="w-4 h-4 text-teal-600" />,
+  Building2: <Building2 className="w-4 h-4 text-indigo-600" />,
+  Users: <Users className="w-4 h-4 text-blue-600" />,
+  Clock: <Clock className="w-4 h-4 text-emerald-600" />,
+  Stethoscope: <Stethoscope className="w-4 h-4 text-emerald-600" />,
+  TestTube: <TestTube className="w-4 h-4 text-purple-600" />,
+  Pill: <Pill className="w-4 h-4 text-amber-600" />,
+  Share2: <Share2 className="w-4 h-4 text-rose-600" />,
+  CalendarCheck: <CalendarCheck className="w-4 h-4 text-teal-600" />,
+  Activity: <Activity className="w-4 h-4 text-rose-500" />,
+  Radio: <Radio className="w-4 h-4 text-red-600" />,
+  Users2: <Users2 className="w-4 h-4 text-indigo-600" />,
+  ShieldCheck: <ShieldCheck className="w-4 h-4 text-emerald-600" />,
+  FileSpreadsheet: <FileSpreadsheet className="w-4 h-4 text-teal-600" />,
+  CheckSquare: <CheckSquare className="w-4 h-4 text-emerald-600" />,
+  Lock: <Lock className="w-4 h-4 text-slate-600" />,
+  Sliders: <Sliders className="w-4 h-4 text-slate-600" />,
+  Bell: <Bell className="w-4 h-4 text-yellow-600" />,
+  Wrench: <Wrench className="w-4 h-4 text-amber-600" />,
+  FileText: <FileText className="w-4 h-4 text-blue-600" />,
+  MapPin: <MapPin className="w-4 h-4 text-emerald-600" />,
+  Smile: <Smile className="w-4 h-4 text-teal-600" />,
 };
 
 export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -216,7 +84,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       await api.post('admin/reset-demo/');
       await refreshUserData();
       alert('Demo data successfully reset!');
-      navigate('/');
+      navigate('/dashboard');
     } catch (e) {
       alert('Failed to reset demo data.');
     } finally {
@@ -224,7 +92,14 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
-  const navSections: NavSection[] = user?.role && (ROLE_NAV_SECTIONS as Record<string, NavSection[]>)[user.role] ? (ROLE_NAV_SECTIONS as Record<string, NavSection[]>)[user.role] : [];
+  const navSections = getRoleNavigation(user?.role, user?.permissions);
+
+  const scopeInfo = formatScopeDisplay(
+    user?.scope_type,
+    activeFacility?.facility_name || user?.facility_name,
+    activeFacility?.facility_code || user?.facility_details?.facility_code,
+    user?.district_name || (user?.assigned_district ? `District #${user.assigned_district}` : null)
+  );
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -273,7 +148,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           <button
             type="button"
             onClick={() => setMobileMenuOpen(false)}
-            className="md:hidden p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
+            className="md:hidden p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
             aria-label="Close menu"
           >
             <X className="w-5 h-5" />
@@ -283,11 +158,11 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
         {/* Facility Context Switcher / Scope Badge */}
         <div className="p-3 border-b border-slate-200 bg-slate-50">
           <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center justify-between">
-            <span>{user?.role === 'DISTRICT_OFFICER' ? 'District View Filter' : 'Assigned Facility Scope'}</span>
-            {user?.role !== 'DISTRICT_OFFICER' && <Lock className="w-3 h-3 text-emerald-600" aria-hidden="true" />}
+            <span>{scopeInfo.label}</span>
+            {!scopeInfo.isDistrict && <Lock className="w-3 h-3 text-emerald-600" aria-hidden="true" />}
           </label>
 
-          {user?.role === 'DISTRICT_OFFICER' ? (
+          {scopeInfo.isDistrict ? (
             <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-lg p-2 shadow-xs">
               <Building className="w-4 h-4 text-emerald-600 shrink-0" aria-hidden="true" />
               <select
@@ -311,10 +186,10 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               <Building className="w-4 h-4 text-emerald-700 shrink-0" aria-hidden="true" />
               <div className="truncate">
                 <span className="text-xs font-extrabold text-emerald-950 block truncate">
-                  {user?.facility_name || activeFacility?.facility_name || 'Assigned Hospital'}
+                  {scopeInfo.details}
                 </span>
                 <span className="text-[9px] text-emerald-700 font-bold uppercase tracking-wider block">
-                  Authorized Facility Scope
+                  Authorized Scope
                 </span>
               </div>
             </div>
@@ -324,8 +199,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
         {/* Navigation Items */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-3" aria-label="Sidebar Sections">
           {navSections.map((section: NavSection, sIdx: number) => {
-            const visibleItems = section.items.filter((item: NavItem) => isPathAllowedForRole(user?.role, item.path));
-            if (visibleItems.length === 0) return null;
+            if (section.items.length === 0) return null;
 
             return (
               <div key={section.title || sIdx} className="space-y-1">
@@ -334,7 +208,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
                     {section.title}
                   </div>
                 )}
-                {visibleItems.map((item: NavItem) => {
+                {section.items.map((item: NavItem) => {
                   const isActive = location.pathname === item.path;
                   return (
                     <Link
@@ -348,7 +222,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
                       }`}
                       aria-current={isActive ? 'page' : undefined}
                     >
-                      {item.icon}
+                      {ICON_MAP[item.iconName] || <LayoutDashboard className="w-4 h-4 text-slate-500" />}
                       <span>{item.name}</span>
                     </Link>
                   );
@@ -372,10 +246,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
                 {user?.full_name || user?.username || 'Demo User'}
               </p>
               <p className="text-[10px] text-emerald-700 font-extrabold truncate">
-                {user?.role_display || user?.role || 'Staff'} •{' '}
-                {user?.role === 'DISTRICT_OFFICER'
-                  ? 'District Scope'
-                  : user?.facility_name || activeFacility?.facility_name || 'Facility Scope'}
+                {user?.role_display || user?.role || 'Staff'} • {scopeInfo.isDistrict ? 'District Scope' : 'Facility Scope'}
               </p>
             </div>
           </div>
@@ -400,7 +271,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
               aria-label="Open navigation menu"
             >
               <Menu className="w-5 h-5" />
@@ -412,7 +283,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               {user?.role_display || user?.role || 'Clinical Console'}
             </span>
             <p className="text-xs text-slate-600 font-medium hidden sm:block truncate max-w-xs md:max-w-md">
-              {activeFacility?.facility_name || user?.facility_name || 'BBMP District Health Network'}
+              {scopeInfo.details}
             </p>
           </div>
 
