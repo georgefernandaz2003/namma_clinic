@@ -192,6 +192,7 @@ export interface TriageVitals {
 
 export interface PrescriptionItem {
   id?: number;
+  medicine?: number;
   medicine_name: string;
   dosage: string;
   frequency: string;
@@ -199,7 +200,8 @@ export interface PrescriptionItem {
   quantity: number;
   dispensed_quantity?: number;
   remaining_quantity?: number;
-  status: 'PENDING' | 'PARTIALLY_DISPENSED' | 'DISPENSED';
+  status: 'PENDING' | 'PARTIALLY_DISPENSED' | 'DISPENSED' | 'CANCELLED' | string;
+  prescription?: number;
 }
 
 export interface Prescription {
@@ -227,8 +229,65 @@ export interface Prescription {
   verified_at?: string | null;
   verification_notes?: string;
   rejection_reason?: string;
+  doctor_staff?: number | null;
+  consultation_sequence?: number;
+  notes?: string;
   items: PrescriptionItem[];
 }
+export interface DispensationItem {
+  id: number;
+  dispensation: number;
+  prescription_item: number;
+  batch: number;
+  quantity_dispensed: number;
+}
+
+export interface Dispensation {
+  id: number;
+  dispensation_number: string;
+  dispensed_at: string;
+  remarks: string;
+  prescription: number;
+  facility: number;
+  dispensed_by_staff: number;
+  items?: DispensationItem[];
+}
+
+export interface DispenseItemInput {
+  prescription_item_id: number;
+  batch_id: number;
+  quantity: number;
+}
+
+export interface CreateDispensationPayload {
+  prescription_id: number;
+  facility_id: number;
+  items: DispenseItemInput[];
+}
+
+export interface InventoryLedger {
+  id: number;
+  transaction_type:
+    | 'PURCHASE_RECEIPT'
+    | 'DISPENSE'
+    | 'DISPENSE_REVERSAL'
+    | 'TRANSFER_OUT'
+    | 'TRANSFER_IN'
+    | 'DAMAGE_WRITEOFF'
+    | 'EXPIRED_WRITEOFF'
+    | 'AUDIT_CORRECTION'
+    | string;
+  quantity_delta: number;
+  balance_after: number;
+  reference_entity_type?: string;
+  reference_entity_id?: number;
+  remarks?: string;
+  transaction_timestamp: string;
+  batch: number;
+  facility: number;
+  performed_by_staff: number;
+}
+
 
 export interface Consultation {
   id: number;
@@ -338,7 +397,7 @@ export interface Vendor {
 
 export interface MedicineMaster {
   id: number;
-  code: string;
+  code?: string;
   generic_name: string;
   brand_name: string;
   strength: string;
@@ -347,6 +406,7 @@ export interface MedicineMaster {
   category: string;
   minimum_stock: number;
   reorder_level: number;
+  regulatory_schedule?: 'SCHEDULE_H' | 'SCHEDULE_H1' | 'SCHEDULE_X' | 'SCHEDULE_G' | 'OTC' | 'GENERAL' | 'UNKNOWN' | string;
   total_available_stock?: number;
   stock_status?: 'NORMAL' | 'LOW_STOCK' | 'OUT_OF_STOCK';
 }

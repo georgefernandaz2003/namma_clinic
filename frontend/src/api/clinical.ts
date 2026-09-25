@@ -12,7 +12,11 @@ import type {
   DiagnosticResult,
   DiagnosticResultAmendment,
   MedicineMaster,
+  MedicineBatch,
   Prescription,
+  Dispensation,
+  CreateDispensationPayload,
+  InventoryLedger,
   ReferralOrder,
   FollowUpTask,
   Facility
@@ -243,6 +247,52 @@ export const createPrescription = async (payload: CreatePrescriptionPayload): Pr
 export const getPrescriptions = async (params?: Record<string, string | number>): Promise<Prescription[]> => {
   const query = params ? '?' + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString() : '';
   const res = await apiClient.get<PaginatedResponse<Prescription> | Prescription[]>(`v1/pharmacy/prescriptions/${query}`);
+  if (Array.isArray(res.data)) return res.data;
+  return res.data.results || [];
+};
+
+export const getPrescription = async (id: number): Promise<Prescription> => {
+  const res = await apiClient.get<Prescription>(`v1/pharmacy/prescriptions/${id}/`);
+  return res.data;
+};
+
+export const verifyPrescription = async (id: number, notes?: string): Promise<Prescription> => {
+  const res = await apiClient.post<Prescription>(`v1/pharmacy/prescriptions/${id}/verify/`, { notes: notes || '' });
+  return res.data;
+};
+
+export const holdPrescription = async (id: number, notes?: string): Promise<Prescription> => {
+  const res = await apiClient.post<Prescription>(`v1/pharmacy/prescriptions/${id}/hold/`, { notes: notes || '' });
+  return res.data;
+};
+
+export const rejectPrescription = async (id: number, reason: string): Promise<Prescription> => {
+  const res = await apiClient.post<Prescription>(`v1/pharmacy/prescriptions/${id}/reject/`, { reason });
+  return res.data;
+};
+
+export const getMedicineBatches = async (params?: Record<string, string | number>): Promise<MedicineBatch[]> => {
+  const query = params ? '?' + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString() : '';
+  const res = await apiClient.get<PaginatedResponse<MedicineBatch> | MedicineBatch[]>(`v1/pharmacy/batches/${query}`);
+  if (Array.isArray(res.data)) return res.data;
+  return res.data.results || [];
+};
+
+export const getDispensations = async (params?: Record<string, string | number>): Promise<Dispensation[]> => {
+  const query = params ? '?' + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString() : '';
+  const res = await apiClient.get<PaginatedResponse<Dispensation> | Dispensation[]>(`v1/pharmacy/dispensations/${query}`);
+  if (Array.isArray(res.data)) return res.data;
+  return res.data.results || [];
+};
+
+export const createDispensation = async (payload: CreateDispensationPayload): Promise<Dispensation> => {
+  const res = await apiClient.post<Dispensation>('v1/pharmacy/dispensations/', payload);
+  return res.data;
+};
+
+export const getInventoryLedger = async (params?: Record<string, string | number>): Promise<InventoryLedger[]> => {
+  const query = params ? '?' + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString() : '';
+  const res = await apiClient.get<PaginatedResponse<InventoryLedger> | InventoryLedger[]>(`v1/pharmacy/ledger/${query}`);
   if (Array.isArray(res.data)) return res.data;
   return res.data.results || [];
 };
