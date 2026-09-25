@@ -785,6 +785,7 @@ export interface DiagnosticTestMaster {
   test_name: string;
   category: string;
   specimen_type: string;
+  default_unit?: string;
   reference_range_male?: string;
   reference_range_female?: string;
   unit_of_measure?: string;
@@ -799,10 +800,23 @@ export interface DiagnosticOrder {
   ordering_doctor_staff?: number | null;
   order_date: string;
   priority: 'ROUTINE' | 'URGENT' | 'STAT' | string;
-  status: 'ORDERED' | 'SAMPLE_COLLECTED' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED' | string;
+  status: 'ORDERED' | 'SAMPLE_COLLECTED' | 'RECEIVED_IN_LAB' | 'IN_TESTING' | 'RESULT_ENTERED' | 'VERIFIED' | 'AMENDED' | 'CANCELLED' | string;
   clinical_indication: string;
-  lab_token_number?: string | null;
+  lab_token_number?: number | string | null;
   created_at: string;
+  updated_at?: string;
+}
+
+export interface Specimen {
+  id: number;
+  diagnostic_order: number;
+  barcode_identifier: string;
+  specimen_type: string;
+  collected_by_staff?: number | null;
+  collected_at: string;
+  status: 'PENDING' | 'COLLECTED' | 'RECEIVED' | 'REJECTED' | string;
+  rejection_reason?: string;
+  test_request_ids?: number[];
 }
 
 export interface TestRequest {
@@ -811,7 +825,7 @@ export interface TestRequest {
   test_master: number;
   test_master_name?: string;
   specimen?: number | null;
-  status: string;
+  status: 'PENDING' | 'IN_TESTING' | 'COMPLETED' | 'CANCELLED' | string;
   created_at: string;
 }
 
@@ -823,11 +837,23 @@ export interface DiagnosticResult {
   reference_range_applied?: string;
   is_abnormal: boolean;
   is_critical_panic: boolean;
-  status: 'DRAFT' | 'PRELIMINARY' | 'VERIFIED' | 'AMENDED' | string;
+  status: 'ENTERED' | 'VERIFIED' | 'AMENDED' | string;
   entered_by_staff?: number | null;
   entered_at?: string;
   verified_by_staff?: number | null;
   verified_at?: string | null;
+}
+
+export interface DiagnosticResultAmendment {
+  id: number;
+  diagnostic_result: number;
+  previous_value_text?: string;
+  previous_value_numeric?: number | null;
+  amended_value_text?: string;
+  amended_value_numeric?: number | null;
+  amendment_reason: string;
+  amended_by_staff?: number | null;
+  amended_at: string;
 }
 
 export interface ReferralOrder {

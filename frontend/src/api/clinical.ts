@@ -8,7 +8,9 @@ import type {
   DiagnosticTestMaster,
   DiagnosticOrder,
   TestRequest,
+  Specimen,
   DiagnosticResult,
+  DiagnosticResultAmendment,
   MedicineMaster,
   Prescription,
   ReferralOrder,
@@ -43,6 +45,28 @@ export interface CreateDiagnosticOrderPayload {
   priority?: 'ROUTINE' | 'URGENT' | 'STAT';
   clinical_indication?: string;
   order_date?: string;
+}
+
+export interface CreateSpecimenPayload {
+  diagnostic_order: number;
+  barcode_identifier: string;
+  specimen_type: string;
+  test_request_ids?: number[];
+}
+
+export interface CreateDiagnosticResultPayload {
+  test_request: number;
+  result_value_text?: string;
+  result_value_numeric?: number | null;
+  reference_range_applied?: string;
+  is_abnormal?: boolean;
+  is_critical_panic?: boolean;
+}
+
+export interface AmendDiagnosticResultPayload {
+  amendment_reason: string;
+  amended_value_text?: string;
+  amended_value_numeric?: number | null;
 }
 
 export interface CreatePrescriptionPayload {
@@ -158,10 +182,50 @@ export const getDiagnosticOrders = async (params?: Record<string, string | numbe
   return res.data.results || [];
 };
 
-export const getDiagnosticResults = async (): Promise<DiagnosticResult[]> => {
-  const res = await apiClient.get<PaginatedResponse<DiagnosticResult> | DiagnosticResult[]>('v1/diagnostics/results/');
+export const getDiagnosticOrder = async (orderId: number): Promise<DiagnosticOrder> => {
+  const res = await apiClient.get<DiagnosticOrder>(`v1/diagnostics/orders/${orderId}/`);
+  return res.data;
+};
+
+export const getTestRequests = async (params?: Record<string, string | number>): Promise<TestRequest[]> => {
+  const query = params ? '?' + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString() : '';
+  const res = await apiClient.get<PaginatedResponse<TestRequest> | TestRequest[]>(`v1/diagnostics/requests/${query}`);
   if (Array.isArray(res.data)) return res.data;
   return res.data.results || [];
+};
+
+export const getSpecimens = async (params?: Record<string, string | number>): Promise<Specimen[]> => {
+  const query = params ? '?' + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString() : '';
+  const res = await apiClient.get<PaginatedResponse<Specimen> | Specimen[]>(`v1/diagnostics/specimens/${query}`);
+  if (Array.isArray(res.data)) return res.data;
+  return res.data.results || [];
+};
+
+export const createSpecimen = async (payload: CreateSpecimenPayload): Promise<Specimen> => {
+  const res = await apiClient.post<Specimen>('v1/diagnostics/specimens/', payload);
+  return res.data;
+};
+
+export const getDiagnosticResults = async (params?: Record<string, string | number>): Promise<DiagnosticResult[]> => {
+  const query = params ? '?' + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString() : '';
+  const res = await apiClient.get<PaginatedResponse<DiagnosticResult> | DiagnosticResult[]>(`v1/diagnostics/results/${query}`);
+  if (Array.isArray(res.data)) return res.data;
+  return res.data.results || [];
+};
+
+export const createDiagnosticResult = async (payload: CreateDiagnosticResultPayload): Promise<DiagnosticResult> => {
+  const res = await apiClient.post<DiagnosticResult>('v1/diagnostics/results/', payload);
+  return res.data;
+};
+
+export const verifyDiagnosticResult = async (resultId: number): Promise<DiagnosticResult> => {
+  const res = await apiClient.post<DiagnosticResult>(`v1/diagnostics/results/${resultId}/verify/`);
+  return res.data;
+};
+
+export const amendDiagnosticResult = async (resultId: number, payload: AmendDiagnosticResultPayload): Promise<DiagnosticResult> => {
+  const res = await apiClient.post<DiagnosticResult>(`v1/diagnostics/results/${resultId}/amend/`, payload);
+  return res.data;
 };
 
 // 6. Pharmacy & Medicines
