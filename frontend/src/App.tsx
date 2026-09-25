@@ -118,8 +118,8 @@ export const App: React.FC = () => {
           <Route path="/patients" element={<ProtectedRoute><Patients /></ProtectedRoute>} />
           <Route path="/patients/:id" element={<ProtectedRoute><PatientDetail /></ProtectedRoute>} />
           <Route path="/queue" element={<ProtectedRoute><Queue /></ProtectedRoute>} />
-          <Route path="/triage" element={<ProtectedRoute><Triage /></ProtectedRoute>} />
-          <Route path="/consultation" element={<ProtectedRoute><Consultation /></ProtectedRoute>} />
+          <Route path="/triage" element={<ProtectedRoute allowedRoles={['NURSE']}><Triage /></ProtectedRoute>} />
+          <Route path="/consultation" element={<ProtectedRoute allowedRoles={['DOCTOR']}><Consultation /></ProtectedRoute>} />
           <Route path="/lab" element={<ProtectedRoute><Laboratory /></ProtectedRoute>} />
           <Route path="/pharmacy" element={<ProtectedRoute><Pharmacy /></ProtectedRoute>} />
           <Route path="/referrals" element={<ProtectedRoute><Referrals /></ProtectedRoute>} />

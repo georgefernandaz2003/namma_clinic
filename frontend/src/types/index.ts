@@ -91,21 +91,45 @@ export interface Patient {
   id: number;
   patient_id: string;
   name: string;
-  date_of_birth: string | null;
+  first_name?: string;
+  last_name?: string;
+  date_of_birth?: string | null;
   age: number;
-  gender: 'MALE' | 'FEMALE' | 'OTHER';
+  gender: 'MALE' | 'FEMALE' | 'OTHER' | string;
   mobile: string;
+  contact_number?: string;
   address: string;
   ward?: number | null;
   ward_name?: string;
   district?: number | null;
   district_name?: string;
-  ABHA_ID_DEMO: string;
-  emergency_contact: string;
-  vulnerability_information: string;
-  registration_date: string;
+  ABHA_ID_DEMO?: string;
+  abha_address?: string;
+  uhid?: string;
+  blood_group?: string;
+  emergency_contact?: string;
+  vulnerability_information?: string;
+  registration_date?: string;
   registered_at_facility?: number | null;
   facility_name?: string;
+}
+
+export interface CreateTriagePayload {
+  visit: number;
+  patient: number;
+  blood_pressure_systolic?: number;
+  blood_pressure_diastolic?: number;
+  pulse_bpm?: number;
+  temperature_f?: number | string;
+  spo2_percent?: number;
+  respiratory_rate?: number;
+  height_cm?: number | string;
+  weight_kg?: number | string;
+  blood_glucose_mgdl?: number;
+  pregnancy_high_risk_flag?: boolean;
+  emergency_flag?: boolean;
+  ncd_risk_flag?: boolean;
+  nurse_notes?: string;
 }
 
 export interface Token {
@@ -144,15 +168,17 @@ export interface TriageVitals {
   visit: number;
   patient: number;
   patient_name?: string;
+  nurse?: number | null;
+  nurse_name?: string;
   blood_pressure_systolic: number;
   blood_pressure_diastolic: number;
   pulse_bpm: number;
-  temperature_f: number;
+  temperature_f: number | string;
   spo2_percent: number;
   respiratory_rate: number;
-  height_cm: number;
-  weight_kg: number;
-  bmi: number;
+  height_cm: number | string;
+  weight_kg: number | string;
+  bmi: number | string;
   blood_glucose_mgdl: number;
   high_bp_flag: boolean;
   high_glucose_flag: boolean;

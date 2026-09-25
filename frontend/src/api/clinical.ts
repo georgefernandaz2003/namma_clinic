@@ -1,8 +1,9 @@
-﻿import apiClient from './client';
+import apiClient from './client';
 import type {
   Visit,
   Patient,
   TriageVitals,
+  CreateTriagePayload,
   Consultation,
   DiagnosticTestMaster,
   DiagnosticOrder,
@@ -100,10 +101,24 @@ export const getTriageVitals = async (visitId: number): Promise<TriageVitals | n
   try {
     const res = await apiClient.get<PaginatedResponse<TriageVitals> | TriageVitals[]>(`v1/clinical/triage/?visit=${visitId}`);
     const items = Array.isArray(res.data) ? res.data : res.data.results || [];
-    return items.length > 0 ? items[0] : null;
+    const matched = items.find((item) => {
+      const vId = typeof item.visit === 'object' && item.visit !== null ? (item.visit as any).id : item.visit;
+      return Number(vId) === Number(visitId);
+    });
+    return matched || null;
   } catch {
     return null;
   }
+};
+
+export const createTriageVitals = async (payload: CreateTriagePayload): Promise<TriageVitals> => {
+  const res = await apiClient.post<TriageVitals>('v1/clinical/triage/', payload);
+  return res.data;
+};
+
+export const updateTriageVitals = async (triageId: number, payload: Partial<CreateTriagePayload>): Promise<TriageVitals> => {
+  const res = await apiClient.patch<TriageVitals>(`v1/clinical/triage/${triageId}/`, payload);
+  return res.data;
 };
 
 // 4. Consultations
