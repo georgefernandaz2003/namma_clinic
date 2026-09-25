@@ -235,6 +235,8 @@ class Phase13RestAPITests(TestCase):
     # -------------------------------------------------------------------------
     def test_08_pharmacy_batch_direct_mutation_prohibited_and_dispense_api(self):
         """Direct batch PATCH returns 405; dispensing flows through domain service with 409 guard."""
+        role_pharm, _ = RoleMaster.objects.get_or_create(code="PHARMACIST", defaults={"name": "Pharmacist"})
+        StaffRoleAssignment.objects.create(staff=self.doc_staff, role=role_pharm, is_active=True)
         self.client.force_authenticate(user=self.doc_user)
         med = MedicineMaster.objects.create(generic_name="Paracetamol", strength="500 mg", dosage_form="Tablet")
         batch = MedicineBatch.objects.create(

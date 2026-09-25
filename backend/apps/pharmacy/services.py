@@ -206,6 +206,16 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
     Executes prescription medication dispensation.
     items_to_dispense: list of dicts: [{'prescription_item': item, 'batch': batch, 'quantity': qty}]
     """
+    if prescription.facility_id != facility.id:
+        raise DomainValidationError(
+            f"Prescription facility ({prescription.facility_id}) does not match dispensing facility ({facility.id})."
+        )
+
+    if prescription.status == "DISPENSED":
+        raise DomainValidationError(
+            f"Prescription #{prescription.id} has already been fully dispensed and cannot be dispensed in status 'DISPENSED'. Only VERIFIED or ACTIVE prescriptions can be dispensed."
+        )
+
     if prescription.status not in ["VERIFIED", "ACTIVE", "PARTIALLY_DISPENSED"]:
         raise DomainValidationError(
             f"Prescription #{prescription.id} is in status '{prescription.status}'. Only VERIFIED or ACTIVE prescriptions can be dispensed."
@@ -218,8 +228,18 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
     disp_num = f"DISP-{today.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 
     with transaction.atomic():
+        locked_rx = Prescription.objects.select_for_update().get(pk=prescription.pk)
+        if locked_rx.status == "DISPENSED":
+            raise DomainValidationError(
+                f"Prescription #{locked_rx.id} has already been fully dispensed and cannot be dispensed in status 'DISPENSED'. Only VERIFIED or ACTIVE prescriptions can be dispensed."
+            )
+        if locked_rx.status not in ["VERIFIED", "ACTIVE", "PARTIALLY_DISPENSED"]:
+            raise DomainValidationError(
+                f"Prescription #{locked_rx.id} is in status '{locked_rx.status}'. Only VERIFIED or ACTIVE prescriptions can be dispensed."
+            )
+
         dispensation = Dispensation.objects.create(
-            prescription=prescription,
+            prescription=locked_rx,
             facility=facility,
             dispensed_by_staff=dispensing_staff,
             dispensation_number=disp_num
@@ -235,6 +255,11 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
 
             # Lock prescription item
             locked_item = PrescriptionItem.objects.select_for_update().get(pk=p_item.pk)
+            if locked_item.prescription_id != locked_rx.id:
+                raise DomainValidationError(
+                    f"Prescription item #{locked_item.id} does not belong to prescription #{locked_rx.id}."
+                )
+
             if locked_item.dispensed_quantity + qty > locked_item.quantity:
                 raise DomainValidationError(
                     f"Requested dispense quantity ({qty}) exceeds remaining prescribed quantity ({locked_item.remaining_quantity}) for '{locked_item.medicine_name}'."
@@ -242,6 +267,11 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
 
             # Check batch validity
             locked_batch = MedicineBatch.objects.select_for_update().get(pk=batch.pk)
+            if locked_batch.facility_id != facility.id:
+                raise DomainValidationError(
+                    f"Batch '{locked_batch.batch_number}' does not belong to facility #{facility.id}."
+                )
+
             if locked_batch.expiry_date <= today:
                 raise DomainValidationError(f"Batch '{locked_batch.batch_number}' has expired on {locked_batch.expiry_date}.")
 
@@ -265,7 +295,7 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
                 quantity_delta=-qty,
                 reference_entity_type="Dispensation",
                 reference_entity_id=dispensation.id,
-                remarks=f"Prescription #{prescription.id} Dispensation #{dispensation.dispensation_number}",
+                remarks=f"Prescription #{locked_rx.id} Dispensation #{dispensation.dispensation_number}",
                 bucket_deltas={"available_quantity": -qty}
             )
 
@@ -275,12 +305,12 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
             locked_item.save(update_fields=["dispensed_quantity", "status"])
 
         # Update prescription overall state
-        all_items = prescription.items.all()
+        all_items = locked_rx.items.all()
         if all(it.status == "DISPENSED" for it in all_items):
-            prescription.status = "DISPENSED"
+            locked_rx.status = "DISPENSED"
         else:
-            prescription.status = "PARTIALLY_DISPENSED"
-        prescription.save(update_fields=["status"])
+            locked_rx.status = "PARTIALLY_DISPENSED"
+        locked_rx.save(update_fields=["status"])
 
         return dispensation
 

@@ -572,7 +572,7 @@ def execute_goods_receipt(request, po, as_grn_direct=False):
     - Concurrency protection via row-level locking
     """
     from decimal import Decimal
-    if request.user.role in ['DISTRICT_OFFICER', 'DOCTOR', 'NURSE', 'LAB_TECHNICIAN']:
+    if request.user.role in ['DISTRICT_OFFICER', 'DOCTOR', 'NURSE', 'LAB_TECHNICIAN', 'HOSPITAL_ADMIN']:
         return Response({'error': f"Role '{request.user.role}' is not authorized to intake goods."}, status=status.HTTP_403_FORBIDDEN)
 
     accessible_ids = get_accessible_facility_ids_for_user(request.user)
@@ -1138,6 +1138,11 @@ class DispenseMedicineView(APIView):
             return Response({'error': 'You do not have permission to dispense prescriptions for another facility scope.'}, status=status.HTTP_403_FORBIDDEN)
 
         # Prescription verification guard: blocked states
+        if prescription.status == 'DISPENSED':
+            return Response({
+                'error': f"Prescription #{prescription.id} has already been fully dispensed and cannot be dispensed in status '{prescription.status}'."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         if prescription.status not in ['VERIFIED', 'ACTIVE', 'PARTIALLY_DISPENSED']:
             return Response({
                 'error': f"Prescription cannot be dispensed in status '{prescription.status}'. Only VERIFIED or ACTIVE prescriptions can be dispensed."
@@ -1772,7 +1777,7 @@ class PharmacyDashboardSummaryView(APIView):
             rx_qs = rx_qs.filter(facility_id=facility_param)
 
         total_prescriptions_count = rx_qs.count()
-        pending_prescriptions_count = rx_qs.filter(status__in=['ACTIVE', 'PENDING_VERIFICATION', 'VERIFIED', 'PARTIALLY_DISPENSED']).count()
+        pending_prescriptions_count = rx_qs.filter(status__in=['ACTIVE', 'PENDING', 'PENDING_VERIFICATION', 'VERIFIED', 'PARTIALLY_DISPENSED']).count()
         dispensed_today_count = rx_qs.filter(status='DISPENSED', date=datetime.date.today()).count()
 
         batch_qs = MedicineBatch.objects.all()

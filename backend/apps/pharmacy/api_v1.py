@@ -153,8 +153,12 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         if prescription.status in ['DISPENSED', 'REJECTED', 'CANCELLED']:
             return Response({'error': f"Cannot hold prescription in status '{prescription.status}'."}, status=status.HTTP_400_BAD_REQUEST)
 
+        reason = request.data.get('reason') or request.data.get('notes', '')
+        if not reason or not str(reason).strip():
+            return Response({'error': 'Hold reason is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
         prescription.status = 'ON_HOLD'
-        prescription.verification_notes = request.data.get('notes', prescription.verification_notes)
+        prescription.verification_notes = str(reason).strip()
         prescription.save(update_fields=['status', 'verification_notes'])
         return Response(self.get_serializer(prescription).data)
 
@@ -174,8 +178,8 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         if not is_pharm:
             return Response({'error': 'Only pharmacists are authorized to reject prescriptions.'}, status=status.HTTP_403_FORBIDDEN)
 
-        reason = request.data.get('reason', '')
-        if not reason:
+        reason = request.data.get('reason') or request.data.get('rejection_reason', '')
+        if not reason or not str(reason).strip():
             return Response({'error': 'Rejection reason is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         prescription.status = 'REJECTED'
@@ -204,15 +208,31 @@ class DispensationViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         staff = get_request_staff(request)
 
+        is_pharm = (
+            request.user.is_superuser or
+            getattr(request.user, 'role', '') == 'PHARMACIST' or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
+            (staff and staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists())
+        )
+        if not is_pharm:
+            return Response({'error': 'Only pharmacists are authorized to dispense medications.'}, status=status.HTTP_403_FORBIDDEN)
+
         from apps.facilities.models import Facility
         rx = Prescription.objects.get(pk=serializer.validated_data['prescription_id'])
         fac = Facility.objects.get(pk=serializer.validated_data['facility_id'])
         check_facility_permission(fac, staff, request.user)
+        check_facility_permission(rx.facility, staff, request.user)
+        if rx.facility_id != fac.id:
+            return Response({'error': 'Prescription does not belong to the specified facility scope.'}, status=status.HTTP_403_FORBIDDEN)
 
         allocations = []
         for itm in serializer.validated_data['items']:
             p_item = PrescriptionItem.objects.get(pk=itm['prescription_item_id'])
             batch = MedicineBatch.objects.get(pk=itm['batch_id'])
+            if p_item.prescription_id != rx.id:
+                return Response({'error': f"Prescription item #{p_item.id} does not belong to prescription #{rx.id}."}, status=status.HTTP_400_BAD_REQUEST)
+            if batch.facility_id != fac.id:
+                return Response({'error': f"Batch #{batch.id} does not belong to facility #{fac.id}."}, status=status.HTTP_403_FORBIDDEN)
             allocations.append({
                 "prescription_item": p_item,
                 "batch": batch,

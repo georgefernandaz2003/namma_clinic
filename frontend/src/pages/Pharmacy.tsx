@@ -223,6 +223,10 @@ export const Pharmacy: React.FC = () => {
 
   const handleHold = async () => {
     if (!selectedRx) return;
+    if (!holdNotes.trim()) {
+      setError('Clinical hold reason / query notes are required.');
+      return;
+    }
     setActionInProgress(true);
     setError(null);
     setSuccessMsg(null);

@@ -257,7 +257,7 @@ export const getPrescription = async (id: number): Promise<Prescription> => {
 };
 
 export const verifyPrescription = async (id: number, notes?: string): Promise<Prescription> => {
-  const res = await apiClient.post<Prescription>(`v1/pharmacy/prescriptions/${id}/verify/`, { notes: notes || '' });
+  const res = await apiClient.post<Prescription>(`v1/pharmacy/prescriptions/${id}/verify/`, { notes: notes || '', reason: notes || '' });
   return res.data;
 };
 
