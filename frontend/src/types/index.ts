@@ -126,7 +126,6 @@ export interface CreateTriagePayload {
   height_cm?: number | string;
   weight_kg?: number | string;
   blood_glucose_mgdl?: number;
-  pregnancy_high_risk_flag?: boolean;
   emergency_flag?: boolean;
   ncd_risk_flag?: boolean;
   nurse_notes?: string;
@@ -184,7 +183,7 @@ export interface TriageVitals {
   high_glucose_flag: boolean;
   fever_flag: boolean;
   low_spo2_flag: boolean;
-  pregnancy_high_risk_flag: boolean;
+  pregnancy_high_risk_flag?: boolean;
   emergency_flag: boolean;
   ncd_risk_flag: boolean;
   nurse_notes: string;

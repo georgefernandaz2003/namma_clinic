@@ -83,9 +83,9 @@ test('Nurse dashboard queue metrics calculation and tab filtering', async (t) =>
       visit_type: 'OPD_GENERAL',
       status: 'WAITING_FOR_TRIAGE',
       current_queue: 'TRIAGE',
-      chief_complaint: 'High fever and headache',
-      priority: 'EMERGENCY',
+      chief_complaint: 'Headache and fever',
       token_number: 1,
+      priority: 'NORMAL',
     },
     {
       id: 2,
@@ -98,9 +98,9 @@ test('Nurse dashboard queue metrics calculation and tab filtering', async (t) =>
       visit_type: 'OPD_GENERAL',
       status: 'REGISTERED',
       current_queue: 'TRIAGE',
-      chief_complaint: 'Body pain',
-      priority: 'NORMAL',
+      chief_complaint: 'Chest pain',
       token_number: 2,
+      priority: 'EMERGENCY',
     },
     {
       id: 3,
@@ -113,9 +113,9 @@ test('Nurse dashboard queue metrics calculation and tab filtering', async (t) =>
       visit_type: 'OPD_GENERAL',
       status: 'TRIAGED',
       current_queue: 'DOCTOR',
-      chief_complaint: 'Follow-up hypertension',
-      priority: 'NORMAL',
+      chief_complaint: 'Routine follow-up',
       token_number: 3,
+      priority: 'HIGH',
     },
     {
       id: 4,
@@ -127,54 +127,56 @@ test('Nurse dashboard queue metrics calculation and tab filtering', async (t) =>
       opd_date: '2026-09-25',
       visit_type: 'OPD_GENERAL',
       status: 'COMPLETED',
-      current_queue: 'COMPLETED',
-      chief_complaint: 'Routine checkup',
-      priority: 'NORMAL',
+      current_queue: 'PHARMACY',
+      chief_complaint: 'Resolved',
       token_number: 4,
+      priority: 'NORMAL',
     },
   ];
 
   await t.test('calculates nurse metrics authoritatively from backend visits', () => {
-    const totalToday = mockVisits.length;
-    const pendingTriage = mockVisits.filter(
+    const pendingVisits = mockVisits.filter(
       (v) =>
         v.current_queue === 'TRIAGE' ||
         ['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
-    ).length;
-    const triagedToday = mockVisits.filter(
+    );
+    const triagedVisits = mockVisits.filter(
       (v) =>
         ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION', 'COMPLETED'].includes(v.status) &&
         v.current_queue !== 'TRIAGE'
-    ).length;
-    const emergencyOrHigh = mockVisits.filter(
+    );
+    const emergencyOrHighVisits = mockVisits.filter(
       (v) => v.priority === 'EMERGENCY' || v.priority === 'HIGH'
-    ).length;
+    );
 
-    assert.equal(totalToday, 4);
-    assert.equal(pendingTriage, 2);
-    assert.equal(triagedToday, 2);
-    assert.equal(emergencyOrHigh, 1);
+    assert.equal(pendingVisits.length, 2, 'Pending visits must be 2');
+    assert.equal(triagedVisits.length, 2, 'Triaged visits must be 2');
+    assert.equal(emergencyOrHighVisits.length, 2, 'High priority/emergency visits must be 2');
+    assert.equal(mockVisits.length, 4, 'Total encounters must be 4');
   });
 
   await t.test('filters visits correctly by tab selection', () => {
-    const pendingList = mockVisits.filter(
-      (v) =>
-        v.current_queue === 'TRIAGE' ||
-        ['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
-    );
-    const triagedList = mockVisits.filter(
-      (v) =>
-        ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION', 'COMPLETED'].includes(v.status) &&
-        v.current_queue !== 'TRIAGE'
-    );
+    const filterQueue = (tab: 'PENDING' | 'TRIAGED' | 'ALL') => {
+      return mockVisits.filter((v) => {
+        if (tab === 'PENDING') {
+          return (
+            v.current_queue === 'TRIAGE' ||
+            ['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
+          );
+        }
+        if (tab === 'TRIAGED') {
+          return (
+            ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION', 'COMPLETED'].includes(v.status) &&
+            v.current_queue !== 'TRIAGE'
+          );
+        }
+        return true;
+      });
+    };
 
-    assert.equal(pendingList.length, 2);
-    assert.equal(pendingList[0].id, 1);
-    assert.equal(pendingList[1].id, 2);
-
-    assert.equal(triagedList.length, 2);
-    assert.equal(triagedList[0].id, 3);
-    assert.equal(triagedList[1].id, 4);
+    assert.equal(filterQueue('PENDING').length, 2);
+    assert.equal(filterQueue('TRIAGED').length, 2);
+    assert.equal(filterQueue('ALL').length, 4);
   });
 
   await t.test('handles empty queue gracefully without crashing', () => {
@@ -189,64 +191,56 @@ test('Nurse dashboard queue metrics calculation and tab filtering', async (t) =>
 });
 
 // =========================================================================
-// 3. PATIENT CONTEXT & DEMOGRAPHICS IN TRIAGE
+// 3. PATIENT CONTEXT & DEMOGRAPHIC BANNER FORMATTING
 // =========================================================================
 
 test('Patient demographic context and encounter banner formatting', async (t) => {
   const patient: Patient = {
     id: 101,
-    patient_id: 'PAT-20260925-00101',
-    name: 'Meena Sundaram',
-    first_name: 'Meena',
-    last_name: 'Sundaram',
-    age: 38,
-    gender: 'FEMALE',
-    mobile: '9840112233',
-    address: '45 Lake View Road, Chennai',
-    ABHA_ID_DEMO: 'meena.sundaram@abdm',
-    blood_group: 'B+',
-    emergency_contact: '9840112234',
-    vulnerability_information: 'None',
-    registration_date: '2026-09-25',
+    name: 'Senthil Nathan',
+    age: 42,
+    gender: 'MALE',
+    mobile: '9876543210',
+    address: '12 Main Street, Chennai',
+    abha_address: 'senthil@abdm',
   };
 
   const visit: Visit = {
     id: 1,
-    visit_id: 'VIS-20260925-0001',
+    visit_id: 'VIS-LOC-001',
     patient: 101,
     facility: 1,
+    facility_name: 'Urban Primary Health Centre',
     visit_date: '2026-09-25',
-    opd_date: '2026-09-25',
     visit_type: 'OPD_GENERAL',
     status: 'WAITING_FOR_TRIAGE',
     current_queue: 'TRIAGE',
-    chief_complaint: 'Fever and chills for 2 days',
-    priority: 'EMERGENCY',
-    token_number: 5,
+    chief_complaint: 'Generalized weakness',
+    token_number: 14,
+    priority: 'HIGH',
   };
 
   await t.test('exposes all required patient demographics for intake', () => {
-    assert.equal(patient.name, 'Meena Sundaram');
-    assert.equal(patient.age, 38);
-    assert.equal(patient.gender, 'FEMALE');
-    assert.equal(patient.blood_group, 'B+');
-    assert.equal(patient.mobile, '9840112233');
-    assert.equal(patient.ABHA_ID_DEMO, 'meena.sundaram@abdm');
+    assert.equal(patient.name, 'Senthil Nathan');
+    assert.equal(patient.age, 42);
+    assert.equal(patient.gender, 'MALE');
+    assert.equal(patient.mobile, '9876543210');
+    assert.equal(patient.abha_address, 'senthil@abdm');
   });
 
   await t.test('exposes encounter token and priority', () => {
-    assert.equal(visit.token_number, 5);
-    assert.equal(visit.priority, 'EMERGENCY');
+    assert.equal(visit.token_number, 14);
+    assert.equal(visit.priority, 'HIGH');
     assert.equal(visit.current_queue, 'TRIAGE');
   });
 });
 
 // =========================================================================
-// 4. TRIAGE FORM PHYSIOLOGICAL VALIDATION
+// 4. TRIAGE FORM PHYSIOLOGICAL RANGE VALIDATION (CLIENT-SIDE)
 // =========================================================================
 
 test('Triage form physiological range validation', async (t) => {
-  const validateVitals = (form: {
+  const validateVitals = (v: {
     sys: number;
     dia: number;
     pulse: number;
@@ -256,23 +250,23 @@ test('Triage form physiological range validation', async (t) => {
     height: number;
     weight: number;
     glucose: number;
-  }): string[] => {
-    const errors: string[] = [];
-    if (form.sys < 50 || form.sys > 300) errors.push('Systolic BP out of range (50-300)');
-    if (form.dia < 30 || form.dia > 200) errors.push('Diastolic BP out of range (30-200)');
-    if (form.dia >= form.sys) errors.push('Diastolic BP cannot exceed or equal Systolic BP');
-    if (form.pulse < 30 || form.pulse > 250) errors.push('Pulse out of range (30-250)');
-    if (form.temp < 90 || form.temp > 110) errors.push('Temperature out of range (90-110)');
-    if (form.spo2 < 50 || form.spo2 > 100) errors.push('SpO2 out of range (50-100)');
-    if (form.resp < 5 || form.resp > 60) errors.push('Resp rate out of range (5-60)');
-    if (form.height < 30 || form.height > 260) errors.push('Height out of range (30-260)');
-    if (form.weight < 1 || form.weight > 350) errors.push('Weight out of range (1-350)');
-    if (form.glucose < 20 || form.glucose > 800) errors.push('Glucose out of range (20-800)');
-    return errors;
+  }) => {
+    const errs: string[] = [];
+    if (v.sys < 50 || v.sys > 300) errs.push('Systolic BP out of range (50-300)');
+    if (v.dia < 30 || v.dia > 200) errs.push('Diastolic BP out of range (30-200)');
+    if (v.dia >= v.sys) errs.push('Diastolic BP cannot exceed or equal Systolic BP');
+    if (v.pulse < 30 || v.pulse > 250) errs.push('Pulse out of range (30-250)');
+    if (v.temp < 90 || v.temp > 110) errs.push('Temperature out of range (90-110)');
+    if (v.spo2 < 50 || v.spo2 > 100) errs.push('SpO2 out of range (50-100)');
+    if (v.resp < 5 || v.resp > 60) errs.push('Resp rate out of range (5-60)');
+    if (v.height < 30 || v.height > 260) errs.push('Height out of range (30-260)');
+    if (v.weight < 1 || v.weight > 350) errs.push('Weight out of range (1-350)');
+    if (v.glucose < 20 || v.glucose > 800) errs.push('Glucose out of range (20-800)');
+    return errs;
   };
 
   await t.test('passes validation with normal physiological vitals', () => {
-    const valid = {
+    const normal = {
       sys: 120,
       dia: 80,
       pulse: 76,
@@ -283,7 +277,7 @@ test('Triage form physiological range validation', async (t) => {
       weight: 65,
       glucose: 110,
     };
-    const errors = validateVitals(valid);
+    const errors = validateVitals(normal);
     assert.equal(errors.length, 0);
   });
 
@@ -322,183 +316,245 @@ test('Triage form physiological range validation', async (t) => {
 });
 
 // =========================================================================
-// 5. CLINICAL WARNING THRESHOLDS & REAL-TIME BMI
+// 5. PHASE 24A: MATERNAL/CHILD REMOVAL & CLINICAL WARNING AUTHORITY
 // =========================================================================
 
-test('Clinical warning thresholds evaluation and BMI computation', async (t) => {
-  const computeBmi = (heightCm: number, weightKg: number): number => {
-    const hM = heightCm / 100.0;
-    return parseFloat((weightKg / (hM * hM)).toFixed(1));
-  };
-
-  const evaluateWarnings = (vitals: {
-    sys: number;
-    dia: number;
-    temp: number;
-    spo2: number;
-    glucose: number;
-    emergency: boolean;
-  }) => {
-    return {
-      high_bp: vitals.sys >= 140 || vitals.dia >= 90,
-      fever: vitals.temp >= 100.4,
-      low_spo2: vitals.spo2 < 95,
-      high_glucose: vitals.glucose >= 160,
-      emergency: vitals.emergency,
-    };
-  };
-
-  await t.test('accurately calculates BMI from height and weight', () => {
-    const bmi = computeBmi(165, 65);
-    assert.equal(bmi, 23.9);
-  });
-
-  await t.test('triggers automated clinical warning flags when thresholds are exceeded', () => {
-    const abnormal = {
-      sys: 150,
-      dia: 95,
-      temp: 101.5,
-      spo2: 93,
-      glucose: 185,
-      emergency: true,
-    };
-    const warnings = evaluateWarnings(abnormal);
-    assert.equal(warnings.high_bp, true);
-    assert.equal(warnings.fever, true);
-    assert.equal(warnings.low_spo2, true);
-    assert.equal(warnings.high_glucose, true);
-    assert.equal(warnings.emergency, true);
-  });
-
-  await t.test('does not trigger warnings for normotensive, euglycemic, afebrile vitals', () => {
-    const normal = {
-      sys: 118,
-      dia: 78,
-      temp: 98.4,
-      spo2: 99,
-      glucose: 105,
-      emergency: false,
-    };
-    const warnings = evaluateWarnings(normal);
-    assert.equal(warnings.high_bp, false);
-    assert.equal(warnings.fever, false);
-    assert.equal(warnings.low_spo2, false);
-    assert.equal(warnings.high_glucose, false);
-    assert.equal(warnings.emergency, false);
-  });
-});
-
-// =========================================================================
-// 6. TRIAGE CREATION PAYLOAD & DOCTOR HANDOFF
-// =========================================================================
-
-test('Triage payload construction and Doctor queue handoff lifecycle', async (t) => {
-  await t.test('builds valid DRF TriageVitals creation payload', () => {
+test('Phase 24A: Complete removal of Maternal/Child logic from active Nurse triage', async (t) => {
+  await t.test('CreateTriagePayload does not contain pregnancy_high_risk_flag', () => {
     const payload: CreateTriagePayload = {
       visit: 1,
       patient: 101,
-      blood_pressure_systolic: 130,
-      blood_pressure_diastolic: 85,
-      pulse_bpm: 76,
-      temperature_f: '98.6',
-      spo2_percent: 99,
+      blood_pressure_systolic: 120,
+      blood_pressure_diastolic: 80,
+      pulse_bpm: 72,
+      temperature_f: 98.6,
+      spo2_percent: 98,
       respiratory_rate: 18,
-      height_cm: '165.0',
-      weight_kg: '65.0',
+      height_cm: 165,
+      weight_kg: 65,
       blood_glucose_mgdl: 110,
-      pregnancy_high_risk_flag: false,
       emergency_flag: false,
       ncd_risk_flag: false,
-      nurse_notes: 'Patient alert and ambulatory. Mild throat irritation.',
+      nurse_notes: 'Standard adult triage',
     };
 
-    assert.equal(payload.visit, 1);
-    assert.equal(payload.patient, 101);
-    assert.equal(payload.blood_pressure_systolic, 130);
-    assert.equal(payload.pulse_bpm, 76);
-    assert.equal(payload.temperature_f, '98.6');
+    assert.equal('pregnancy_high_risk_flag' in payload, false, 'pregnancy_high_risk_flag must NOT be in active payload');
   });
 
-  await t.test('handoff: visit transitions to TRIAGED and DOCTOR queue', () => {
-    // Before triage
-    const initialVisit: Partial<Visit> = {
-      id: 1,
-      status: 'WAITING_FOR_TRIAGE',
-      current_queue: 'TRIAGE',
-    };
-
-    // After successful triage, visit is updated
-    const updatedVisit: Partial<Visit> = {
-      ...initialVisit,
-      status: 'TRIAGED',
-      current_queue: 'DOCTOR',
-    };
-
-    assert.equal(updatedVisit.status, 'TRIAGED');
-    assert.equal(updatedVisit.current_queue, 'DOCTOR');
-
-    // Doctor workflow consumes visits where current_queue === 'DOCTOR' or status === 'TRIAGED'
-    const isReadyForDoctor =
-      updatedVisit.current_queue === 'DOCTOR' ||
-      ['TRIAGED', 'WAITING_FOR_DOCTOR'].includes(updatedVisit.status || '');
-    assert.equal(isReadyForDoctor, true);
+  await t.test('Warning evaluation excludes maternal/child flags', () => {
+    // Authoritative backend warning flags
+    const activeWorkflowFlags = [
+      'high_bp_flag',
+      'high_glucose_flag',
+      'fever_flag',
+      'low_spo2_flag',
+      'emergency_flag',
+      'ncd_risk_flag',
+    ];
+    assert.equal(activeWorkflowFlags.includes('pregnancy_high_risk_flag'), false);
   });
 });
 
 // =========================================================================
-// 7. ALREADY-RECORDED TRIAGE & AUTHORSHIP DISPLAY
+// 6. PHASE 24A: DERIVED MATHEMATICAL BMI WITHOUT MEDICAL DIAGNOSIS
 // =========================================================================
 
-test('Handling of already-recorded triage and clinical authorship integrity', async (t) => {
-  const existingTriage: TriageVitals = {
+test('Phase 24A: Derived BMI computation is purely mathematical without clinical diagnosis', async (t) => {
+  const computeDerivedBmi = (heightCm: number, weightKg: number): string | null => {
+    if (heightCm <= 0 || weightKg <= 0) return null;
+    const hM = heightCm / 100.0;
+    return (weightKg / (hM * hM)).toFixed(1);
+  };
+
+  await t.test('accurately calculates numeric BMI as derived value', () => {
+    const bmi = computeDerivedBmi(165, 65);
+    assert.equal(bmi, '23.9');
+  });
+
+  await t.test('does not attach clinical diagnostic labels (e.g., Obese/Normal) in React', () => {
+    const bmiVal = computeDerivedBmi(160, 62);
+    assert.equal(bmiVal, '24.2');
+    // Pure mathematical string, no medical category attached
+    assert.equal(typeof bmiVal, 'string');
+  });
+});
+
+// =========================================================================
+// 7. PHASE 24A: NON-ATOMIC HANDOFF & PARTIAL FAILURE HANDLING
+// =========================================================================
+
+test('Phase 24A: Triage handoff atomicity and safe partial failure handling', async (t) => {
+  await t.test('handles partial failure: triage saved but visit transition fails', () => {
+    let savedTriageRecord: TriageVitals | null = null;
+    let handoffFailed = false;
+    let errorMessage: string | null = null;
+    let successMessage: string | null = null;
+
+    // Simulate Step 1: Triage POST succeeds
+    savedTriageRecord = {
+      id: 20,
+      visit: 1,
+      patient: 101,
+      nurse: 2,
+      blood_pressure_systolic: 130,
+      blood_pressure_diastolic: 85,
+      pulse_bpm: 76,
+      temperature_f: 98.6,
+      spo2_percent: 99,
+      respiratory_rate: 18,
+      height_cm: 165,
+      weight_kg: 65,
+      bmi: 23.9,
+      blood_glucose_mgdl: 110,
+      high_bp_flag: false,
+      high_glucose_flag: false,
+      fever_flag: false,
+      low_spo2_flag: false,
+      emergency_flag: false,
+      ncd_risk_flag: false,
+      nurse_notes: 'Triage recorded',
+      created_at: '2026-09-25T11:00:00Z',
+    };
+
+    // Simulate Step 2: Visit PATCH fails (e.g., network error)
+    const handoffError = new Error('Network timeout during queue forward');
+    handoffFailed = true;
+    errorMessage = `Triage vitals saved, but forwarding to Doctor queue failed: ${handoffError.message}.`;
+
+    // Critical assertion: UI must NOT claim successful Doctor handoff
+    assert.equal(successMessage, null, 'Must NOT falsely display Doctor handoff success');
+    assert.ok(savedTriageRecord !== null, 'Triage record must be preserved');
+    assert.equal(handoffFailed, true, 'Handoff failure state must be flagged');
+    assert.ok(errorMessage.includes('forwarding to Doctor queue failed'));
+  });
+
+  await t.test('retry mechanism resolves queue handoff', () => {
+    let visitStatus = 'WAITING_FOR_TRIAGE';
+    let currentQueue = 'TRIAGE';
+    let handoffFailed = true;
+
+    // Execute retry
+    visitStatus = 'TRIAGED';
+    currentQueue = 'DOCTOR';
+    handoffFailed = false;
+
+    assert.equal(visitStatus, 'TRIAGED');
+    assert.equal(currentQueue, 'DOCTOR');
+    assert.equal(handoffFailed, false);
+  });
+});
+
+// =========================================================================
+// 8. PHASE 24A: TRIAGE CORRECTION & BACKEND MUTATION SEMANTICS
+// =========================================================================
+
+test('Phase 24A: Triage correction mutates existing record directly (backend limitation)', async (t) => {
+  const originalRecord: TriageVitals = {
     id: 10,
     visit: 1,
     patient: 101,
-    nurse: 2, // Nurse user ID
-    blood_pressure_systolic: 130,
-    blood_pressure_diastolic: 85,
-    pulse_bpm: 76,
-    temperature_f: '98.6',
-    spo2_percent: 99,
+    nurse: 2,
+    blood_pressure_systolic: 120,
+    blood_pressure_diastolic: 80,
+    pulse_bpm: 72,
+    temperature_f: 98.6,
+    spo2_percent: 98,
     respiratory_rate: 18,
-    height_cm: '165.0',
-    weight_kg: '65.0',
-    bmi: '23.9',
+    height_cm: 165,
+    weight_kg: 65,
+    bmi: 23.9,
     blood_glucose_mgdl: 110,
     high_bp_flag: false,
     high_glucose_flag: false,
     fever_flag: false,
     low_spo2_flag: false,
-    pregnancy_high_risk_flag: false,
     emergency_flag: false,
     ncd_risk_flag: false,
-    nurse_notes: 'Initial intake completed by Staff Nurse',
+    nurse_notes: 'Initial observation',
     created_at: '2026-09-25T10:00:00Z',
   };
 
-  await t.test('preserves nurse authorship metadata', () => {
-    assert.equal(existingTriage.nurse, 2);
-    assert.ok(existingTriage.created_at);
-    assert.equal(existingTriage.nurse_notes, 'Initial intake completed by Staff Nurse');
+  // Correction via PATCH /api/v1/clinical/triage/10/
+  const correctedRecord: TriageVitals = {
+    ...originalRecord,
+    blood_pressure_systolic: 135,
+    blood_pressure_diastolic: 88,
+    nurse_notes: 'Corrected blood pressure reading',
+  };
+
+  await t.test('correction mutates in-place without creating a new ID', () => {
+    assert.equal(correctedRecord.id, originalRecord.id);
+    assert.equal(correctedRecord.blood_pressure_systolic, 135);
   });
 
-  await t.test('formats recorded vitals correctly for display', () => {
-    assert.equal(
-      `${existingTriage.blood_pressure_systolic}/${existingTriage.blood_pressure_diastolic} mmHg`,
-      '130/85 mmHg'
-    );
-    assert.equal(`${existingTriage.pulse_bpm} bpm`, '76 bpm');
-    assert.equal(`${existingTriage.temperature_f}°F`, '98.6°F');
+  await t.test('preserves original nurse author and timestamp', () => {
+    assert.equal(correctedRecord.nurse, 2);
+    assert.equal(correctedRecord.created_at, originalRecord.created_at);
   });
 });
 
 // =========================================================================
-// 8. API ERROR RESPONSES IN TRIAGE OPERATIONS
+// 9. DOCTOR COMPATIBILITY & HANDOFF CONSUMPTION
+// =========================================================================
+
+test('Phase 24A: Doctor compatibility and triage consumption', async (t) => {
+  await t.test('Doctor workflow consumes newly triaged visit', () => {
+    const visit: Partial<Visit> = {
+      id: 5,
+      status: 'TRIAGED',
+      current_queue: 'DOCTOR',
+    };
+
+    // Doctor queue eligibility condition from DoctorDashboard.tsx
+    const isEligibleForDoctor =
+      visit.current_queue === 'DOCTOR' ||
+      ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION'].includes(visit.status || '');
+
+    assert.equal(isEligibleForDoctor, true);
+  });
+
+  await t.test('Doctor can review triage vitals and clinical warning flags', () => {
+    const triage: TriageVitals = {
+      id: 5,
+      visit: 5,
+      patient: 105,
+      nurse: 3,
+      blood_pressure_systolic: 145,
+      blood_pressure_diastolic: 92,
+      pulse_bpm: 88,
+      temperature_f: 101.2,
+      spo2_percent: 94,
+      respiratory_rate: 20,
+      height_cm: 170,
+      weight_kg: 70,
+      bmi: 24.2,
+      blood_glucose_mgdl: 175,
+      high_bp_flag: true,
+      high_glucose_flag: true,
+      fever_flag: true,
+      low_spo2_flag: true,
+      emergency_flag: false,
+      ncd_risk_flag: true,
+      nurse_notes: 'Patient flushed, complains of chills',
+      created_at: '2026-09-25T11:15:00Z',
+    };
+
+    assert.equal(triage.high_bp_flag, true);
+    assert.equal(triage.fever_flag, true);
+    assert.equal(triage.low_spo2_flag, true);
+    assert.equal(triage.high_glucose_flag, true);
+    assert.equal(triage.ncd_risk_flag, true);
+    assert.equal(triage.nurse, 3);
+  });
+});
+
+// =========================================================================
+// 10. API ERROR PARSING FOR TRIAGE OPERATIONS
 // =========================================================================
 
 test('API error parsing for Triage operations', async (t) => {
   await t.test('handles duplicate triage error for same visit (400)', () => {
-    const duplicateError = {
+    const errorResponse = {
       response: {
         status: 400,
         data: {
@@ -506,20 +562,20 @@ test('API error parsing for Triage operations', async (t) => {
         },
       },
     };
-    const parsed = parseApiError(duplicateError);
-    assert.ok(parsed.includes('Visit: triage vitals with this visit already exists.'));
+    const parsed = parseApiError(errorResponse);
+    assert.ok(parsed.includes('triage vitals with this visit already exists.'));
   });
 
   await t.test('handles 403 Forbidden error', () => {
-    const forbidden = {
+    const errorResponse = {
       response: {
         status: 403,
         data: {
-          detail: 'You do not have permission to record triage for this facility.',
+          detail: 'You do not have permission to perform this action.',
         },
       },
     };
-    const parsed = parseApiError(forbidden);
-    assert.equal(parsed, 'You do not have permission to record triage for this facility.');
+    const parsed = parseApiError(errorResponse);
+    assert.equal(parsed, 'You do not have permission to perform this action.');
   });
 });

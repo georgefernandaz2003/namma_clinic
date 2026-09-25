@@ -20,12 +20,16 @@ interface TriageRecordedCardProps {
   triage: TriageVitals;
   onEditTriage?: () => void;
   onBackToQueue: () => void;
+  isForwardedToDoctor?: boolean;
+  onRetryHandoff?: () => void;
 }
 
 export const TriageRecordedCard: React.FC<TriageRecordedCardProps> = ({
   triage,
   onEditTriage,
-  onBackToQueue
+  onBackToQueue,
+  isForwardedToDoctor = true,
+  onRetryHandoff
 }) => {
   const hasWarningFlags =
     triage.high_bp_flag ||
@@ -33,17 +37,34 @@ export const TriageRecordedCard: React.FC<TriageRecordedCardProps> = ({
     triage.fever_flag ||
     triage.low_spo2_flag ||
     triage.emergency_flag ||
-    triage.pregnancy_high_risk_flag ||
     triage.ncd_risk_flag;
 
   return (
     <div data-testid="triage-recorded-card" className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden mb-6">
-      <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-2 text-emerald-900 font-bold">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600" aria-hidden="true" />
-          <span>Triage Vitals Recorded — Encounter Forwarded to Doctor</span>
+      <div className={`${isForwardedToDoctor ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'} border-b px-6 py-4 flex flex-wrap items-center justify-between gap-4`}>
+        <div className={`flex items-center gap-2 ${isForwardedToDoctor ? 'text-emerald-900' : 'text-amber-900'} font-bold`}>
+          {isForwardedToDoctor ? (
+            <>
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" aria-hidden="true" />
+              <span>Triage Vitals Recorded — Encounter Forwarded to Doctor</span>
+            </>
+          ) : (
+            <>
+              <AlertTriangle className="w-5 h-5 text-amber-600" aria-hidden="true" />
+              <span>Triage Vitals Recorded — Pending Doctor Queue Handoff</span>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          {!isForwardedToDoctor && onRetryHandoff && (
+            <button
+              type="button"
+              onClick={onRetryHandoff}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors shadow-2xs"
+            >
+              Retry Doctor Handoff
+            </button>
+          )}
           {onEditTriage && (
             <button
               type="button"
@@ -65,49 +86,48 @@ export const TriageRecordedCard: React.FC<TriageRecordedCardProps> = ({
       </div>
 
       <div className="p-6">
+        {/* Backend Derived Warning Flags (Not autonomous diagnoses) */}
         {hasWarningFlags && (
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <div className="flex items-center gap-2 text-amber-900 font-bold text-sm mb-2">
+            <div className="flex items-center gap-2 text-amber-900 font-bold text-xs uppercase tracking-wider mb-2">
               <AlertTriangle className="w-4 h-4 text-amber-600" aria-hidden="true" />
-              <span>Automated Clinical Warning Indicators:</span>
+              <span>Workflow Assistance Flags (Derived by backend from recorded vitals — not a diagnosis):</span>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 text-xs">
               {triage.high_bp_flag && (
-                <span className="bg-rose-100 text-rose-800 border border-rose-300 px-2.5 py-1 rounded text-xs font-bold">
-                  Hypertension Warning (BP ≥ 140/90)
+                <span className="bg-rose-100 text-rose-800 border border-rose-300 px-2.5 py-1 rounded font-bold">
+                  Elevated BP Flag (Systolic ≥ 140 or Diastolic ≥ 90)
                 </span>
               )}
               {triage.fever_flag && (
-                <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1 rounded text-xs font-bold">
-                  Pyrexia / Fever (Temp ≥ 100.4°F)
+                <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1 rounded font-bold">
+                  Elevated Temp Flag (Temp ≥ 100.4°F)
                 </span>
               )}
               {triage.low_spo2_flag && (
-                <span className="bg-rose-100 text-rose-800 border border-rose-300 px-2.5 py-1 rounded text-xs font-bold">
-                  Hypoxia Warning (SpO2 &lt; 95%)
+                <span className="bg-rose-100 text-rose-800 border border-rose-300 px-2.5 py-1 rounded font-bold">
+                  Low SpO2 Flag (&lt; 95%)
                 </span>
               )}
               {triage.high_glucose_flag && (
-                <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1 rounded text-xs font-bold">
-                  Hyperglycemia (Glucose ≥ 160 mg/dL)
+                <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1 rounded font-bold">
+                  Elevated Glucose Flag (≥ 160 mg/dL)
                 </span>
               )}
               {triage.emergency_flag && (
-                <span className="bg-rose-600 text-white px-2.5 py-1 rounded text-xs font-bold">
-                  EMERGENCY ENCOUNTER
-                </span>
-              )}
-              {triage.pregnancy_high_risk_flag && (
-                <span className="bg-purple-100 text-purple-800 border border-purple-300 px-2.5 py-1 rounded text-xs font-bold">
-                  High Risk Pregnancy
+                <span className="bg-rose-600 text-white px-2.5 py-1 rounded font-bold">
+                  EMERGENCY ESCALATION FLAG
                 </span>
               )}
               {triage.ncd_risk_flag && (
-                <span className="bg-blue-100 text-blue-800 border border-blue-300 px-2.5 py-1 rounded text-xs font-bold">
-                  NCD Longitudinal Risk
+                <span className="bg-blue-100 text-blue-800 border border-blue-300 px-2.5 py-1 rounded font-bold">
+                  NCD Intake Flag
                 </span>
               )}
             </div>
+            <p className="text-[11px] text-amber-800 mt-2 italic">
+              Note: Workflow warning flags are automated alerts derived by backend business rules from recorded vitals; they do not constitute medical diagnoses.
+            </p>
           </div>
         )}
 
@@ -183,7 +203,7 @@ export const TriageRecordedCard: React.FC<TriageRecordedCardProps> = ({
             <span className="text-xs font-bold text-slate-900">
               {triage.weight_kg}kg / {triage.height_cm}cm
             </span>
-            <span className="text-[10px] text-slate-500 block font-semibold">BMI: {triage.bmi}</span>
+            <span className="text-[10px] text-slate-500 block font-semibold">BMI: {triage.bmi} (derived)</span>
           </div>
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
@@ -206,7 +226,7 @@ export const TriageRecordedCard: React.FC<TriageRecordedCardProps> = ({
           <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 mb-6">
             <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
               <FileText className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-              Nurse Triage Notes:
+              Nurse Clinical Notes:
             </div>
             <p className="text-sm text-slate-800 whitespace-pre-wrap">{triage.nurse_notes}</p>
           </div>
@@ -223,6 +243,10 @@ export const TriageRecordedCard: React.FC<TriageRecordedCardProps> = ({
             <Clock className="w-4 h-4 text-slate-400" aria-hidden="true" />
             <span>Recorded at: {new Date(triage.created_at).toLocaleString()}</span>
           </div>
+        </div>
+
+        <div className="mt-2 text-[11px] text-slate-400 italic">
+          Authorship note: Backend mutates existing triage record directly on update; historical revision log is a backend limitation.
         </div>
       </div>
     </div>

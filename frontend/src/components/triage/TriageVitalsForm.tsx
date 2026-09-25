@@ -7,7 +7,6 @@ import {
   Wind,
   Scale,
   Droplet,
-  AlertTriangle,
   FileText,
   ShieldAlert,
   Save,
@@ -64,16 +63,13 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
   const [emergencyFlag, setEmergencyFlag] = useState<boolean>(
     initialVitals?.emergency_flag ?? false
   );
-  const [pregnancyFlag, setPregnancyFlag] = useState<boolean>(
-    initialVitals?.pregnancy_high_risk_flag ?? false
-  );
   const [ncdFlag, setNcdFlag] = useState<boolean>(
     initialVitals?.ncd_risk_flag ?? false
   );
   const [notes, setNotes] = useState<string>(initialVitals?.nurse_notes ?? '');
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Dynamic calculations
+  // Parse numbers for validation & derived calculations
   const sNum = parseInt(systolic, 10) || 0;
   const dNum = parseInt(diastolic, 10) || 0;
   const tempNum = parseFloat(temperature) || 0;
@@ -82,31 +78,19 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
   const hNum = parseFloat(height) || 0;
   const wNum = parseFloat(weight) || 0;
 
-  // Real-time BMI computation
+  // Real-time mathematical BMI computation (Clearly marked as derived, not clinical decision logic)
   let calculatedBmi: string | null = null;
-  let bmiCategory: string = '';
   if (hNum > 0 && wNum > 0) {
     const hM = hNum / 100.0;
     const bmiVal = wNum / (hM * hM);
     calculatedBmi = bmiVal.toFixed(1);
-    if (bmiVal < 18.5) bmiCategory = 'Underweight';
-    else if (bmiVal < 25) bmiCategory = 'Normal';
-    else if (bmiVal < 30) bmiCategory = 'Overweight';
-    else bmiCategory = 'Obese';
   }
-
-  // Real-time Clinical Warning Thresholds (mirroring backend domain rules)
-  const isHighBp = sNum >= 140 || dNum >= 90;
-  const isFever = tempNum >= 100.4;
-  const isLowSpo2 = spo2Num > 0 && spo2Num < 95;
-  const isHighGlucose = gluNum >= 160;
-  const hasThresholdWarnings = isHighBp || isFever || isLowSpo2 || isHighGlucose || emergencyFlag;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
 
-    // Validation rules
+    // Client-side Input Validations
     if (!systolic || sNum < 50 || sNum > 300) {
       setValidationError('Systolic BP must be a valid number between 50 and 300 mmHg.');
       return;
@@ -158,7 +142,6 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
       height_cm: hNum,
       weight_kg: wNum,
       blood_glucose_mgdl: gluNum,
-      pregnancy_high_risk_flag: pregnancyFlag,
       emergency_flag: emergencyFlag,
       ncd_risk_flag: ncdFlag,
       nurse_notes: notes.trim()
@@ -176,7 +159,7 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
             Triage Vital Signs & Clinical Intake Assessment
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Authoritative clinical measurement. Values will be evaluated against health protocols and forwarded to the Doctor.
+            Authoritative clinical measurement. Values will be evaluated against backend health protocols and forwarded to the Doctor.
           </p>
         </div>
 
@@ -190,43 +173,6 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
       <div className="p-6 space-y-6">
         {validationError && (
           <ErrorAlert title="Triage Validation Notice" message={validationError} />
-        )}
-
-        {/* Dynamic Warning Banner */}
-        {hasThresholdWarnings && (
-          <div className="p-4 bg-amber-50 border border-amber-300 rounded-lg">
-            <div className="flex items-center gap-2 text-amber-900 font-bold text-xs uppercase tracking-wider mb-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600" aria-hidden="true" />
-              <span>Real-Time Clinical Warning Triggers:</span>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs">
-              {isHighBp && (
-                <span className="bg-rose-100 text-rose-800 border border-rose-300 px-2.5 py-1 rounded font-bold">
-                  Hypertension Warning (BP {sNum}/{dNum} ≥ 140/90)
-                </span>
-              )}
-              {isFever && (
-                <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1 rounded font-bold">
-                  Pyrexia / Fever ({tempNum}°F ≥ 100.4°F)
-                </span>
-              )}
-              {isLowSpo2 && (
-                <span className="bg-rose-100 text-rose-800 border border-rose-300 px-2.5 py-1 rounded font-bold">
-                  Hypoxia Warning (SpO2 {spo2Num}% &lt; 95%)
-                </span>
-              )}
-              {isHighGlucose && (
-                <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1 rounded font-bold">
-                  Hyperglycemia ({gluNum} mg/dL ≥ 160 mg/dL)
-                </span>
-              )}
-              {emergencyFlag && (
-                <span className="bg-rose-600 text-white px-2.5 py-1 rounded font-bold">
-                  EMERGENCY ENCOUNTER FLAGGED
-                </span>
-              )}
-            </div>
-          </div>
         )}
 
         {/* Vital Signs Grid */}
@@ -249,9 +195,7 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
               required
               value={systolic}
               onChange={(e) => setSystolic(e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg text-sm font-semibold focus:outline-hidden focus:ring-2 ${
-                isHighBp ? 'border-rose-400 bg-rose-50/40 text-rose-900 focus:ring-rose-400' : 'border-slate-300 focus:ring-teal-500'
-              }`}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-teal-500"
               placeholder="120"
             />
           </div>
@@ -260,7 +204,7 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
           <div>
             <label htmlFor={`${formId}-dia-bp`} className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
               <span className="flex items-center gap-1">
-                <Heart className="w-3.5 h-3.5 text-rose-500" aria-hidden="true" />
+                <Heart className="w-3.5 h-3.5 text-rose-400" aria-hidden="true" />
                 Diastolic BP (mmHg) *
               </span>
               <span className="text-[10px] text-slate-400">Target &lt; 90</span>
@@ -274,9 +218,7 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
               required
               value={diastolic}
               onChange={(e) => setDiastolic(e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg text-sm font-semibold focus:outline-hidden focus:ring-2 ${
-                isHighBp ? 'border-rose-400 bg-rose-50/40 text-rose-900 focus:ring-rose-400' : 'border-slate-300 focus:ring-teal-500'
-              }`}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-teal-500"
               placeholder="80"
             />
           </div>
@@ -323,9 +265,7 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
               required
               value={temperature}
               onChange={(e) => setTemperature(e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg text-sm font-semibold focus:outline-hidden focus:ring-2 ${
-                isFever ? 'border-amber-400 bg-amber-50/40 text-amber-900 focus:ring-amber-400' : 'border-slate-300 focus:ring-teal-500'
-              }`}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-teal-500"
               placeholder="98.6"
             />
           </div>
@@ -348,9 +288,7 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
               required
               value={spo2}
               onChange={(e) => setSpo2(e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg text-sm font-semibold focus:outline-hidden focus:ring-2 ${
-                isLowSpo2 ? 'border-rose-400 bg-rose-50/40 text-rose-900 focus:ring-rose-400' : 'border-slate-300 focus:ring-teal-500'
-              }`}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-teal-500"
               placeholder="99"
             />
           </div>
@@ -426,23 +364,19 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
           </div>
         </div>
 
-        {/* Secondary Row: BMI display + Random Blood Sugar + Risk Indicators */}
+        {/* Secondary Row: Derived Mathematical BMI display + Random Blood Sugar + Intake Escalation */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
-          {/* Dynamic BMI Indicator Card */}
+          {/* Derived Mathematical BMI Indicator Card */}
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
             <div>
               <span className="text-xs font-bold text-slate-700 block">Computed BMI:</span>
-              <span className="text-xs text-slate-500">Auto-calculated from H/W</span>
+              <span className="text-[11px] text-slate-500">Mathematical derivation (weight / height²) — not a diagnosis</span>
             </div>
             <div className="text-right">
               <span className="text-lg font-black text-slate-900 block">
                 {calculatedBmi || '--'}
               </span>
-              {bmiCategory && (
-                <span className="text-[10px] font-bold text-teal-700 bg-teal-100 px-1.5 py-0.5 rounded">
-                  {bmiCategory}
-                </span>
-              )}
+              <span className="text-[10px] text-slate-400 font-medium">kg/m² (derived)</span>
             </div>
           </div>
 
@@ -464,17 +398,15 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
               required
               value={glucose}
               onChange={(e) => setGlucose(e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg text-sm font-semibold focus:outline-hidden focus:ring-2 ${
-                isHighGlucose ? 'border-amber-400 bg-amber-50/40 text-amber-900 focus:ring-amber-400' : 'border-slate-300 focus:ring-teal-500'
-              }`}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-teal-500"
               placeholder="110"
             />
           </div>
 
-          {/* Clinical Escalation Toggles */}
+          {/* Clinical Escalation Toggles (Workflow assistance only, maternal/child removed) */}
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col justify-center gap-2">
             <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-              Encounter Risk Flags:
+              Encounter Intake Escalation:
             </span>
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
@@ -488,20 +420,8 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
                 />
                 <span className="font-bold text-rose-700 flex items-center gap-0.5">
                   <ShieldAlert className="w-3 h-3" aria-hidden="true" />
-                  Emergency
+                  Mark as Emergency
                 </span>
-              </label>
-
-              <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
-                <input
-                  id={`${formId}-pregnancy-flag`}
-                  data-testid="pregnancy-flag"
-                  type="checkbox"
-                  checked={pregnancyFlag}
-                  onChange={(e) => setPregnancyFlag(e.target.checked)}
-                  className="rounded text-purple-600 focus:ring-purple-500"
-                />
-                <span>High-Risk Pregnancy</span>
               </label>
 
               <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
@@ -513,35 +433,35 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
                   onChange={(e) => setNcdFlag(e.target.checked)}
                   className="rounded text-blue-600 focus:ring-blue-500"
                 />
-                <span>NCD Risk</span>
+                <span className="text-slate-700">Flag for NCD Intake</span>
               </label>
             </div>
           </div>
         </div>
 
-        {/* Nurse Notes / Clinical Observations */}
+        {/* Qualitative Nurse Observations */}
         <div>
-          <label htmlFor={`${formId}-nurse-notes`} className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+          <label htmlFor={`${formId}-notes`} className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
             <FileText className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-            Nurse Triage Intake Notes & Clinical Observations
+            Nurse Clinical Observations & Intake Notes
           </label>
           <textarea
-            id={`${formId}-nurse-notes`}
+            id={`${formId}-notes`}
             data-testid="nurse-notes"
-            rows={2}
+            rows={3}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-teal-500"
-            placeholder="e.g. Patient conscious, oriented to time and place. Reports fever for 3 days and joint discomfort. Ambulatory without support."
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-teal-500"
+            placeholder="Record patient general condition, consciousness, acute symptoms, mobility, or special intake remarks..."
           />
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Controls */}
         <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" aria-hidden="true" />
+          <div className="text-xs text-slate-500 flex items-center gap-1.5">
+            <CheckCircle2 className="w-4 h-4 text-teal-600" aria-hidden="true" />
             <span>
-              Saving will forward this encounter to <strong>Doctor Consultation Queue</strong>.
+              On submission, backend evaluates vitals and transitions visit to Doctor queue.
             </span>
           </div>
 
@@ -551,21 +471,20 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
                 type="button"
                 onClick={onCancel}
                 disabled={loading}
-                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-2xs"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-2xs"
               >
                 Cancel
               </button>
             )}
 
             <button
-              id={`${formId}-save-triage-btn`}
-              data-testid="save-triage-btn"
               type="submit"
               disabled={loading}
-              className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-teal-700 hover:bg-teal-800 disabled:bg-slate-300 rounded-lg transition-colors shadow-2xs"
+              data-testid="save-triage-btn"
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-50 rounded-lg transition-colors shadow-2xs"
             >
               <Save className="w-4 h-4" aria-hidden="true" />
-              {loading ? 'Saving Triage...' : 'Save Triage & Forward to Doctor'}
+              {loading ? 'Saving Vitals...' : 'Save Triage & Send to Doctor'}
             </button>
           </div>
         </div>

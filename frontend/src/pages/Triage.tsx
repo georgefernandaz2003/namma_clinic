@@ -42,6 +42,7 @@ export const Triage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [handoffFailed, setHandoffFailed] = useState<boolean>(false);
 
   // Load all visits for the nurse queue dropdown/roster
   const loadTriageQueue = useCallback(async () => {
@@ -61,6 +62,7 @@ export const Triage: React.FC = () => {
     setError(null);
     setSuccessMessage(null);
     setIsEditing(false);
+    setHandoffFailed(false);
 
     try {
       const v = await getVisit(vId);
@@ -133,10 +135,12 @@ export const Triage: React.FC = () => {
     setSubmitting(true);
     setError(null);
     setSuccessMessage(null);
+    setHandoffFailed(false);
 
+    let savedTriage: TriageVitals;
+
+    // Step 1: Save triage vitals (authoritative clinical record)
     try {
-      let savedTriage: TriageVitals;
-
       if (existingTriage && isEditing) {
         savedTriage = await updateTriageVitals(existingTriage.id, payload);
       } else {
@@ -146,16 +150,23 @@ export const Triage: React.FC = () => {
           patient: patient.id
         });
       }
+      setExistingTriage(savedTriage);
+    } catch (err) {
+      setError(parseApiError(err));
+      setSubmitting(false);
+      return;
+    }
 
-      // Transition visit lifecycle: Forward to Doctor Consultation Queue
+    // Step 2: Transition visit queue state (separate HTTP operation — non-atomic)
+    try {
       const updatedVisit = await updateVisit(activeVisit.id, {
         status: 'TRIAGED',
         current_queue: 'DOCTOR'
       });
 
       setActiveVisit(updatedVisit);
-      setExistingTriage(savedTriage);
       setIsEditing(false);
+      setHandoffFailed(false);
 
       const patientName =
         patient.name ||
@@ -163,13 +174,41 @@ export const Triage: React.FC = () => {
         `Patient #${patient.id}`;
 
       setSuccessMessage(
-        `Triage vitals recorded successfully for ${patientName}. Encounter #${activeVisit.token_number ?? activeVisit.id} has been forwarded to Doctor Consultation Queue.`
+        `Triage vitals recorded successfully for ${patientName}. Encounter #${activeVisit.token_number ?? activeVisit.id} forwarded to Doctor Consultation Queue.`
       );
 
-      // Refresh queue in background
+      loadTriageQueue();
+    } catch (visitErr) {
+      // Partial Failure handling: Vitals are persisted, but queue forward failed
+      setIsEditing(false);
+      setHandoffFailed(true);
+      setError(
+        `Triage vitals saved, but forwarding to Doctor queue failed: ${parseApiError(visitErr)}. The encounter remains in the nurse queue. Click 'Retry Doctor Handoff' to complete queue transition.`
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRetryHandoff = async () => {
+    if (!activeVisit) return;
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const updatedVisit = await updateVisit(activeVisit.id, {
+        status: 'TRIAGED',
+        current_queue: 'DOCTOR'
+      });
+
+      setActiveVisit(updatedVisit);
+      setHandoffFailed(false);
+      setSuccessMessage(
+        `Encounter #${activeVisit.token_number ?? activeVisit.id} successfully forwarded to Doctor Consultation Queue.`
+      );
       loadTriageQueue();
     } catch (err) {
-      setError(parseApiError(err));
+      setError(`Retry failed: ${parseApiError(err)}`);
     } finally {
       setSubmitting(false);
     }
@@ -236,7 +275,7 @@ export const Triage: React.FC = () => {
       {/* Global Error Notice */}
       {error && (
         <ErrorAlert
-          title="Clinical Triage Error"
+          title="Clinical Triage Notice"
           message={error}
           onDismiss={() => setError(null)}
         />
@@ -252,7 +291,7 @@ export const Triage: React.FC = () => {
             <div>
               <p className="text-sm font-bold text-emerald-900">{successMessage}</p>
               <p className="text-xs text-emerald-700 mt-0.5">
-                The encounter is now marked <strong>Ready for Doctor</strong> and visible in the Medical Officer queue.
+                The encounter is marked <strong>Ready for Doctor</strong> and visible in the Medical Officer queue.
               </p>
             </div>
           </div>
@@ -292,6 +331,8 @@ export const Triage: React.FC = () => {
               triage={existingTriage}
               onEditTriage={() => setIsEditing(true)}
               onBackToQueue={() => navigate('/dashboard/nurse')}
+              isForwardedToDoctor={!handoffFailed && (activeVisit?.status === 'TRIAGED' || activeVisit?.current_queue === 'DOCTOR')}
+              onRetryHandoff={handoffFailed ? handleRetryHandoff : undefined}
             />
           ) : (
             <TriageVitalsForm
