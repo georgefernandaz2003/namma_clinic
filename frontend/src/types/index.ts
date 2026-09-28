@@ -306,7 +306,7 @@ export interface Vendor {
 
 export interface MedicineMaster {
   id: number;
-  code: string;
+  code?: string;
   generic_name: string;
   brand_name: string;
   strength: string;
@@ -316,6 +316,7 @@ export interface MedicineMaster {
   minimum_stock: number;
   reorder_level: number;
   total_available_stock?: number;
+  available_stock?: number;
   stock_status?: 'NORMAL' | 'LOW_STOCK' | 'OUT_OF_STOCK';
 }
 
@@ -470,6 +471,7 @@ export interface PharmacyReportSummary {
     batch__medicine__brand_name: string;
     total_consumed: number;
   }>;
+  total_procurement_spend?: number;
 }
 
 export interface ReferralResponse {

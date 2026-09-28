@@ -689,7 +689,7 @@ class DashboardSummaryViewTests(APITestCase):
         """17. Lab completion/re-consultation is counted correctly."""
         today = datetime.date.today()
         p = Patient.objects.create(patient_id='P17', name='Pt 17', registered_at_facility=self.fac_1a)
-        v = Visit.objects.create(visit_id='V17', patient=p, facility=self.fac_1a, opd_date=today, current_queue='DOCTOR', status='LAB_COMPLETED')
+        v = Visit.objects.create(visit_id='V17', patient=p, facility=self.fac_1a, opd_date=today, current_queue='DOCTOR', status='LAB_COMPLETED', assigned_doctor=self.doctor)
         m = LabTestMaster.objects.create(code='L17', name='Test 17')
         LabOrder.objects.create(visit=v, patient=p, facility=self.fac_1a, test_master=m, status='VERIFIED')
 
