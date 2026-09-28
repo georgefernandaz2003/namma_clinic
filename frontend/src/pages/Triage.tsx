@@ -4,7 +4,7 @@ import api from '../services/api';
 import type { Visit } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
-import { Stethoscope, CheckCircle2 } from 'lucide-react';
+import { Stethoscope, CheckCircle2, UserCheck } from 'lucide-react';
 
 export const Triage: React.FC = () => {
   const { activeFacility } = useAuth();
@@ -15,6 +15,10 @@ export const Triage: React.FC = () => {
 
   const [waitingVisits, setWaitingVisits] = useState<Visit[]>([]);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
+
+  // Facility Doctors for nurse routing
+  const [facilityDoctors, setFacilityDoctors] = useState<any[]>([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<number | ''>('');
 
   // Vitals form
   const [sys, setSys] = useState('142');
@@ -56,16 +60,39 @@ export const Triage: React.FC = () => {
     loadQueue();
   }, [activeFacility]);
 
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      if (!activeFacility) return;
+      try {
+        const res = await api.get(`accounts/doctors/?facility=${activeFacility.id}`);
+        const docs = res.data || [];
+        setFacilityDoctors(docs);
+        if (docs.length > 0) {
+          if (selectedVisit?.assigned_doctor) {
+            setSelectedDoctorId(selectedVisit.assigned_doctor);
+          } else {
+            setSelectedDoctorId(docs[0].id);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load facility doctors', e);
+      }
+    };
+    fetchDoctors();
+  }, [activeFacility, selectedVisit]);
+
   const handleSaveTriage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVisit) return;
 
     const patientName = selectedVisit.patient_details?.name || 'Patient';
     const tokenNum = selectedVisit.token_details?.token_number || selectedVisit.token_number || selectedVisit.id;
+    const chosenDoc = facilityDoctors.find((d) => d.id === selectedDoctorId);
+    const chosenDocName = chosenDoc ? chosenDoc.full_name : 'General Doctor Queue';
 
     confirm({
       title: 'Confirm Triage Assessment & Routing',
-      message: `Are you sure you want to save these vitals and route ${patientName} to the Doctor OPD queue?`,
+      message: `Are you sure you want to save these vitals and route ${patientName} to ${chosenDocName}?`,
       confirmText: 'Save Vitals & Route to Doctor',
       cancelText: 'Cancel',
       variant: 'primary',
@@ -73,6 +100,7 @@ export const Triage: React.FC = () => {
       details: [
         { label: 'Patient Name', value: patientName },
         { label: 'Token Number', value: `#${tokenNum}` },
+        { label: 'Assigned Doctor', value: chosenDocName },
         { label: 'Blood Pressure', value: `${sys}/${dia} mmHg` },
         { label: 'Pulse / SpO2', value: `${pulse} bpm • ${spo2}%` },
         { label: 'Temperature', value: `${temp} °F` },
@@ -86,6 +114,7 @@ export const Triage: React.FC = () => {
           await api.post('triage/', {
             visit: selectedVisit.id,
             patient: selectedVisit.patient,
+            assigned_doctor: selectedDoctorId || null,
             blood_pressure_systolic: parseInt(sys) || 120,
             blood_pressure_diastolic: parseInt(dia) || 80,
             pulse_bpm: parseInt(pulse) || 72,
@@ -367,12 +396,58 @@ export const Triage: React.FC = () => {
                 />
               </div>
 
+              {/* Doctor Assignment Selection */}
+              <div className="p-4 bg-teal-50/70 rounded-xl border border-teal-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-800 font-bold flex items-center gap-1.5 text-xs">
+                    <UserCheck className="w-4 h-4 text-teal-600" />
+                    Assign Patient to Consulting Doctor *
+                  </label>
+                  <span className="text-[10px] text-teal-800 font-semibold px-2 py-0.5 bg-teal-100/70 rounded-full border border-teal-300">
+                    {facilityDoctors.length} Doctor{facilityDoctors.length !== 1 ? 's' : ''} on Duty
+                  </span>
+                </div>
+
+                {facilityDoctors.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">No specific doctors registered. Patient will route to General OPD pool.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {facilityDoctors.map((doc, idx) => {
+                      const isSelected = selectedDoctorId === doc.id;
+                      return (
+                        <div
+                          key={doc.id}
+                          onClick={() => setSelectedDoctorId(doc.id)}
+                          className={`p-3 rounded-xl border cursor-pointer transition flex items-center justify-between ${
+                            isSelected
+                              ? 'bg-teal-600 text-white border-teal-600 shadow-sm ring-2 ring-teal-300/60'
+                              : 'bg-white text-slate-800 border-slate-200 hover:border-teal-400 hover:bg-teal-50/40'
+                          }`}
+                        >
+                          <div>
+                            <span className="font-bold text-xs block leading-tight">{doc.full_name}</span>
+                            <span className={`text-[10px] block mt-0.5 ${isSelected ? 'text-teal-100 font-medium' : 'text-slate-500'}`}>
+                              Consulting Room #{idx + 1} • {doc.username}
+                            </span>
+                          </div>
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                            isSelected ? 'bg-white border-white text-teal-600' : 'border-slate-300 bg-white'
+                          }`}>
+                            {isSelected && <div className="w-2 h-2 rounded-full bg-teal-600" />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <button
                 type="submit"
                 disabled={saving}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition"
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
               >
-                {saving ? 'Logging Vitals...' : 'Log Nurse Triage & Forward to Doctor Queue'}
+                {saving ? 'Logging Vitals & Assigning Doctor...' : 'Log Nurse Triage & Route to Selected Doctor'}
               </button>
             </form>
           ) : (

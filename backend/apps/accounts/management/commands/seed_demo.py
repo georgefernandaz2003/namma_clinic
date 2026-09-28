@@ -168,6 +168,7 @@ class Command(BaseCommand):
         u_dh_doc = User.objects.create_user('dh_doctor', 'dh_doctor@nammaclinic.gov.in', 'dhdoc123', full_name='Dr. Vikram Seth (District Senior Cardiologist)', role='DOCTOR', assigned_facility=hosp_a)
         u_sdh_doc = User.objects.create_user('sdh_doctor', 'sdh_doctor@nammaclinic.gov.in', 'sdhdoc123', full_name='Dr. Asha Patil (Sub-District Gynecologist)', role='DOCTOR', assigned_facility=nc_a1)
         u_vh1_doc = User.objects.create_user('vh1_doctor', 'vh1_doctor@nammaclinic.gov.in', 'vh1doc123', full_name='Dr. Rajesh Kumar (Village Hospital 1 MO)', role='DOCTOR', assigned_facility=rc_a4)
+        u_vh1_doc2 = User.objects.create_user('vh1_doctor2', 'vh1_doctor2@nammaclinic.gov.in', 'vh1doc123', full_name='Dr. Ananya Sharma (VH1 Duty Doctor)', role='DOCTOR', assigned_facility=rc_a4)
         u_doc = User.objects.create_user('doctor', 'doctor@nammaclinic.gov.in', 'doctor123', full_name='Dr. Rajesh Kumar (Village Hospital 1 MO)', role='DOCTOR', assigned_facility=rc_a4)
         u_vh2_doc = User.objects.create_user('vh2_doctor', 'vh2_doctor@nammaclinic.gov.in', 'vh2doc123', full_name='Dr. Suresh V. (Village Hospital 2 MO)', role='DOCTOR', assigned_facility=vc_a4_1)
 

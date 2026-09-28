@@ -23,11 +23,19 @@ class TriageVitalsViewSet(viewsets.ModelViewSet):
         visit.status = 'WAITING_FOR_DOCTOR'
         visit.current_queue = 'DOCTOR'
         visit.triage_end_time = timezone.now()
+
+        assigned_doctor_id = self.request.data.get('assigned_doctor')
+        if assigned_doctor_id:
+            visit.assigned_doctor_id = assigned_doctor_id
+
         visit.save()
 
         if hasattr(visit, 'token'):
             visit.token.status = 'TRIAGED'
             visit.token.save()
+
+        assigned_doc_name = visit.assigned_doctor.full_name if visit.assigned_doctor else None
+        doc_note = f" (Assigned to {assigned_doc_name})" if assigned_doc_name else ""
 
         from apps.visits.models import VisitStatusHistory
         VisitStatusHistory.objects.create(
@@ -37,6 +45,6 @@ class TriageVitalsViewSet(viewsets.ModelViewSet):
             queue='DOCTOR',
             performed_by=self.request.user,
             performed_by_role=getattr(self.request.user, 'role', ''),
-            notes=f"Nurse triage logged by {self.request.user.full_name or self.request.user.username}"
+            notes=f"Nurse triage logged by {self.request.user.full_name or self.request.user.username}{doc_note}"
         )
 

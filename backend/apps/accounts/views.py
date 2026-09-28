@@ -120,3 +120,40 @@ class CurrentUserProfileView(APIView):
         serializer = UserProfileSerializer(request.user)
         return Response(serializer.data)
 
+
+class DoctorListView(APIView):
+    """
+    List active doctors, optionally filtered by facility.
+    Accessible to all authenticated staff (nurses, receptionists, admins, doctors)
+    so nurses can route and assign patients to specific doctors during triage.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        facility_id = request.query_params.get('facility')
+        qs = User.objects.filter(role=RoleChoices.DOCTOR, is_active=True).select_related('assigned_facility').order_by('full_name')
+        if facility_id:
+            qs = qs.filter(assigned_facility_id=facility_id)
+
+        has_vh1 = qs.filter(username='vh1_doctor').exists()
+        results = []
+        seen_names = set()
+        for doc in qs:
+            if doc.username == 'doctor' and has_vh1:
+                continue
+            name_key = (doc.full_name or doc.username).strip().lower()
+            if name_key in seen_names:
+                continue
+            seen_names.add(name_key)
+            results.append({
+                'id': doc.id,
+                'username': doc.username,
+                'full_name': doc.full_name or doc.username,
+                'role': doc.role,
+                'phone': doc.phone,
+                'facility_id': doc.assigned_facility_id,
+                'facility_name': doc.assigned_facility.facility_name if doc.assigned_facility else None
+            })
+
+        return Response(results)
+

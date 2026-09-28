@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.accounts.views import UserViewSet, CurrentUserProfileView
+from apps.accounts.views import UserViewSet, CurrentUserProfileView, DoctorListView
 from apps.geography.views import StateViewSet, DistrictViewSet, ZoneViewSet, WardViewSet
 from apps.facilities.views import (
     FacilityViewSet, FacilityRelationshipViewSet, FacilityHierarchyView, NetworkGraphView,
@@ -82,6 +82,7 @@ urlpatterns = [
     path('auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/me/', CurrentUserProfileView.as_view(), name='user_profile'),
+    path('accounts/doctors/', DoctorListView.as_view(), name='facility_doctors'),
 
     # Hierarchy & Network Graph
     path('facilities/hierarchy/', FacilityHierarchyView.as_view(), name='facility_hierarchy'),

@@ -104,6 +104,13 @@ class VisitViewSet(viewsets.ModelViewSet):
             else:
                 queryset = queryset.filter(status=req_status_upper)
 
+        # Doctor filter (can filter by doctor user id or 'me')
+        req_doc = self.request.query_params.get('doctor', None)
+        if req_doc and req_doc != 'ALL':
+            if req_doc == 'me':
+                queryset = queryset.filter(assigned_doctor=self.request.user)
+            else:
+                queryset = queryset.filter(assigned_doctor_id=req_doc)
 
         # Priority ordering: EMERGENCY (1) > HIGH (2) > NORMAL (3), then arrival_time ascending
         priority_case = models.Case(

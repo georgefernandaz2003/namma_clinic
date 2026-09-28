@@ -25,6 +25,7 @@ export const Consultation: React.FC = () => {
   const [loadingLab, setLoadingLab] = useState(false);
   const [patientLabHistory, setPatientLabHistory] = useState<LabOrder[]>([]);
   const [showPreviousLabHistory, setShowPreviousLabHistory] = useState(false);
+  const [doctorFilter, setDoctorFilter] = useState<'ALL' | 'ME'>('ALL');
 
   // Form states
   const [chiefComplaint, setChiefComplaint] = useState('');
@@ -303,43 +304,85 @@ export const Consultation: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Doctor Queue */}
         <div className="glass-panel p-4 rounded-2xl border border-slate-200 bg-white space-y-3 shadow-xs">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-teal-700 flex items-center justify-between pb-2 border-b border-slate-100">
-            <span>Patients Ready for Doctor</span>
-            <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono">
-              {triagedVisits.length}
-            </span>
-          </h2>
-
-          {triagedVisits.length === 0 ? (
-            <div className="p-6 text-center text-xs text-slate-400">No patients waiting in doctor queue.</div>
-          ) : (
-            <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {triagedVisits.map((v) => (
-                <div
-                  key={v.id}
-                  onClick={() => selectVisit(v)}
-                  className={`p-3 rounded-xl border transition cursor-pointer ${
-                    selectedVisit?.id === v.id
-                      ? 'bg-blue-50 border-blue-500 text-slate-900 shadow-xs'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-xs">{v.patient_details?.name}</span>
-                    <span className="text-[10px] font-mono text-teal-700 font-bold">Token #{v.token_details?.token_number || v.id}</span>
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-[10px] text-slate-500 truncate max-w-[140px]">{v.patient_details?.age} yrs • {v.chief_complaint}</span>
-                    {v.status === 'LAB_COMPLETED' ? (
-                      <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
-                        Lab Ready
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-teal-700">
+              Patients for Doctor
+            </h2>
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10px]">
+              <button
+                type="button"
+                onClick={() => setDoctorFilter('ALL')}
+                className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
+                  doctorFilter === 'ALL'
+                    ? 'bg-white text-teal-800 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                All ({triagedVisits.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDoctorFilter('ME')}
+                className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
+                  doctorFilter === 'ME'
+                    ? 'bg-teal-600 text-white shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                My Queue ({triagedVisits.filter(v => v.assigned_doctor === user?.id || (v.assigned_doctor_name && user?.full_name && v.assigned_doctor_name.toLowerCase().includes(user.full_name.toLowerCase()))).length})
+              </button>
             </div>
-          )}
+          </div>
+
+          {(() => {
+            const displayedVisits = doctorFilter === 'ME'
+              ? triagedVisits.filter(v => v.assigned_doctor === user?.id || (v.assigned_doctor_name && user?.full_name && v.assigned_doctor_name.toLowerCase().includes(user.full_name.toLowerCase())))
+              : triagedVisits;
+
+            if (displayedVisits.length === 0) {
+              return (
+                <div className="p-6 text-center text-xs text-slate-400">
+                  {doctorFilter === 'ME'
+                    ? 'No patients currently assigned to you in the queue.'
+                    : 'No patients waiting in doctor queue.'}
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                {displayedVisits.map((v) => (
+                  <div
+                    key={v.id}
+                    onClick={() => selectVisit(v)}
+                    className={`p-3 rounded-xl border transition cursor-pointer ${
+                      selectedVisit?.id === v.id
+                        ? 'bg-blue-50 border-blue-500 text-slate-900 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-xs">{v.patient_details?.name}</span>
+                      <span className="text-[10px] font-mono text-teal-700 font-bold">Token #{v.token_details?.token_number || v.id}</span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-[10px] text-slate-500 truncate max-w-[140px]">{v.patient_details?.age} yrs • {v.chief_complaint}</span>
+                      {v.status === 'LAB_COMPLETED' ? (
+                        <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
+                          Lab Ready
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-center justify-between">
+                      <span className="text-[9px] font-semibold text-teal-800 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200/60 truncate max-w-[200px]">
+                        🩺 {v.assigned_doctor_name || 'General OPD Pool'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* EMR Console & Form */}
@@ -354,6 +397,11 @@ export const Consultation: React.FC = () => {
                     <p className="text-xs text-slate-500">
                       ID: {selectedVisit.patient_details?.patient_id} • Age: {selectedVisit.patient_details?.age} • Gender: {selectedVisit.patient_details?.gender}
                     </p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 flex items-center gap-1">
+                        🩺 Assigned Doctor: {selectedVisit.assigned_doctor_name || 'General Doctor Queue'}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
