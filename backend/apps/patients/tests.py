@@ -337,3 +337,236 @@ class PatientAuthorizationAndIntakeTests(TestCase):
         self.assertEqual(res_search_name.status_code, status.HTTP_200_OK)
         results_name = res_search_name.data['results'] if 'results' in res_search_name.data else res_search_name.data
         self.assertTrue(any(p['name'] == "Aarav Sharma" for p in results_name))
+
+
+import concurrent.futures
+from django.test import TransactionTestCase
+from django.db import connection
+
+
+class PatientConcurrencyAndDuplicateRegressionTests(TransactionTestCase):
+    """
+    Real PostgreSQL Concurrency and Duplicate Boundary Regression Suite (Phase 27A-R1).
+    Runs with TransactionTestCase to permit multi-threaded concurrent database connections.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        seed_roles_and_permissions()
+
+        # Geography & Facilities
+        self.state = State.objects.create(name="Karnataka", code="KA")
+        self.district = District.objects.create(name="Bengaluru Urban", code="KA-BLR", state=self.state)
+        self.zone = Zone.objects.create(name="East Zone", district=self.district)
+        self.ward_1 = Ward.objects.create(name="Ward 201", ward_number=201, zone=self.zone)
+        self.ward_2 = Ward.objects.create(name="Ward 202", ward_number=202, zone=self.zone)
+
+        self.facility_1 = Facility.objects.create(
+            facility_code="PHC-CONC-01",
+            facility_name="Concurrency PHC 1",
+            facility_type="PRIMARY_HEALTH_CENTRE",
+            district=self.district,
+            state=self.state,
+            ward=self.ward_1,
+            status="ACTIVE"
+        )
+        self.facility_2 = Facility.objects.create(
+            facility_code="PHC-CONC-02",
+            facility_name="Concurrency PHC 2",
+            facility_type="PRIMARY_HEALTH_CENTRE",
+            district=self.district,
+            state=self.state,
+            ward=self.ward_2,
+            status="ACTIVE"
+        )
+
+        # Compounder assigned to Facility 1
+        role_compounder = RoleMaster.objects.get(code="COMPOUNDER")
+        p_cmp1 = Person.objects.create(first_name="Comp", last_name="One", gender="MALE", date_of_birth="1991-01-01")
+        staff_cmp1 = StaffProfile.objects.create(person=p_cmp1, employee_id="EMP-CMP-C1", designation="Compounder", status="ACTIVE")
+        StaffRoleAssignment.objects.create(staff=staff_cmp1, role=role_compounder, effective_from="2026-01-01", is_active=True)
+        StaffFacilityAssignment.objects.create(staff=staff_cmp1, facility=self.facility_1, is_primary=True, is_active=True)
+        self.user_cmp1 = User.objects.create_user(
+            username="test_cmp_c1", password="password123",
+            role="COMPOUNDER", assigned_facility=self.facility_1, staff_profile=staff_cmp1
+        )
+
+        # Compounder assigned to Facility 2
+        p_cmp2 = Person.objects.create(first_name="Comp", last_name="Two", gender="FEMALE", date_of_birth="1992-02-02")
+        staff_cmp2 = StaffProfile.objects.create(person=p_cmp2, employee_id="EMP-CMP-C2", designation="Compounder", status="ACTIVE")
+        StaffRoleAssignment.objects.create(staff=staff_cmp2, role=role_compounder, effective_from="2026-01-01", is_active=True)
+        StaffFacilityAssignment.objects.create(staff=staff_cmp2, facility=self.facility_2, is_primary=True, is_active=True)
+        self.user_cmp2 = User.objects.create_user(
+            username="test_cmp_c2", password="password123",
+            role="COMPOUNDER", assigned_facility=self.facility_2, staff_profile=staff_cmp2
+        )
+
+    def test_same_facility_same_name_same_mobile_duplicate_returns_409(self):
+        self.client.force_authenticate(user=self.user_cmp1)
+        payload = {
+            "name": "Kavitha Ramesh",
+            "age": 29,
+            "gender": "FEMALE",
+            "mobile": "9812300001",
+            "address": "100 MG Road",
+            "registered_at_facility": self.facility_1.id
+        }
+        res1 = self.client.post('/api/v1/patients/', payload, format='json')
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+
+        # Second attempt with same normalized identity at same facility
+        res2 = self.client.post('/api/v1/patients/', payload, format='json')
+        self.assertEqual(res2.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn("already registered", res2.data['detail'])
+
+    def test_same_facility_different_mobile_allowed(self):
+        self.client.force_authenticate(user=self.user_cmp1)
+        payload1 = {
+            "name": "Same Name Person",
+            "age": 40,
+            "gender": "MALE",
+            "mobile": "9812300002",
+            "address": "Addr 1",
+            "registered_at_facility": self.facility_1.id
+        }
+        res1 = self.client.post('/api/v1/patients/', payload1, format='json')
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+
+        payload2 = {
+            "name": "Same Name Person",
+            "age": 42,
+            "gender": "MALE",
+            "mobile": "9812300003",  # Different mobile
+            "address": "Addr 2",
+            "registered_at_facility": self.facility_1.id
+        }
+        res2 = self.client.post('/api/v1/patients/', payload2, format='json')
+        self.assertEqual(res2.status_code, status.HTTP_201_CREATED)
+
+    def test_same_facility_different_name_allowed(self):
+        self.client.force_authenticate(user=self.user_cmp1)
+        payload1 = {
+            "name": "First Family Member",
+            "age": 30,
+            "gender": "FEMALE",
+            "mobile": "9812300004",  # Shared household mobile
+            "address": "Addr 1",
+            "registered_at_facility": self.facility_1.id
+        }
+        res1 = self.client.post('/api/v1/patients/', payload1, format='json')
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+
+        payload2 = {
+            "name": "Second Family Member",
+            "age": 10,
+            "gender": "MALE",
+            "mobile": "9812300004",  # Same mobile, different name
+            "address": "Addr 1",
+            "registered_at_facility": self.facility_1.id
+        }
+        res2 = self.client.post('/api/v1/patients/', payload2, format='json')
+        self.assertEqual(res2.status_code, status.HTTP_201_CREATED)
+
+    def test_different_facility_same_identity_allowed(self):
+        # Patient registered at Facility 1
+        self.client.force_authenticate(user=self.user_cmp1)
+        payload = {
+            "name": "Statewide Resident",
+            "age": 35,
+            "gender": "FEMALE",
+            "mobile": "9812300005",
+            "address": "Common Street",
+            "registered_at_facility": self.facility_1.id
+        }
+        res1 = self.client.post('/api/v1/patients/', payload, format='json')
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+
+        # Patient registered at Facility 2 with same name and mobile
+        self.client.force_authenticate(user=self.user_cmp2)
+        payload2 = dict(payload)
+        payload2["registered_at_facility"] = self.facility_2.id
+        res2 = self.client.post('/api/v1/patients/', payload2, format='json')
+        self.assertEqual(res2.status_code, status.HTTP_201_CREATED)
+
+    def test_name_and_mobile_normalization_variants_rejected_as_conflict(self):
+        self.client.force_authenticate(user=self.user_cmp1)
+        base_payload = {
+            "name": "Venkatesh Prasad",
+            "age": 48,
+            "gender": "MALE",
+            "mobile": "9812300006",
+            "address": "Koramangala 4th Block",
+            "registered_at_facility": self.facility_1.id
+        }
+        res1 = self.client.post('/api/v1/patients/', base_payload, format='json')
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+
+        # Variant with whitespace and case differences in name
+        variant_name_payload = {
+            "name": "   venkatesh     PRASAD  ",
+            "age": 48,
+            "gender": "MALE",
+            "mobile": "9812300006",
+            "address": "Koramangala 4th Block",
+            "registered_at_facility": self.facility_1.id
+        }
+        res2 = self.client.post('/api/v1/patients/', variant_name_payload, format='json')
+        self.assertEqual(res2.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn("already registered", res2.data['detail'])
+
+        # Variant with country code +91 and dashes in mobile
+        variant_mobile_payload = {
+            "name": "Venkatesh Prasad",
+            "age": 48,
+            "gender": "MALE",
+            "mobile": "+91-98123-00006",
+            "address": "Koramangala 4th Block",
+            "registered_at_facility": self.facility_1.id
+        }
+        res3 = self.client.post('/api/v1/patients/', variant_mobile_payload, format='json')
+        self.assertEqual(res3.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn("already registered", res3.data['detail'])
+
+    def test_concurrent_duplicate_registration_real_postgresql(self):
+        """
+        Spawns multiple simultaneous threads attempting to register the exact same patient.
+        PostgreSQL advisory xact lock and UniqueConstraint guarantee exactly 1 succeeds and
+        all other concurrent attempts receive HTTP 409 Conflict.
+        """
+        target_name = "Concurrent Race Patient"
+        target_mobile = "9812300099"
+        num_workers = 5
+
+        def submit_registration(worker_id):
+            connection.close()
+            worker_client = APIClient()
+            worker_client.force_authenticate(user=self.user_cmp1)
+            payload = {
+                "name": f"  {target_name.upper()}  ",
+                "age": 32,
+                "gender": "OTHER",
+                "mobile": f"+91-{target_mobile[:5]}-{target_mobile[5:]}",
+                "address": f"Worker {worker_id} concurrency road",
+                "registered_at_facility": self.facility_1.id
+            }
+            res = worker_client.post('/api/v1/patients/', payload, format='json')
+            return worker_id, res.status_code, res.data
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = [executor.submit(submit_registration, i) for i in range(num_workers)]
+            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+        status_codes = [r[1] for r in results]
+        count_201 = status_codes.count(status.HTTP_201_CREATED)
+        count_409 = status_codes.count(status.HTTP_409_CONFLICT)
+
+        self.assertEqual(count_201, 1, f"Exactly one request must succeed with 201 Created. Got: {status_codes}")
+        self.assertEqual(count_409, num_workers - 1, f"All other {num_workers - 1} requests must receive 409 Conflict. Got: {status_codes}")
+
+        # Invariant verification: Exactly ONE patient exists matching normalized identity
+        matching_patients = Patient.objects.filter(
+            registered_at_facility=self.facility_1,
+            normalized_name="concurrent race patient",
+            normalized_mobile="9812300099"
+        )
+        self.assertEqual(matching_patients.count(), 1, "Database must contain exactly 1 patient matching normalized identity")

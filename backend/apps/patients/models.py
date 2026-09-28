@@ -1,5 +1,23 @@
 from django.db import models
 
+def normalize_patient_name(name):
+    if not name:
+        return ""
+    return " ".join(name.lower().strip().split())
+
+def normalize_patient_mobile(mobile):
+    if not mobile:
+        return ""
+    m = mobile.strip().replace(" ", "").replace("-", "")
+    if m.startswith("+91"):
+        m = m[3:]
+    elif m.startswith("91") and len(m) == 12:
+        m = m[2:]
+    elif m.startswith("0") and len(m) == 11:
+        m = m[1:]
+    return m
+
+
 class Patient(models.Model):
     patient_id = models.CharField(max_length=50, unique=True)
     person = models.ForeignKey('accounts.Person', on_delete=models.RESTRICT, null=True, blank=True, related_name='registered_patients')
@@ -16,6 +34,8 @@ class Patient(models.Model):
     vulnerability_information = models.CharField(max_length=100, default='Slum Resident / Low Income Group')
     registration_date = models.DateField(auto_now_add=True)
     registered_at_facility = models.ForeignKey('facilities.Facility', on_delete=models.SET_NULL, null=True, blank=True, related_name='registered_patients')
+    normalized_name = models.CharField(max_length=150, blank=True, default='', db_index=True)
+    normalized_mobile = models.CharField(max_length=20, blank=True, default='', db_index=True)
 
     def clean(self):
         super().clean()
@@ -40,8 +60,19 @@ class Patient(models.Model):
     def save(self, *args, **kwargs):
         if self.registered_at_facility and not self.district:
             self.district = getattr(self.registered_at_facility, 'district', None)
+        self.normalized_name = normalize_patient_name(self.name)
+        self.normalized_mobile = normalize_patient_mobile(self.mobile)
         self.clean()
         super().save(*args, **kwargs)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['registered_at_facility', 'normalized_name', 'normalized_mobile'],
+                condition=models.Q(registered_at_facility__isnull=False),
+                name='unique_patient_facility_normalized_identity'
+            )
+        ]
 
     def __str__(self):
         return f"{self.name} [{self.patient_id}] - {self.mobile}"

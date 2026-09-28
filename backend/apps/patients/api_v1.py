@@ -8,10 +8,11 @@ Authoritative RBAC:
 """
 import uuid
 import datetime
-from django.db import transaction
+import hashlib
+from django.db import transaction, connection, IntegrityError
 from rest_framework import serializers, viewsets, filters, permissions, exceptions, status
 from rest_framework.response import Response
-from apps.patients.models import Patient
+from apps.patients.models import Patient, normalize_patient_name, normalize_patient_mobile
 from apps.accounts.models import Person
 from apps.accounts.permissions import has_role_permission
 from apps.common.permissions import (
@@ -136,22 +137,44 @@ class PatientViewSet(viewsets.ModelViewSet):
         # 3. Duplicate Patient Detection: same facility + normalized mobile + normalized name
         raw_name = request.data.get('name', '')
         raw_mobile = request.data.get('mobile', '')
-        normalized_name = " ".join(raw_name.strip().split()) if isinstance(raw_name, str) else ""
-        normalized_mobile = raw_mobile.strip().replace(" ", "").replace("-", "") if isinstance(raw_mobile, str) else ""
+        normalized_name = normalize_patient_name(raw_name)
+        normalized_mobile = normalize_patient_mobile(raw_mobile)
 
         if normalized_name and normalized_mobile and fac:
-            with transaction.atomic():
-                existing = Patient.objects.filter(
-                    registered_at_facility=fac,
-                    name__iexact=normalized_name,
-                    mobile=normalized_mobile
-                ).first()
-                if existing:
-                    raise DuplicatePatientError(
-                        f"A patient with matching demographic records (name and mobile) is already registered at this facility with ID: {existing.patient_id}."
-                    )
+            # Deterministic 60-bit signed key for PostgreSQL advisory xact lock
+            lock_key = int(hashlib.sha256(f"{fac.id}:{normalized_name}:{normalized_mobile}".encode('utf-8')).hexdigest()[:15], 16)
+            try:
+                with transaction.atomic():
+                    if connection.vendor == 'postgresql':
+                        with connection.cursor() as cursor:
+                            cursor.execute("SELECT pg_advisory_xact_lock(%s);", [lock_key])
 
-        return super().create(request, *args, **kwargs)
+                    existing = Patient.objects.filter(
+                        registered_at_facility=fac,
+                        normalized_name=normalized_name,
+                        normalized_mobile=normalized_mobile
+                    ).first()
+                    if existing:
+                        raise DuplicatePatientError(
+                            f"A patient with matching demographic records (name and mobile) is already registered at this facility with ID: {existing.patient_id}."
+                        )
+
+                    return super().create(request, *args, **kwargs)
+            except IntegrityError as exc:
+                err_msg = str(exc).lower()
+                if 'unique_patient_facility_normalized_identity' in err_msg or 'duplicate key' in err_msg:
+                    existing = Patient.objects.filter(
+                        registered_at_facility=fac,
+                        normalized_name=normalized_name,
+                        normalized_mobile=normalized_mobile
+                    ).first()
+                    pat_id_str = f" with ID: {existing.patient_id}" if existing else ""
+                    raise DuplicatePatientError(
+                        f"A patient with matching demographic records (name and mobile) is already registered at this facility{pat_id_str}."
+                    )
+                raise
+        else:
+            return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         staff = get_request_staff(self.request, required=False)
@@ -163,23 +186,6 @@ class PatientViewSet(viewsets.ModelViewSet):
 
         if fac:
             check_facility_permission(fac, staff, self.request.user)
-
-        # Concurrency-safe duplicate check within transaction
-        name = serializer.validated_data.get('name', '')
-        mobile = serializer.validated_data.get('mobile', '')
-        normalized_name = " ".join(name.strip().split())
-        normalized_mobile = mobile.strip().replace(" ", "").replace("-", "")
-
-        if normalized_name and normalized_mobile and fac:
-            existing = Patient.objects.filter(
-                registered_at_facility=fac,
-                name__iexact=normalized_name,
-                mobile=normalized_mobile
-            ).first()
-            if existing:
-                raise DuplicatePatientError(
-                    f"A patient with matching demographic records (name and mobile) is already registered at this facility with ID: {existing.patient_id}."
-                )
 
         pat_id = f"PAT-{datetime.date.today().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 
