@@ -26,7 +26,7 @@ export const Consultation: React.FC = () => {
   const [loadingLab, setLoadingLab] = useState(false);
   const [patientLabHistory, setPatientLabHistory] = useState<LabOrder[]>([]);
   const [showPreviousLabHistory, setShowPreviousLabHistory] = useState(false);
-  const [doctorFilter, setDoctorFilter] = useState<'ALL' | 'ME'>('ALL');
+  const [doctorFilter, setDoctorFilter] = useState<'ALL' | 'ME'>('ME');
 
   // Form states
   const [chiefComplaint, setChiefComplaint] = useState('');
@@ -80,18 +80,30 @@ export const Consultation: React.FC = () => {
       const activeDoctorList = rawList.filter((v) => v.current_queue === 'DOCTOR' && v.status !== 'COMPLETED');
       setTriagedVisits(activeDoctorList);
 
+      const myVisits = activeDoctorList.filter(
+        (v) =>
+          v.assigned_doctor === user?.id ||
+          (v.assigned_doctor_name && user?.full_name && v.assigned_doctor_name.toLowerCase().includes(user.full_name.toLowerCase()))
+      );
+
       if (targetVisitId) {
         const found = activeDoctorList.find((v) => v.id === targetVisitId);
-        if (found) selectVisit(found);
-        else if (activeDoctorList.length > 0) selectVisit(activeDoctorList[0]);
-        else {
+        if (found) {
+          selectVisit(found);
+          const isMine = found.assigned_doctor === user?.id || (found.assigned_doctor_name && user?.full_name && found.assigned_doctor_name.toLowerCase().includes(user.full_name.toLowerCase()));
+          if (!isMine) {
+            setDoctorFilter('ALL');
+          }
+        } else if (myVisits.length > 0) {
+          selectVisit(myVisits[0]);
+        } else {
           setSelectedVisit(null);
           setVitals(null);
           setLabOrders([]);
           setPatientLabHistory([]);
         }
-      } else if (activeDoctorList.length > 0) {
-        selectVisit(activeDoctorList[0]);
+      } else if (myVisits.length > 0) {
+        selectVisit(myVisits[0]);
       } else {
         setSelectedVisit(null);
         setVitals(null);
@@ -200,6 +212,23 @@ export const Consultation: React.FC = () => {
       setSelectedTestIds(selectedTestIds.filter((id) => id !== testId));
     } else {
       setSelectedTestIds([...selectedTestIds, testId]);
+    }
+  };
+
+  const handleReassignToMe = async () => {
+    if (!selectedVisit || !user?.id) return;
+    try {
+      await api.patch(`visits/${selectedVisit.id}/`, {
+        assigned_doctor: user.id
+      });
+      setSelectedVisit({
+        ...selectedVisit,
+        assigned_doctor: user.id,
+        assigned_doctor_name: user.full_name || user.username
+      });
+      loadQueue();
+    } catch (e) {
+      alert('Failed to reassign patient to current doctor.');
     }
   };
 
@@ -330,25 +359,25 @@ export const Consultation: React.FC = () => {
             <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10px]">
               <button
                 type="button"
-                onClick={() => setDoctorFilter('ALL')}
-                className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
-                  doctorFilter === 'ALL'
-                    ? 'bg-white text-teal-800 shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                All ({triagedVisits.length})
-              </button>
-              <button
-                type="button"
                 onClick={() => setDoctorFilter('ME')}
                 className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
                   doctorFilter === 'ME'
                     ? 'bg-teal-600 text-white shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 My Queue ({triagedVisits.filter(v => v.assigned_doctor === user?.id || (v.assigned_doctor_name && user?.full_name && v.assigned_doctor_name.toLowerCase().includes(user.full_name.toLowerCase()))).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDoctorFilter('ALL')}
+                className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
+                  doctorFilter === 'ALL'
+                    ? 'bg-teal-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                All Facility ({triagedVisits.length})
               </button>
             </div>
           </div>
@@ -421,6 +450,24 @@ export const Consultation: React.FC = () => {
                         🩺 Assigned Doctor: {selectedVisit.assigned_doctor_name || 'General Doctor Queue'}
                       </span>
                     </div>
+
+                    {selectedVisit.assigned_doctor && selectedVisit.assigned_doctor !== user?.id && (
+                      <div className="mt-2.5 p-2.5 bg-amber-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span className="text-amber-900 font-semibold">
+                            Assigned to <b>{selectedVisit.assigned_doctor_name}</b>. You are logged in as <b>Dr. {user?.full_name || user?.username}</b>.
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleReassignToMe}
+                          className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow-2xs transition whitespace-nowrap self-start sm:self-auto cursor-pointer"
+                        >
+                          Re-assign Patient to Me
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -844,8 +891,29 @@ export const Consultation: React.FC = () => {
               </button>
             </form>
           ) : (
-            <div className="p-12 text-center text-xs text-slate-400">
-              Select a triaged patient from the queue to start doctor consultation.
+            <div className="p-12 text-center text-xs text-slate-400 space-y-3">
+              <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-200">
+                <FileText className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-800">
+                {doctorFilter === 'ME'
+                  ? `No Patients in Dr. ${user?.full_name || user?.username}'s Queue`
+                  : 'No Patient Selected'}
+              </h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                {doctorFilter === 'ME'
+                  ? 'There are currently no patients assigned to your personal consultation desk. You can switch to All Facility Queue to review or take over unassigned patients.'
+                  : 'Select a triaged patient from the queue to start doctor consultation.'}
+              </p>
+              {doctorFilter === 'ME' && triagedVisits.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDoctorFilter('ALL')}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                >
+                  View All Facility Queue ({triagedVisits.length})
+                </button>
+              )}
             </div>
           )}
         </div>

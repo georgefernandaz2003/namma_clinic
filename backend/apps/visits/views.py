@@ -230,12 +230,29 @@ class VisitViewSet(viewsets.ModelViewSet):
             )
 
             # Lock eligible waiting patient
-            next_visit = Visit.objects.select_for_update().filter(
-                facility_id=facility_id,
-                opd_date=today,
-                current_queue=target_queue,
-                status__in=[req_status, 'WAITING', 'TRIAGED', 'LAB_COMPLETED']
-            ).annotate(priority_weight=priority_case).order_by('priority_weight', 'arrival_time').first()
+            filter_kwargs = {
+                'facility_id': facility_id,
+                'opd_date': today,
+                'current_queue': target_queue,
+                'status__in': [req_status, 'WAITING', 'TRIAGED', 'LAB_COMPLETED']
+            }
+            if target_queue == 'DOCTOR' and request.user.role == 'DOCTOR':
+                # First try to call patient assigned specifically to this doctor
+                next_visit = Visit.objects.select_for_update().filter(
+                    **filter_kwargs,
+                    assigned_doctor=request.user
+                ).annotate(priority_weight=priority_case).order_by('priority_weight', 'arrival_time').first()
+
+                # If no patient assigned to this doctor, check for unassigned patient in pool
+                if not next_visit:
+                    next_visit = Visit.objects.select_for_update().filter(
+                        **filter_kwargs,
+                        assigned_doctor__isnull=True
+                    ).annotate(priority_weight=priority_case).order_by('priority_weight', 'arrival_time').first()
+            else:
+                next_visit = Visit.objects.select_for_update().filter(
+                    **filter_kwargs
+                ).annotate(priority_weight=priority_case).order_by('priority_weight', 'arrival_time').first()
 
             if not next_visit:
                 return Response({'message': f'No waiting patients in {target_queue} queue for today.'}, status=status.HTTP_200_OK)

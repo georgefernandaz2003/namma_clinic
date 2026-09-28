@@ -3,6 +3,7 @@ import { Stethoscope, Clock, TestTube, CalendarCheck, User, ShieldAlert, ArrowRi
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { useConfirm } from '../../context/ConfirmContext';
+import { useAuth } from '../../context/AuthContext';
 
 interface DoctorDashboardProps {
   summary: any;
@@ -13,11 +14,20 @@ interface DoctorDashboardProps {
 export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date, isToday }) => {
   const navigate = useNavigate();
   const { confirm } = useConfirm();
+  const { user } = useAuth();
+  const [queueTab, setQueueTab] = useState<'ME' | 'ALL'>('ME');
   const kpis = summary?.kpis || {};
   const [opdQueue, setOpdQueue] = useState<any[]>([]);
   const [activeVisit, setActiveVisit] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const actionRequired = summary?.action_required || [];
+
+  const isMyPatient = (v: any) =>
+    v.assigned_doctor === user?.id ||
+    (v.assigned_doctor_name && user?.full_name && v.assigned_doctor_name.toLowerCase().includes(user.full_name.toLowerCase()));
+
+  const myVisits = opdQueue.filter(isMyPatient);
+  const displayedQueue = queueTab === 'ME' ? myVisits : opdQueue;
 
   const fetchDoctorQueue = async () => {
     setLoading(true);
@@ -28,8 +38,9 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
       setOpdQueue(list);
       
       // Check if there is an active called patient in consultation for current doctor
-      const active = list.find((v: any) => v.status === 'IN_CONSULTATION');
+      const active = list.find((v: any) => v.status === 'IN_CONSULTATION' && isMyPatient(v));
       if (active) setActiveVisit(active);
+      else setActiveVisit(null);
     } catch (e) {
       console.error('Failed to load doctor OPD queue', e);
     } finally {
@@ -39,14 +50,15 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
 
   useEffect(() => {
     fetchDoctorQueue();
-  }, [date, summary?.active_facility_id]);
+  }, [date, summary?.active_facility_id, user?.id]);
 
   const handleCallPatient = async (_visitId?: number) => {
     if (!isToday) {
       alert('Queue status modifications are blocked on historical OPD dates.');
       return;
     }
-    const nextPatient = opdQueue.find((v: any) => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'WAITING');
+    const targetPool = queueTab === 'ME' ? myVisits : opdQueue;
+    const nextPatient = targetPool.find((v: any) => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'WAITING' || v.status === 'LAB_COMPLETED');
     await confirm({
       title: 'Confirm Call Next Patient',
       message: 'Are you sure you want to call the next waiting patient into the consultation room?',
@@ -118,7 +130,9 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
             <div>
               <p className="text-xs font-bold text-slate-500 uppercase">Waiting for Doctor</p>
               <h3 className="text-2xl font-black text-amber-900 mt-1">{kpis.doctor_waiting || 0}</h3>
-              <p className="text-[10px] text-amber-700 font-medium mt-1">Triaged & Ready</p>
+              <p className="text-[10px] text-amber-700 font-medium mt-1">
+                {myVisits.length} For You • {opdQueue.length} Facility Waiting
+              </p>
             </div>
             <div className="p-3 bg-amber-50 rounded-xl text-amber-700 border border-amber-100">
               <Clock className="w-5 h-5" />
@@ -132,8 +146,10 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
               <p className="text-xs font-bold text-slate-500 uppercase">
                 {isToday ? 'My OPD Today' : `My OPD — ${date}`}
               </p>
-              <h3 className="text-2xl font-black text-slate-900 mt-1">{summary?.todays_opd || 0}</h3>
-              <p className="text-[10px] text-blue-700 font-medium mt-1">Total Assigned Visits</p>
+              <h3 className="text-2xl font-black text-slate-900 mt-1">{myVisits.length}</h3>
+              <p className="text-[10px] text-blue-700 font-medium mt-1">
+                {myVisits.length} Assigned to You ({summary?.todays_opd || opdQueue.length} Facility OPD)
+              </p>
             </div>
             <div className="p-3 bg-blue-50 rounded-xl text-blue-700 border border-blue-100">
               <Stethoscope className="w-5 h-5" />
@@ -234,19 +250,50 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* OPD Queue Table */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
             <div>
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-blue-600" />
-                My OPD Queue ({date})
-              </h2>
-              <p className="text-xs text-slate-500">Waiting triaged patients scheduled for doctor evaluation</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                  OPD Queue ({date})
+                </h2>
+                {/* Doctor Filter Toggle */}
+                <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setQueueTab('ME')}
+                    className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer ${
+                      queueTab === 'ME'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    My Assigned Queue ({myVisits.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQueueTab('ALL')}
+                    className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer ${
+                      queueTab === 'ALL'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    All Facility Pool ({opdQueue.length})
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {queueTab === 'ME'
+                  ? `Showing waiting triaged patients specifically assigned to Dr. ${user?.full_name || user?.username || 'You'}`
+                  : 'Showing all waiting triaged patients across all doctors in this facility'}
+              </p>
             </div>
 
             {isToday && (
               <button
                 onClick={() => handleCallPatient(0)}
-                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
               >
                 <Activity className="w-3.5 h-3.5" />
                 <span>Call Next Patient</span>
@@ -261,6 +308,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
                   <th className="py-3 px-4">Priority</th>
                   <th className="py-3 px-4 text-center">Token</th>
                   <th className="py-3 px-4">Patient</th>
+                  <th className="py-3 px-4">Assigned Doctor</th>
                   <th className="py-3 px-4 text-center">Age</th>
                   <th className="py-3 px-4 text-center">Waiting Time</th>
                   <th className="py-3 px-4">Visit Type</th>
@@ -269,8 +317,8 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs font-medium">
-                {opdQueue.length > 0 ? (
-                  opdQueue.map((v: any) => (
+                {displayedQueue.length > 0 ? (
+                  displayedQueue.map((v: any) => (
                     <tr key={v.id} className="hover:bg-slate-50 transition">
                       <td className="py-3 px-4">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
@@ -285,6 +333,16 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
                         #{v.token_details?.token_number || v.id}
                       </td>
                       <td className="py-3 px-4 font-bold text-slate-900">{v.patient_details?.name || 'Patient'}</td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                          isMyPatient(v)
+                            ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                            : 'bg-slate-100 text-slate-600 border border-slate-200'
+                        }`}>
+                          🩺 {v.assigned_doctor_name || 'General Pool'}
+                          {isMyPatient(v) && <span className="text-[9px] text-blue-600 font-black">(You)</span>}
+                        </span>
+                      </td>
                       <td className="py-3 px-4 text-center text-slate-600">{v.patient_details?.age || 45}</td>
                       <td className="py-3 px-4 text-center font-mono text-slate-500">{v.waiting_time_minutes || 12} mins</td>
                       <td className="py-3 px-4 text-slate-600">{v.visit_type}</td>
@@ -316,8 +374,23 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} className="py-8 text-center text-xs text-slate-400 font-medium">
-                      No waiting patients in doctor queue for selected date.
+                    <td colSpan={9} className="py-8 text-center text-xs text-slate-400 font-medium">
+                      {queueTab === 'ME' ? (
+                        <div className="space-y-2 py-2">
+                          <p>No waiting patients assigned to Dr. {user?.full_name || user?.username} for this date.</p>
+                          {opdQueue.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setQueueTab('ALL')}
+                              className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 transition cursor-pointer"
+                            >
+                              View all {opdQueue.length} facility waiting patients
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        'No waiting patients in facility doctor queue for selected date.'
+                      )}
                     </td>
                   </tr>
                 )}
