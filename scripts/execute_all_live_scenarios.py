@@ -182,9 +182,10 @@ def scenario_3_facility_authorization():
     print("="*80)
     
     client = APIClient()
+    code = f"NC-AUTH-{int(time.time()) % 10000}"
     payload = {
-        'facility_code': 'NC-AUTH-TEST',
-        'facility_name': 'Auth Test Clinic',
+        'facility_code': code,
+        'facility_name': f'Auth Test Clinic {code}',
         'facility_type': 'NAMMA_CLINIC',
         'state': 1,
         'district': 1,
@@ -199,6 +200,7 @@ def scenario_3_facility_authorization():
     res_dho = client.post('/api/v1/organization/facilities/', payload, format='json')
     log("S3", 1, f"DHO (localdistrict): status={res_dho.status_code}")
     results['DHO'] = res_dho.status_code
+    assert res_dho.status_code == 201, f"Expected 201 for DHO, got {res_dho.status_code}"
     
     # 2. HOSPITAL_ADMIN (live_admin - is_superuser=False)
     u_hosp = User.objects.get(username='live_admin')
@@ -206,6 +208,9 @@ def scenario_3_facility_authorization():
     res_hosp = client.post('/api/v1/organization/facilities/', payload, format='json')
     log("S3", 2, f"HOSPITAL_ADMIN (live_admin): status={res_hosp.status_code}")
     results['HOSPITAL_ADMIN'] = res_hosp.status_code
+    assert res_hosp.status_code == 403, f"Expected 403 for HOSPITAL_ADMIN, got {res_hosp.status_code}"
+    res_mut = client.patch('/api/v1/organization/facilities/1/', {'facility_name': 'Tamper'}, format='json')
+    assert res_mut.status_code == 403, f"Expected 403 on mutation for HOSPITAL_ADMIN, got {res_mut.status_code}"
     
     # 3. NURSE
     u_nurse = User.objects.get(username='localnurse')
@@ -578,7 +583,9 @@ def run_browser_live_scenarios(created_fac):
         log("BROWSER", 4, "/admin/staff loaded for DHO.")
         
         # 3. Verify newly created facility appears in DHO facility dropdown
-        fac_select = page.wait_for_selector('[data-testid="staff-facility-filter"]')
+        page.wait_for_selector('[data-testid="staff-facility-filter"]')
+        time.sleep(3)
+        fac_select = page.locator('[data-testid="staff-facility-filter"]')
         options_text = fac_select.inner_text()
         log("BROWSER", 5, f"Facility dropdown options include new clinic: {created_fac.facility_name in options_text}")
         assert created_fac.facility_name in options_text, f"{created_fac.facility_name} not found in facility filter!"

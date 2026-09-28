@@ -21,6 +21,12 @@ class FacilityViewSet(viewsets.ModelViewSet):
     filterset_fields = ['district', 'facility_type', 'urban_rural', 'status']
     search_fields = ['facility_name', 'facility_code', 'city_or_ulb']
 
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            from apps.facilities.api_v1 import IsFacilityAdministrator
+            return [IsFacilityAdministrator()]
+        return [permissions.IsAuthenticatedOrReadOnly()]
+
     def get_queryset(self):
         queryset = Facility.objects.all().select_related('district', 'zone', 'ward', 'parent_facility')
         if self.request.query_params.get('all') == 'true':

@@ -881,5 +881,11 @@ class Phase14BackendIntegrationTests(TestCase):
         self.assertEqual(res_post_audit.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
         # API Contract: Validation errors return standard envelopes
+        # Hospital Admin cannot create facilities (HTTP 403 Forbidden under PM/RSA rule)
+        res_admin_fac = self.client.post('/api/v1/organization/facilities/', {}, format='json')
+        self.assertEqual(res_admin_fac.status_code, status.HTTP_403_FORBIDDEN)
+
+        # DHO can create facilities, and empty payload returns 400 Bad Request standard validation error envelope
+        self.client.force_authenticate(user=self.dho_user)
         res_bad_val = self.client.post('/api/v1/organization/facilities/', {}, format='json')
         self.assertEqual(res_bad_val.status_code, status.HTTP_400_BAD_REQUEST)
