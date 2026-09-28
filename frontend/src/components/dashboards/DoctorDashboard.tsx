@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Stethoscope, Clock, TestTube, CalendarCheck, User, ShieldAlert, ArrowRight, Activity, FileText } from 'lucide-react';
+import { Stethoscope, Clock, TestTube, CalendarCheck, User, ShieldAlert, ArrowRight, Activity, FileText, CheckCircle2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { useConfirm } from '../../context/ConfirmContext';
@@ -174,12 +174,14 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-bold text-slate-500 uppercase">Follow-ups</p>
-              <h3 className="text-2xl font-black text-emerald-900 mt-1">{summary?.referrals_summary?.completed || 0}</h3>
-              <p className="text-[10px] text-emerald-700 font-medium mt-1">Scheduled Reviews</p>
+              <p className="text-xs font-bold text-slate-500 uppercase">Completed Patients</p>
+              <h3 className="text-2xl font-black text-emerald-900 mt-1">
+                {summary?.visits?.completed ?? summary?.queue_summary?.completed ?? kpis.completed ?? 0}
+              </h3>
+              <p className="text-[10px] text-emerald-700 font-medium mt-1">Consultation Finished</p>
             </div>
             <div className="p-3 bg-emerald-50 rounded-xl text-emerald-700 border border-emerald-100">
-              <CalendarCheck className="w-5 h-5" />
+              <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
         </div>

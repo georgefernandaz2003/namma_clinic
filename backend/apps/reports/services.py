@@ -152,6 +152,14 @@ def get_visit_and_queue_metrics(target_fac_ids, target_date, doctor_user=None):
         Q(status='COMPLETED') | Q(current_queue='COMPLETED')
     ).count()
 
+    # Authoritative consultation completion tracking
+    from apps.consultations.models import Consultation
+    consult_qs = Consultation.objects.filter(facility_id__in=target_fac_ids, visit__opd_date=target_date)
+    if doctor_user:
+        consult_qs = consult_qs.filter(doctor=doctor_user)
+    consultations_completed = consult_qs.count()
+    doctor_completed_count = max(completed, consultations_completed) if doctor_user else completed
+
     # 1. Triage Queue
     triage_waiting = opd_visits_qs.filter(
         current_queue='TRIAGE',
@@ -195,7 +203,8 @@ def get_visit_and_queue_metrics(target_fac_ids, target_date, doctor_user=None):
             'lab_pending_visits': lab_pending_visits,
             'pharmacy_waiting': pharmacy_waiting_visits,
             'pharmacy_waiting_visits': pharmacy_waiting_visits,
-            'completed': completed,
+            'completed': doctor_completed_count,
+            'consultations_completed': consultations_completed,
             'emergency': emergency
         },
         'queues': {
