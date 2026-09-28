@@ -93,7 +93,7 @@ export const Patients: React.FC = () => {
     if (!targetPatient || !activeFacility) return;
     setSubmittingToken(true);
     try {
-      const res = await api.post('visits/', {
+      const res = await api.post('v1/visits/', {
         patient: targetPatient.id,
         facility: activeFacility.id,
         visit_type: visitType,

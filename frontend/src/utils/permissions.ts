@@ -13,7 +13,7 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
     'patients.view', 'patients.create', 'appointments.view', 'appointments.create', 'appointments.update',
     'inventory.view', 'inventory.create', 'inventory.update', 'reports.view', 'reports.export',
     'system_config.view', 'system_config.update', 'dashboard.view', 'ncd.view', 'surveillance.view',
-    'queue.view', 'queue.call_next', 'queue.transition', 'queue.create',
+    'queue.view', 'queue.call_next', 'queue.transition', 'queue.create', 'queue.issue_token', 'queue.void',
     'ars.view', 'quality.view', 'integrations.view'
   ]),
   DOCTOR: new Set([
@@ -25,7 +25,7 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
   ]),
   NURSE: new Set([
     'patients.view', 'patients.create', 'patients.update', 'appointments.view', 'appointments.create',
-    'vitals.view', 'vitals.create', 'triage.view', 'triage.create', 'queue.view', 'queue.call_next', 'queue.transition', 'queue.create', 'queue.update',
+    'vitals.view', 'vitals.create', 'triage.view', 'triage.create', 'queue.view', 'queue.call_next', 'queue.transition', 'queue.create', 'queue.issue_token', 'queue.void', 'queue.update',
     'clinic.view', 'dashboard.view', 'ncd.view', 'ncd.create', 'ncd.update', 'surveillance.view'
   ]),
   COMPOUNDER: new Set([

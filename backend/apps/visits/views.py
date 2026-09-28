@@ -1,3 +1,4 @@
+import uuid
 from rest_framework import serializers, viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -6,6 +7,7 @@ from django.utils import timezone
 import datetime
 
 from apps.visits.models import Visit, Token, VisitStatusHistory
+from apps.visits.services import issue_opd_token
 from apps.patients.serializers import PatientSerializer
 from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission
 
@@ -144,13 +146,7 @@ class VisitViewSet(viewsets.ModelViewSet):
         today = datetime.date.today()
 
         with transaction.atomic():
-            # Server-side sequential token generation per facility and date
-            max_token = Token.objects.select_for_update().filter(
-                facility_id=facility_id, date=today
-            ).aggregate(models.Max('token_number'))['token_number__max'] or 0
-            
-            token_number = max_token + 1
-            base_id = f"VIS-F{facility_id}-{today.strftime('%Y%m%d')}-{token_number:03d}"
+            base_id = f"VIS-F{facility_id}-{today.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
             visit_id = base_id
             seq = 1
             while Visit.objects.filter(visit_id=visit_id).exists():
@@ -170,14 +166,7 @@ class VisitViewSet(viewsets.ModelViewSet):
                 arrival_time=timezone.now()
             )
 
-            token = Token.objects.create(
-                token_number=token_number,
-                visit=visit,
-                facility_id=facility_id,
-                date=today,
-                priority=priority,
-                status='WAITING'
-            )
+            token = issue_opd_token(visit=visit, facility=visit.facility, priority=priority)
 
             VisitStatusHistory.objects.create(
                 visit=visit,

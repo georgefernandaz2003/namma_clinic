@@ -43,7 +43,7 @@ export const Queue: React.FC = () => {
     if (!activeFacility) return;
     try {
       const queueParam = activeTab !== 'ALL' ? `&queue=${activeTab}` : '';
-      const res = await api.get(`visits/?facility=${activeFacility.id}&date=${selectedDate}${queueParam}`);
+      const res = await api.get(`v1/visits/?facility=${activeFacility.id}&date=${selectedDate}${queueParam}`);
       setVisits(res.data.results || res.data || []);
     } catch (e) {
       console.error('Failed to load date-based OPD queue', e);
@@ -67,7 +67,7 @@ export const Queue: React.FC = () => {
   const loadHistorySummary = async () => {
     if (!activeFacility) return;
     try {
-      const res = await api.get(`visits/history-summary/?facility=${activeFacility.id}`);
+      const res = await api.get(`v1/visits/history-summary/?facility=${activeFacility.id}`);
       setHistorySummary(res.data || []);
     } catch (e) {
       console.error('Failed to load OPD history summary', e);
@@ -110,7 +110,7 @@ export const Queue: React.FC = () => {
     }
     setSubmitting(true);
     try {
-      const res = await api.post('visits/', {
+      const res = await api.post('v1/visits/', {
         patient: selectedPatientId,
         facility: activeFacility.id,
         visit_type: visitType,
@@ -147,7 +147,7 @@ export const Queue: React.FC = () => {
     setCallingNext(true);
     try {
       const targetQueue = activeTab !== 'ALL' ? activeTab : (user?.role === 'NURSE' ? 'TRIAGE' : 'DOCTOR');
-      const res = await api.post('visits/call-next/', {
+      const res = await api.post('v1/visits/call-next/', {
         facility: activeFacility.id,
         queue: targetQueue
       });
@@ -164,6 +164,24 @@ export const Queue: React.FC = () => {
       alert(e.response?.data?.error || 'Failed to call next patient.');
     } finally {
       setCallingNext(false);
+    }
+  };
+
+  // Void Token Handler
+  const handleVoidToken = async (visitId: number) => {
+    if (!window.confirm('Are you sure you want to void this duplicate / untriaged OPD token?')) {
+      return;
+    }
+    try {
+      const res = await api.post('v1/visits/void-token/', {
+        visit_id: visitId,
+        reason: 'Duplicate registration / untriaged token void'
+      });
+      alert(res.data.message || 'Token voided successfully.');
+      loadQueue();
+      loadHistorySummary();
+    } catch (e: any) {
+      alert(e.response?.data?.error || e.response?.data?.detail || 'Failed to void token.');
     }
   };
 
@@ -578,6 +596,17 @@ export const Queue: React.FC = () => {
                               <span className="text-teal-700 font-bold flex items-center gap-1">
                                 <CheckCircle className="w-3.5 h-3.5 text-teal-600" /> Done
                               </span>
+                            )}
+
+                            {hasPermission(user?.role, 'queue.void') && (v.status === 'WAITING_FOR_TRIAGE' || v.status === 'WAITING') && (
+                              <button
+                                onClick={() => handleVoidToken(v.id)}
+                                title="Void duplicate / untriaged token"
+                                className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-lg border border-rose-200 flex items-center gap-1 shadow-2xs transition"
+                              >
+                                <X className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Void</span>
+                              </button>
                             )}
                           </div>
                         ) : (
