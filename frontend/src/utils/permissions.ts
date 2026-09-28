@@ -29,8 +29,9 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
     'clinic.view', 'dashboard.view', 'ncd.view', 'ncd.create', 'ncd.update', 'surveillance.view'
   ]),
   COMPOUNDER: new Set([
-    'patients.view', 'vitals.view', 'vitals.create', 'triage.view', 'queue.view',
-    'queue.call_next', 'queue.transition', 'clinic.view', 'dashboard.view'
+    'patients.view', 'patients.create', 'patients.update_demographics',
+    'queue.view', 'queue.create', 'queue.issue_token', 'queue.void',
+    'clinic.view', 'dashboard.view'
   ]),
   LAB_TECHNICIAN: new Set([
     'patients.view', 'lab_orders.view', 'lab_results.view', 'lab_results.create', 'lab_results.update',
@@ -74,7 +75,7 @@ export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
     '/', '/patients', '/triage', '/queue', '/followups', '/ncd', '/outreach', '/wellness', '/alerts'
   ],
   COMPOUNDER: [
-    '/', '/patients', '/triage', '/queue', '/alerts'
+    '/', '/patients', '/queue', '/alerts'
   ],
   LAB_TECHNICIAN: [
     '/', '/queue', '/lab', '/alerts'

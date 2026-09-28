@@ -644,7 +644,7 @@ class Phase15BackendReliabilityTests(TestCase):
         self.assertEqual(res_403.status_code, status.HTTP_403_FORBIDDEN)
 
         # 3. 400 Bad Request (Validation Error)
-        self.client.force_authenticate(user=self.doc_user)
+        self.client.force_authenticate(user=self.admin_user)
         res_400 = self.client.post('/api/v1/patients/', {"age": -5}, format='json')
         self.assertEqual(res_400.status_code, status.HTTP_400_BAD_REQUEST)
 

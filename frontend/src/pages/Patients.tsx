@@ -59,7 +59,7 @@ export const Patients: React.FC = () => {
         gender,
         mobile,
         address,
-        ABHA_ID_DEMO: abhaId || `ABHA-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        ABHA_ID_DEMO: abhaId ? abhaId.trim() : '',
         vulnerability_information: vulnerability,
         registered_at_facility: activeFacility?.id
       });

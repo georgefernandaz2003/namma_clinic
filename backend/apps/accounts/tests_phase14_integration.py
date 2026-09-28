@@ -186,8 +186,8 @@ class Phase14BackendIntegrationTests(TestCase):
         Patient -> Visit -> OPD Token -> Triage -> Consultation -> Diagnostics ->
         Verification -> Doctor Review -> Prescription -> Dispensing -> Follow-up.
         """
-        # Step 1: Register Patient at Clinic A
-        self.client.force_authenticate(user=self.nurse_user)
+        # Step 1: Register Patient at Clinic A (Admin / Compounder registration role)
+        self.client.force_authenticate(user=self.admin_user)
         pat_payload = {
             "name": "Kavitha Murthy", "age": 35, "gender": "FEMALE",
             "mobile": "9845098450", "address": "Varthur Main Road",
@@ -214,6 +214,7 @@ class Phase14BackendIntegrationTests(TestCase):
         self.assertGreater(token.token_number, 0)
 
         # Step 3: Triage Vitals by Nurse
+        self.client.force_authenticate(user=self.nurse_user)
         triage_payload = {
             "visit": visit_id, "patient": patient_id,
             "blood_pressure_systolic": 128, "blood_pressure_diastolic": 82,

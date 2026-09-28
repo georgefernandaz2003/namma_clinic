@@ -27,7 +27,7 @@ export const ROLE_DASHBOARD_ROUTES: Record<Role, string> = {
   HOSPITAL_ADMIN: '/dashboard/admin',
   DOCTOR: '/dashboard/doctor',
   NURSE: '/dashboard/nurse',
-  COMPOUNDER: '/dashboard/nurse',
+  COMPOUNDER: '/patients',
   LAB_TECHNICIAN: '/dashboard/lab',
   PHARMACIST: '/dashboard/pharmacy',
 };
@@ -83,10 +83,10 @@ export const ROLE_DASHBOARD_METADATA: Record<Role, RoleDashboardMeta> = {
   },
   COMPOUNDER: {
     role: 'COMPOUNDER',
-    title: 'Compounder Console',
-    subtitle: 'Patient registration support, vitals measurement, and clinic dressing assistance.',
-    landingRoute: '/dashboard/nurse',
-    iconName: 'Stethoscope',
+    title: 'Compounder & Front Desk Console',
+    subtitle: 'Patient registration, master patient index lookup, and OPD queue management.',
+    landingRoute: '/patients',
+    iconName: 'Users',
     scopeTypeRequired: 'FACILITY',
   },
 };
@@ -250,18 +250,16 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
   ],
   COMPOUNDER: [
     {
-      title: 'PRIMARY CARE & TRIAGE',
+      title: 'PATIENT INTAKE & REGISTRATION',
       items: [
-        { name: 'Nurse Dashboard', path: '/dashboard/nurse', iconName: 'LayoutDashboard', description: 'Triage intake summary and daily clinic flow' },
-        { name: 'Patient Intake', path: '/patients', iconName: 'Users', description: 'New patient registration and demographic intake' },
-        { name: 'Triage Queue', path: '/queue', iconName: 'Clock', description: 'Registered patients awaiting vitals measurement' },
-        { name: 'Nurse Vitals Triage', path: '/triage', iconName: 'Stethoscope', description: 'BP, pulse, SpO2, and temperature vitals entry' },
+        { name: 'Patient Registration', path: '/patients', iconName: 'Users', description: 'Patient intake, registration, and demographic records' },
+        { name: 'OPD Queue', path: '/queue', iconName: 'Clock', description: 'Outpatient flow and token management' },
       ],
     },
     {
       title: 'SYSTEM',
       items: [
-        { name: 'Operational Alerts', path: '/alerts', iconName: 'Bell', description: 'Patient queue and triage escalation alerts' },
+        { name: 'Operational Alerts', path: '/alerts', iconName: 'Bell', description: 'Patient queue and intake alerts' },
       ],
     },
   ],
