@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Visit, TriageVitals, LabOrder } from '../types';
@@ -173,15 +173,19 @@ export const Consultation: React.FC = () => {
   }, []);
 
   // Filter local referral destination options
-  const referralDestinations = (networkFacilities.length > 0 ? networkFacilities : allFacilities).filter(
-    (f) => f.id !== activeFacility?.id
-  );
+  const referralDestinations = useMemo(() => {
+    const list = networkFacilities.length > 0 ? networkFacilities : allFacilities;
+    return list.filter((f) => f.id !== activeFacility?.id);
+  }, [networkFacilities, allFacilities, activeFacility]);
 
   useEffect(() => {
-    if (referralDestinations.length > 0 && !destFacilityId) {
-      setDestFacilityId(referralDestinations[0].id);
+    if (referralDestinations.length > 0) {
+      const exists = referralDestinations.some((f) => f.id === destFacilityId);
+      if (!exists || !destFacilityId) {
+        setDestFacilityId(referralDestinations[0].id);
+      }
     }
-  }, [referralDestinations]);
+  }, [referralDestinations, destFacilityId]);
 
   const handleAddMed = () => {
     setPrescriptions([...prescriptions, { medicine_name: 'Paracetamol 650 mg Tablet', dosage: '1-0-1', quantity: 10 }]);
@@ -757,14 +761,24 @@ export const Consultation: React.FC = () => {
                       <select
                         value={destFacilityId}
                         onChange={(e) => setDestFacilityId(parseInt(e.target.value))}
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-medium focus:outline-none focus:border-blue-600"
+                        required={createReferral}
                       >
-                        {referralDestinations.map((f) => (
-                          <option key={f.id} value={f.id}>
-                            {f.facility_name} ({f.facility_type.replace('_', ' ')})
-                          </option>
-                        ))}
+                        {referralDestinations.length === 0 ? (
+                          <option value="" disabled>Loading available referral facilities...</option>
+                        ) : (
+                          referralDestinations.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.facility_name} ({f.facility_type ? f.facility_type.replace('_', ' ') : 'Hospital'})
+                            </option>
+                          ))
+                        )}
                       </select>
+                      {destFacilityId ? (
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          Connected referral hub for secondary/tertiary specialist review.
+                        </p>
+                      ) : null}
                     </div>
 
                     <div>

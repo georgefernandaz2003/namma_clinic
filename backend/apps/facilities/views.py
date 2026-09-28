@@ -23,6 +23,14 @@ class FacilityViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Facility.objects.all().select_related('district', 'zone', 'ward', 'parent_facility').order_by('id')
+        params = getattr(self.request, 'query_params', getattr(self.request, 'GET', {}))
+        if (
+            params.get('all') == 'true'
+            or params.get('all') == '1'
+            or params.get('referral') == 'true'
+            or params.get('referral_destinations') == 'true'
+        ):
+            return queryset
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(id__in=accessible_ids)
