@@ -33,7 +33,7 @@ from apps.alerts.views import AlertViewSet
 from apps.integrations.views import IntegrationConfigurationViewSet
 from apps.compliance.views import ComplianceItemViewSet
 from apps.audit.views import AuditLogViewSet
-from apps.reports.views import DashboardSummaryView, CSVExportView, ResetDemoView
+from apps.reports.views import DashboardSummaryView, CSVExportView, ResetDemoView, HospitalAdminReportView
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
@@ -103,6 +103,7 @@ urlpatterns = [
 
     # Dashboard & Reports
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard_summary'),
+    path('reports/hospital/', HospitalAdminReportView.as_view(), name='hospital_admin_report'),
     path('reports/export/', CSVExportView.as_view(), name='csv_export'),
     path('admin/reset-demo/', ResetDemoView.as_view(), name='reset_demo'),
 

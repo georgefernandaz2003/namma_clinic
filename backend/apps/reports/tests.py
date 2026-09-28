@@ -161,7 +161,7 @@ class ResetDemoSecurityTests(APITestCase):
 import datetime
 from apps.patients.models import Patient
 from apps.visits.models import Visit
-from apps.pharmacy.models import MedicineMaster, MedicineBatch
+from apps.pharmacy.models import MedicineMaster, MedicineBatch, InventoryTransaction
 from apps.laboratory.models import LabTestMaster, LabOrder
 from apps.consultations.models import Consultation, Prescription
 from apps.referrals.models import Referral
@@ -720,5 +720,207 @@ class DashboardSummaryViewTests(APITestCase):
         self.assertIn('count', rx_res.data)
         # Authoritative count matches exactly
         self.assertEqual(dash_rx_count, rx_res.data['count'])
+
+
+class HospitalAdminReportTests(APITestCase):
+    def setUp(self):
+        self.state = State.objects.create(name='Karnataka', code='KA')
+        self.district_1 = District.objects.create(name='District 1', code='D1', state=self.state)
+        self.district_2 = District.objects.create(name='District 2', code='D2', state=self.state)
+
+        self.fac_1a = Facility.objects.create(
+            facility_code='F-1A',
+            facility_name='Facility 1A',
+            facility_type=FacilityTypeChoices.UPHC,
+            state=self.state,
+            district=self.district_1
+        )
+        self.fac_2 = Facility.objects.create(
+            facility_code='F-2',
+            facility_name='Facility 2',
+            facility_type=FacilityTypeChoices.UPHC,
+            state=self.state,
+            district=self.district_2
+        )
+
+        self.hospital_admin = User.objects.create_user(
+            username='admin_1a_rep',
+            password='password123',
+            role=RoleChoices.HOSPITAL_ADMIN,
+            assigned_facility=self.fac_1a,
+            full_name='Admin 1A'
+        )
+
+        self.doctor = User.objects.create_user(
+            username='doc_1a_rep',
+            password='password123',
+            role=RoleChoices.DOCTOR,
+            assigned_facility=self.fac_1a,
+            full_name='Dr. Test Doc'
+        )
+
+        # Facility 2 Doctor & Admin
+        self.admin_fac2 = User.objects.create_user(
+            username='admin_fac2_rep',
+            password='password123',
+            role=RoleChoices.HOSPITAL_ADMIN,
+            assigned_facility=self.fac_2,
+            full_name='Admin Fac 2'
+        )
+
+        self.today = datetime.date.today()
+
+    def test_unauthenticated_request_returns_401(self):
+        res = self.client.get('/api/reports/hospital/')
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_hospital_admin_day_report(self):
+        self.client.force_authenticate(user=self.hospital_admin)
+
+        p1 = Patient.objects.create(patient_id='P-REP-1', name='Patient One', age=25, gender='MALE', registered_at_facility=self.fac_1a)
+        p2 = Patient.objects.create(patient_id='P-REP-2', name='Patient Two', age=65, gender='FEMALE', registered_at_facility=self.fac_1a)
+
+        v1 = Visit.objects.create(visit_id='V-REP-1', patient=p1, facility=self.fac_1a, opd_date=self.today, status='COMPLETED', assigned_doctor=self.doctor)
+        v2 = Visit.objects.create(visit_id='V-REP-2', patient=p2, facility=self.fac_1a, opd_date=self.today, priority='EMERGENCY', status='WAITING_FOR_TRIAGE')
+
+        res = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        data = res.data
+        self.assertEqual(data['facility']['id'], self.fac_1a.id)
+        self.assertEqual(data['period']['type'], 'day')
+        self.assertEqual(data['opd_patient']['total_registered_patients'], 2)
+        self.assertEqual(data['opd_patient']['total_opd_visits'], 2)
+        self.assertEqual(data['opd_patient']['completed_visits'], 1)
+        self.assertEqual(data['opd_patient']['emergency_visits'], 1)
+        self.assertEqual(data['opd_patient']['demographics']['male'], 1)
+        self.assertEqual(data['opd_patient']['demographics']['female'], 1)
+        self.assertEqual(data['opd_patient']['age_groups']['19_30'], 1)
+        self.assertEqual(data['opd_patient']['age_groups']['60_plus'], 1)
+
+    def test_cross_facility_isolation(self):
+        """Hospital Admin Facility 1A must NOT see Facility 2 data even if requested."""
+        self.client.force_authenticate(user=self.hospital_admin)
+
+        # Create record in Facility 2
+        p_fac2 = Patient.objects.create(patient_id='P-FAC2-1', name='Fac2 Patient', registered_at_facility=self.fac_2)
+        Visit.objects.create(visit_id='V-FAC2-1', patient=p_fac2, facility=self.fac_2, opd_date=self.today)
+
+        # Attempt to request facility 2
+        res = self.client.get(f'/api/reports/hospital/?facility={self.fac_2.id}&period=day&date={self.today.isoformat()}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # Scoped strictly to Fac 1A, does NOT see Fac 2 data
+        self.assertEqual(res.data['facility']['id'], self.fac_1a.id)
+        self.assertEqual(res.data['opd_patient']['total_opd_visits'], 0)
+
+    def test_pharmacy_and_dashboard_reconciliation(self):
+        """Dashboard and Reports must calculate identical numbers for low stock, out of stock, expiring."""
+        med1 = MedicineMaster.objects.create(generic_name='Paracetamol', minimum_stock=50, reorder_level=100)
+        med2 = MedicineMaster.objects.create(generic_name='Amoxicillin', minimum_stock=30, reorder_level=60)
+
+        # Low stock batch for med1 (qty 20 <= 50)
+        MedicineBatch.objects.create(
+            facility=self.fac_1a, medicine=med1, batch_number='B-01',
+            quantity=20, expiry_date=self.today + datetime.timedelta(days=120), status='ACTIVE'
+        )
+        # med2 has no batch -> OUT_OF_STOCK
+
+        self.client.force_authenticate(user=self.hospital_admin)
+
+        # Dashboard check
+        dash_res = self.client.get(f'/api/dashboard/summary/?date={self.today.isoformat()}')
+        self.assertEqual(dash_res.status_code, status.HTTP_200_OK)
+        dash_low = dash_res.data['pharmacy']['low_stock']
+        dash_out = dash_res.data['pharmacy']['out_of_stock']
+
+        # Reports check
+        rep_res = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}')
+        self.assertEqual(rep_res.status_code, status.HTTP_200_OK)
+        rep_low = rep_res.data['pharmacy']['inventory']['low_stock_medicines']
+        rep_out = rep_res.data['pharmacy']['inventory']['out_of_stock_medicines']
+
+        # 100% Reconciliation
+        self.assertEqual(dash_low, rep_low)
+        self.assertEqual(dash_out, rep_out)
+        self.assertEqual(rep_low, 1)
+        self.assertEqual(rep_out, 1)
+
+    def test_reconciled_stock_movement(self):
+        """Opening Stock + Received - Dispensed + Adjusted == Closing Stock."""
+        med = MedicineMaster.objects.create(generic_name='Metformin', minimum_stock=10, reorder_level=20)
+        batch = MedicineBatch.objects.create(
+            facility=self.fac_1a, medicine=med, batch_number='B-MET-1',
+            quantity=100, expiry_date=self.today + datetime.timedelta(days=180), status='ACTIVE'
+        )
+
+        InventoryTransaction.objects.create(
+            facility=self.fac_1a, medicine=med, batch=batch,
+            transaction_type='PURCHASE_RECEIVED', quantity=50
+        )
+        InventoryTransaction.objects.create(
+            facility=self.fac_1a, medicine=med, batch=batch,
+            transaction_type='DISPENSED', quantity=20, reference_id='RX-101'
+        )
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        res = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        items = res.data['pharmacy']['stock_movement']['items']
+        self.assertTrue(len(items) > 0)
+        m_item = next(it for it in items if it['medicine_id'] == med.id)
+
+        opening = m_item['opening_stock']
+        rec = m_item['received']
+        disp = m_item['dispensed']
+        adj = m_item['adjusted']
+        closing = m_item['closing_stock']
+
+        # Mathematical reconciliation check
+        self.assertEqual(opening + rec - disp + adj, closing)
+        self.assertEqual(rec, 50)
+        self.assertEqual(disp, 20)
+        self.assertEqual(closing, 100)
+
+    def test_zero_data_handling(self):
+        """Zero data results in clean 0 values and no division by zero errors in comparisons."""
+        self.client.force_authenticate(user=self.hospital_admin)
+        past_date = self.today - datetime.timedelta(days=300)
+        res = self.client.get(f'/api/reports/hospital/?period=day&date={past_date.isoformat()}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['opd_patient']['total_opd_visits'], 0)
+        # Comparison percentage is safely None or string, not crashing
+        self.assertEqual(res.data['comparison']['metrics']['opd_visits']['current'], 0)
+
+    def test_hospital_admin_week_and_month_and_year_reports(self):
+        self.client.force_authenticate(user=self.hospital_admin)
+
+        res_week = self.client.get(f'/api/reports/hospital/?period=week&date={self.today.isoformat()}')
+        self.assertEqual(res_week.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_week.data['period']['type'], 'week')
+
+        res_month = self.client.get(f'/api/reports/hospital/?period=month&date={self.today.isoformat()}')
+        self.assertEqual(res_month.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_month.data['period']['type'], 'month')
+
+        res_year = self.client.get(f'/api/reports/hospital/?period=year&date={self.today.isoformat()}')
+        self.assertEqual(res_year.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_year.data['period']['type'], 'year')
+
+    def test_csv_export_endpoint(self):
+        self.client.force_authenticate(user=self.hospital_admin)
+        res = self.client.get(f'/api/reports/export/?type=opd&period=day&date={self.today.isoformat()}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res['Content-Type'], 'text/csv')
+
+        res_pharm = self.client.get(f'/api/reports/export/?type=pharmacy&period=day&date={self.today.isoformat()}')
+        self.assertEqual(res_pharm.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_pharm['Content-Type'], 'text/csv')
+
+        res_stock = self.client.get(f'/api/reports/export/?type=stock_consumption&period=day&date={self.today.isoformat()}')
+        self.assertEqual(res_stock.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_stock['Content-Type'], 'text/csv')
+
 
 
