@@ -27,6 +27,7 @@ export const ROLE_DASHBOARD_ROUTES: Record<Role, string> = {
   HOSPITAL_ADMIN: '/dashboard/admin',
   DOCTOR: '/dashboard/doctor',
   NURSE: '/dashboard/nurse',
+  COMPOUNDER: '/dashboard/nurse',
   LAB_TECHNICIAN: '/dashboard/lab',
   PHARMACIST: '/dashboard/pharmacy',
 };
@@ -80,6 +81,14 @@ export const ROLE_DASHBOARD_METADATA: Record<Role, RoleDashboardMeta> = {
     iconName: 'Pill',
     scopeTypeRequired: 'FACILITY',
   },
+  COMPOUNDER: {
+    role: 'COMPOUNDER',
+    title: 'Compounder Console',
+    subtitle: 'Patient registration support, vitals measurement, and clinic dressing assistance.',
+    landingRoute: '/dashboard/nurse',
+    iconName: 'Stethoscope',
+    scopeTypeRequired: 'FACILITY',
+  },
 };
 
 export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
@@ -89,6 +98,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
       items: [
         { name: 'District Dashboard', path: '/dashboard/district', iconName: 'LayoutDashboard', description: 'Network KPIs, facilities status, and district overview' },
         { name: 'Healthcare Network', path: '/network', iconName: 'Network', description: 'Interactive network graph of regional hospital connectivity' },
+        { name: 'Staff Directory', path: '/admin/staff', iconName: 'Users', description: 'District staff identity, postings, and lifecycle administration' },
         { name: 'Facilities Master', path: '/facilities', iconName: 'Building2', description: 'Registry of district hospitals, clinics, and UPHCs' },
         { name: 'Patients Registry', path: '/patients', iconName: 'Users', description: 'Master patient index across district facilities' },
         { name: 'OPD Queue Overview', path: '/queue', iconName: 'Clock', description: 'Cross-facility outpatient queue status' },
@@ -129,6 +139,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
       items: [
         { name: 'Admin Dashboard', path: '/dashboard/admin', iconName: 'LayoutDashboard', description: 'Facility operations overview and management' },
         { name: 'Facility Profile', path: '/facilities', iconName: 'Building2', description: 'Facility configuration and departmental registry' },
+        { name: 'Staff Directory', path: '/admin/staff', iconName: 'Users', description: 'Facility staff roster, invitations, and role assignments' },
         { name: 'Patients Registry', path: '/patients', iconName: 'Users', description: 'Facility patient master and demographic records' },
         { name: 'OPD Queue Status', path: '/queue', iconName: 'Clock', description: 'Daily outpatient appointment and token flow' },
         { name: 'Pharmacy & Stock', path: '/pharmacy', iconName: 'Pill', description: 'Dispensing records and medicine inventory batches' },
@@ -234,6 +245,23 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
       title: 'SYSTEM',
       items: [
         { name: 'Stock Alerts', path: '/alerts', iconName: 'Bell', description: 'Near-expiry batches and minimum stock warning alerts' },
+      ],
+    },
+  ],
+  COMPOUNDER: [
+    {
+      title: 'PRIMARY CARE & TRIAGE',
+      items: [
+        { name: 'Nurse Dashboard', path: '/dashboard/nurse', iconName: 'LayoutDashboard', description: 'Triage intake summary and daily clinic flow' },
+        { name: 'Patient Intake', path: '/patients', iconName: 'Users', description: 'New patient registration and demographic intake' },
+        { name: 'Triage Queue', path: '/queue', iconName: 'Clock', description: 'Registered patients awaiting vitals measurement' },
+        { name: 'Nurse Vitals Triage', path: '/triage', iconName: 'Stethoscope', description: 'BP, pulse, SpO2, and temperature vitals entry' },
+      ],
+    },
+    {
+      title: 'SYSTEM',
+      items: [
+        { name: 'Operational Alerts', path: '/alerts', iconName: 'Bell', description: 'Patient queue and triage escalation alerts' },
       ],
     },
   ],

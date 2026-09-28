@@ -35,6 +35,7 @@ import { Alerts } from './pages/Alerts';
 import { Integrations } from './pages/Integrations';
 import { Compliance } from './pages/Compliance';
 import { Audit } from './pages/Audit';
+import { StaffAdministration } from './pages/StaffAdministration';
 
 export const App: React.FC = () => {
   return (
@@ -108,6 +109,16 @@ export const App: React.FC = () => {
             element={
               <ProtectedRoute allowedRoles={['PHARMACIST']}>
                 <PharmacyDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Staff & Clinic Administration */}
+          <Route
+            path="/admin/staff"
+            element={
+              <ProtectedRoute allowedRoles={['DISTRICT_OFFICER', 'HOSPITAL_ADMIN']}>
+                <StaffAdministration />
               </ProtectedRoute>
             }
           />

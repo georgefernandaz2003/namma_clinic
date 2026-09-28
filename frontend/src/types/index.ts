@@ -952,3 +952,4 @@ export interface FollowUpTask {
   completed_at?: string | null;
   created_at?: string;
 }
+export * from './staff';

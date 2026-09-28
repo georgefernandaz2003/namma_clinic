@@ -1,11 +1,12 @@
-import type { Role } from '../types';
+﻿import type { Role } from '../types';
 
 export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
   DISTRICT_OFFICER: new Set([
     'district.view', 'hospital.view', 'clinic.view', 'reports.view', 'reports.export',
     'audit_logs.view', 'dashboard.view', 'patients.view', 'ncd.view', 'surveillance.view',
     'referrals.view', 'inventory.view', 'queue.view', 'lab_orders.view',
-    'ars.view', 'quality.view', 'integrations.view'
+    'ars.view', 'quality.view', 'integrations.view',
+    'staff.view', 'staff.create', 'staff.update', 'staff.manage'
   ]),
   HOSPITAL_ADMIN: new Set([
     'hospital.view', 'clinic.view', 'staff.view', 'staff.create', 'staff.update',
@@ -27,6 +28,10 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
     'vitals.view', 'vitals.create', 'triage.view', 'triage.create', 'queue.view', 'queue.call_next', 'queue.transition', 'queue.create', 'queue.update',
     'clinic.view', 'dashboard.view', 'ncd.view', 'ncd.create', 'ncd.update', 'surveillance.view'
   ]),
+  COMPOUNDER: new Set([
+    'patients.view', 'vitals.view', 'vitals.create', 'triage.view', 'queue.view',
+    'queue.call_next', 'queue.transition', 'clinic.view', 'dashboard.view'
+  ]),
   LAB_TECHNICIAN: new Set([
     'patients.view', 'lab_orders.view', 'lab_results.view', 'lab_results.create', 'lab_results.update',
     'clinic.view', 'dashboard.view'
@@ -42,6 +47,7 @@ export const HUMAN_ROLE_LABELS: Record<Role, string> = {
   HOSPITAL_ADMIN: 'Hospital Admin',
   DOCTOR: 'Doctor',
   NURSE: 'Nurse',
+  COMPOUNDER: 'Compounder',
   LAB_TECHNICIAN: 'Lab Technician',
   PHARMACIST: 'Pharmacist'
 };
@@ -56,16 +62,19 @@ export const getHumanRoleLabel = (role: Role | string | undefined): string => {
 
 export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
   DISTRICT_OFFICER: [
-    '/', '/network', '/facilities', '/patients', '/queue', '/ncd', '/surveillance', '/referrals', '/pharmacy', '/infrastructure', '/reports', '/alerts', '/compliance', '/audit', '/ars', '/quality', '/integrations'
+    '/', '/admin/staff', '/network', '/facilities', '/patients', '/queue', '/ncd', '/surveillance', '/referrals', '/pharmacy', '/infrastructure', '/reports', '/alerts', '/compliance', '/audit', '/ars', '/quality', '/integrations'
   ],
   HOSPITAL_ADMIN: [
-    '/', '/patients', '/queue', '/facilities', '/pharmacy', '/referrals', '/followups', '/infrastructure', '/reports', '/alerts', '/ars', '/quality', '/integrations'
+    '/', '/admin/staff', '/patients', '/queue', '/facilities', '/pharmacy', '/referrals', '/followups', '/infrastructure', '/reports', '/alerts', '/ars', '/quality', '/integrations'
   ],
   DOCTOR: [
     '/', '/patients', '/queue', '/consultation', '/lab', '/referrals', '/followups', '/alerts', '/ncd'
   ],
   NURSE: [
     '/', '/patients', '/triage', '/queue', '/followups', '/ncd', '/outreach', '/wellness', '/alerts'
+  ],
+  COMPOUNDER: [
+    '/', '/patients', '/triage', '/queue', '/alerts'
   ],
   LAB_TECHNICIAN: [
     '/', '/queue', '/lab', '/alerts'
@@ -75,7 +84,6 @@ export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
   ]
 };
 
-
 export const hasPermission = (role: Role | undefined, permission: string): boolean => {
   if (!role) return false;
   return ROLE_PERMISSIONS[role]?.has(permission) ?? false;
@@ -84,7 +92,6 @@ export const hasPermission = (role: Role | undefined, permission: string): boole
 export const isPathAllowedForRole = (role: Role | undefined, path: string): boolean => {
   if (!role) return false;
   
-  // Base dashboard '/' is accessible to all logged in roles
   if (path === '/' || path === '') return true;
   
   const allowed = ROLE_ALLOWED_PATHS[role];

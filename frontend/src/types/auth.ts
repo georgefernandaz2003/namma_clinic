@@ -8,14 +8,16 @@ export type Role =
   | 'HOSPITAL_ADMIN'
   | 'DOCTOR'
   | 'NURSE'
+  | 'COMPOUNDER'
   | 'LAB_TECHNICIAN'
   | 'PHARMACIST';
 
 export const ROLE_LABELS: Record<Role, string> = {
-  DISTRICT_OFFICER: 'District Officer',
-  HOSPITAL_ADMIN: 'Hospital Administrator',
-  DOCTOR: 'Doctor',
-  NURSE: 'Nurse',
+  DISTRICT_OFFICER: 'District Health Officer',
+  HOSPITAL_ADMIN: 'Hospital Administrator (Clinic Admin)',
+  DOCTOR: 'Doctor (Medical Officer)',
+  NURSE: 'Staff Nurse',
+  COMPOUNDER: 'Compounder',
   LAB_TECHNICIAN: 'Lab Technician',
   PHARMACIST: 'Pharmacist',
 };
@@ -51,6 +53,7 @@ export interface UserProfile {
   phone: string;
   role: Role;
   role_display: string;
+  roles?: string[];
   assigned_facility: number | null;
   assigned_district: number | null;
   facility_details: FacilitySummary | null;
