@@ -7,7 +7,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import {
   FileText, Pill, Share2, Plus, Trash2, TestTube,
   Clock, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw,
-  ChevronDown, ChevronUp, FlaskConical
+  FlaskConical
 } from 'lucide-react';
 import { ICD10Select } from '../components/ui/ICD10Select';
 
@@ -24,8 +24,6 @@ export const Consultation: React.FC = () => {
   const [vitals, setVitals] = useState<TriageVitals | null>(null);
   const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
   const [loadingLab, setLoadingLab] = useState(false);
-  const [patientLabHistory, setPatientLabHistory] = useState<LabOrder[]>([]);
-  const [showPreviousLabHistory, setShowPreviousLabHistory] = useState(false);
 
   // Form states
   const [chiefComplaint, setChiefComplaint] = useState('');
@@ -96,7 +94,6 @@ export const Consultation: React.FC = () => {
           setSelectedVisit(null);
           setVitals(null);
           setLabOrders([]);
-          setPatientLabHistory([]);
         }
       } else if (myVisits.length > 0) {
         selectVisit(myVisits[0]);
@@ -104,7 +101,6 @@ export const Consultation: React.FC = () => {
         setSelectedVisit(null);
         setVitals(null);
         setLabOrders([]);
-        setPatientLabHistory([]);
       }
     } catch (e) {
       console.error('Failed to load doctor queue', e);
@@ -126,22 +122,19 @@ export const Consultation: React.FC = () => {
 
     try {
       setLoadingLab(true);
-      const labRes = await api.get(`lab/orders/?visit=${v.id}`);
-      const labList: LabOrder[] = labRes.data.results || labRes.data || [];
-      setLabOrders(labList);
-
       const patId = v.patient || v.patient_details?.id;
       if (patId) {
-        const histRes = await api.get(`lab/orders/?patient=${patId}`);
-        const histList: LabOrder[] = histRes.data.results || histRes.data || [];
-        setPatientLabHistory(histList);
+        const res = await api.get(`lab/orders/?patient=${patId}`);
+        const orders: LabOrder[] = res.data.results || res.data || [];
+        setLabOrders(orders);
       } else {
-        setPatientLabHistory([]);
+        const res = await api.get(`lab/orders/?visit=${v.id}`);
+        const orders: LabOrder[] = res.data.results || res.data || [];
+        setLabOrders(orders);
       }
     } catch (e) {
       console.error('Failed to load lab orders for consultation', e);
       setLabOrders([]);
-      setPatientLabHistory([]);
     } finally {
       setLoadingLab(false);
     }
@@ -451,19 +444,6 @@ export const Consultation: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    {patientLabHistory.length > labOrders.length && (
-                      <button
-                        type="button"
-                        onClick={() => setShowPreviousLabHistory(!showPreviousLabHistory)}
-                        className="text-[10px] font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1 hover:underline cursor-pointer"
-                      >
-                        {showPreviousLabHistory ? (
-                          <>Hide Past Lab Records ({patientLabHistory.length}) <ChevronUp className="w-3 h-3" /></>
-                        ) : (
-                          <>Show All Patient Lab Records ({patientLabHistory.length}) <ChevronDown className="w-3 h-3" /></>
-                        )}
-                      </button>
-                    )}
                   </div>
 
                   {loadingLab ? (
@@ -471,17 +451,17 @@ export const Consultation: React.FC = () => {
                       <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-600" />
                       <span>Loading laboratory investigations...</span>
                     </div>
-                  ) : (labOrders.length === 0 && !showPreviousLabHistory) ? (
+                  ) : labOrders.length === 0 ? (
                     <div className="p-3 bg-white/70 rounded-lg border border-slate-200 text-slate-500 text-[11px] flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <TestTube className="w-4 h-4 text-slate-400" />
-                        <span>No lab tests ordered for this current visit yet.</span>
+                        <span>No lab tests recorded for this patient yet.</span>
                       </div>
                       <span className="text-[10px] text-slate-400">Order from EDL Diagnostic Tests below</span>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {(showPreviousLabHistory ? patientLabHistory : labOrders).map((order) => {
+                      {labOrders.map((order) => {
                         const hasResult = Boolean(order.result && order.result.result_value);
                         const flag = order.result?.interpretation_flag;
                         const isCritical = flag === 'CRITICAL';
