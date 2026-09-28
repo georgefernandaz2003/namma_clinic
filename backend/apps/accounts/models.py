@@ -52,6 +52,13 @@ class StaffProfile(models.Model):
         return f"{self.employee_id} - {self.designation} ({self.person.first_name})"
 
 class User(AbstractUser):
+    """
+    User Account model.
+    Note on role: Transitional legacy single-role field retained for backward
+    compatibility and serialization. It DOES NOT independently grant authorization.
+    Authoritative permissions and multi-role assignments are derived strictly from
+    active RoleMaster and RolePermission catalogue entries.
+    """
     full_name = models.CharField(max_length=150, blank=True)
     role = models.CharField(max_length=30, choices=RoleChoices.choices, default=RoleChoices.DOCTOR)
     assigned_facility = models.ForeignKey('facilities.Facility', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_users')
@@ -87,6 +94,13 @@ class PermissionMaster(models.Model):
         return f"{disp} [{self.code}]"
 
 class RoleMaster(models.Model):
+    """
+    Authoritative System Role Master.
+    Note on is_system_role:
+    is_system_role=True denotes a predefined, system-controlled role in the
+    role catalogue. It does NOT denote a SYSTEM_ADMIN operational persona.
+    There is NO operational SYSTEM_ADMIN role in Namma Clinic.
+    """
     code = models.CharField(max_length=50, unique=True, db_index=True)
     name = models.CharField(max_length=100)
     display_name = models.CharField(max_length=150, blank=True, default='')

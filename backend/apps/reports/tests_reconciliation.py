@@ -25,7 +25,7 @@ class DashboardReconciliationTests(DomainServiceBaseTestCase):
             username="test_officer",
             email="officer@example.com",
             password="TestPass123!",
-            role="DISTRICT_OFFICER"
+            role="DISTRICT_OFFICER", assigned_district=self.district
         )
 
     def test_visit_serializer_includes_priority(self):
