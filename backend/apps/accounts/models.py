@@ -35,9 +35,6 @@ class StaffStatusChoices(models.TextChoices):
     SUSPENDED = 'SUSPENDED', 'Suspended'
     TRANSFER_PENDING = 'TRANSFER_PENDING', 'Transfer Pending'
     DEACTIVATED = 'DEACTIVATED', 'Deactivated'
-    PROBATION = 'PROBATION', 'Probation'
-    RETIRED = 'RETIRED', 'Retired'
-    RESIGNED = 'RESIGNED', 'Resigned'
 
 
 class StaffProfile(models.Model):

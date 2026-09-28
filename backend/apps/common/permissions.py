@@ -135,6 +135,7 @@ class FacilityScopedPermission(BasePermission):
 class IsMedicalOfficer(BasePermission):
     """
     Requires the requesting user to hold an active Doctor/Medical Officer role.
+    Respects IAM rule: StaffRoleAssignment has absolute precedence over User.role.
     """
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated or not request.user.is_active:
@@ -144,9 +145,6 @@ class IsMedicalOfficer(BasePermission):
         staff = get_request_staff(request, required=False)
         if not staff or staff.status != "ACTIVE":
             return False
-        if getattr(request.user, "role", "") == "DOCTOR":
-            return True
-        if staff.designation in ["Medical Officer", "Doctor", "Chief Medical Officer"]:
-            return True
-        from apps.accounts.models import StaffRoleAssignment
-        return StaffRoleAssignment.objects.filter(staff=staff, role__code="DOCTOR", is_active=True).exists()
+        from apps.accounts.permissions import get_user_active_role_codes
+        active_roles = get_user_active_role_codes(request.user)
+        return "DOCTOR" in active_roles

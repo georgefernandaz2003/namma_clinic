@@ -165,6 +165,15 @@ def validate_admin_actor(actor, target_facility=None, target_staff=None, target_
                 f"District Officer cannot administer facility #{target_facility.id} outside assigned district #{dist_id}."
             )
 
+        # Target role scope check: DHO cannot assign system-level roles
+        if target_role:
+            target_role_code = target_role.code if hasattr(target_role, 'code') else str(target_role)
+            restricted_system_roles = ['SYSTEM_ADMIN', 'SUPERUSER', 'ADMIN']
+            if target_role_code in restricted_system_roles:
+                raise UnauthorizedDomainAction(
+                    f"District Officer cannot assign system-level role '{target_role_code}'."
+                )
+
         if target_staff:
             staff_dist_ok = target_staff.facility_assignments.filter(
                 facility__district_id=dist_id, is_active=True
@@ -407,7 +416,29 @@ def assign_role(staff_profile, role, facility=None, effective_from=None, effecti
     """
     effective_actor = actor or actor_staff
     primary_fa = staff_profile.facility_assignments.filter(is_primary=True, is_active=True).first()
-    context_facility = facility or (primary_fa.facility if primary_fa else None)
+    context_facility = facility or (
+        primary_fa.facility if primary_fa else (
+            staff_profile.department.facility if staff_profile.department else getattr(getattr(staff_profile, 'user_account', None), 'assigned_facility', None)
+        )
+    )
+
+    # Section 9: Validate role-facility/district invariants
+    facility_roles = ['HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST']
+    if role.code in facility_roles and not context_facility:
+        raise DomainValidationError(
+            f"Role '{role.code}' requires a valid facility context.",
+            code="MISSING_FACILITY_CONTEXT"
+        )
+
+    if role.code in ['DISTRICT_OFFICER', 'DHO']:
+        target_user = getattr(staff_profile, 'user_account', None)
+        user_dist = getattr(target_user, 'assigned_district_id', None)
+        fac_dist = context_facility.district_id if context_facility else None
+        if not user_dist and not fac_dist:
+            raise DomainValidationError(
+                "DISTRICT_OFFICER role requires a valid district context.",
+                code="MISSING_DISTRICT_CONTEXT"
+            )
 
     actor_user, actor_staff_obj, actor_role = validate_admin_actor(
         actor=effective_actor,
@@ -573,6 +604,15 @@ def assign_facility(
 def transfer_staff(staff_profile, new_facility, new_department=None, effective_date=None, actor=None, actor_staff=None):
     """
     Atomically transfers a staff member to a new primary facility.
+    - If transfer_date > today, status is TRANSFER_PENDING.
+      Prior assignment remains active until transfer_date - 1.
+      User assigned_facility remains current facility until transfer date.
+      New assignment is created with effective_from = transfer_date.
+    - If transfer_date <= today, transfer is immediate:
+      Prior assignment closed.
+      New assignment is primary and active.
+      User assigned_facility updated to new_facility.
+      Status remains/becomes ACTIVE.
     """
     effective_actor = actor or actor_staff
     actor_user, actor_staff_obj, actor_role = validate_admin_actor(
@@ -582,48 +622,89 @@ def transfer_staff(staff_profile, new_facility, new_department=None, effective_d
         action='transfer'
     )
 
+    current_primary = staff_profile.facility_assignments.filter(is_primary=True, is_active=True).first()
+    current_fac = current_primary.facility if current_primary else getattr(staff_profile.department, 'facility', None)
+
+    if actor_role in ['HOSPITAL_ADMIN', 'ADMIN']:
+        if current_fac and new_facility and current_fac.district_id != new_facility.district_id:
+            raise UnauthorizedDomainAction("Clinic Admin cannot perform cross-district staff transfers.")
+        admin_fac_id = getattr(actor_user, 'assigned_facility_id', None)
+        if not admin_fac_id and actor_staff_obj:
+            p_fa = actor_staff_obj.facility_assignments.filter(is_primary=True, is_active=True).first()
+            admin_fac_id = p_fa.facility_id if p_fa else None
+        if admin_fac_id and current_fac and current_fac.id != admin_fac_id:
+            raise UnauthorizedDomainAction(f"Clinic Admin cannot transfer staff from foreign facility #{current_fac.id}.")
+
+    if actor_role in ['DISTRICT_OFFICER', 'DHO']:
+        dist_id = getattr(actor_user, 'assigned_district_id', None)
+        if new_facility and new_facility.district_id != dist_id:
+            raise UnauthorizedDomainAction(
+                f"District Officer cannot transfer staff to facility #{new_facility.id} outside assigned district #{dist_id}."
+            )
+        if current_fac and current_fac.district_id != dist_id:
+            raise UnauthorizedDomainAction(
+                f"District Officer cannot transfer staff from facility #{current_fac.id} outside assigned district #{dist_id}."
+            )
+
     transfer_date = effective_date or datetime.date.today()
     yesterday = transfer_date - datetime.timedelta(days=1)
+    is_future = transfer_date > datetime.date.today()
 
     with transaction.atomic():
-        # Set intermediate status if transfer is in the future
-        old_status = staff_profile.status
-        if transfer_date > datetime.date.today():
+        if is_future:
             staff_profile.status = StaffStatusChoices.TRANSFER_PENDING
             staff_profile.save(update_fields=["status", "updated_at"])
 
-        # Close current primary facility assignments
-        current_primaries = StaffFacilityAssignment.objects.filter(
-            staff=staff_profile,
-            is_primary=True,
-            is_active=True
-        )
-        for cur in current_primaries:
-            cur.effective_to = max(cur.effective_from, yesterday)
-            cur.is_active = False
-            cur.is_primary = False
-            cur.save(update_fields=["effective_to", "is_active", "is_primary"])
+            # Current primary remains active until yesterday
+            current_primaries = StaffFacilityAssignment.objects.filter(
+                staff=staff_profile,
+                is_primary=True,
+                is_active=True
+            )
+            for cur in current_primaries:
+                cur.effective_to = max(cur.effective_from, yesterday)
+                cur.save(update_fields=["effective_to"])
 
-        # Create new primary assignment
-        new_assignment = StaffFacilityAssignment.objects.create(
-            staff=staff_profile,
-            facility=new_facility,
-            department=new_department,
-            is_primary=True,
-            is_active=True,
-            effective_from=transfer_date
-        )
+            # Create new assignment starting on transfer_date
+            new_assignment = StaffFacilityAssignment.objects.create(
+                staff=staff_profile,
+                facility=new_facility,
+                department=new_department,
+                is_primary=True,
+                is_active=True,
+                effective_from=transfer_date
+            )
+        else:
+            # Immediate transfer
+            current_primaries = StaffFacilityAssignment.objects.filter(
+                staff=staff_profile,
+                is_primary=True,
+                is_active=True
+            )
+            for cur in current_primaries:
+                cur.effective_to = max(cur.effective_from, yesterday)
+                cur.is_active = False
+                cur.is_primary = False
+                cur.save(update_fields=["effective_to", "is_active", "is_primary"])
 
-        # Update User assigned_facility
-        user = getattr(staff_profile, 'user_account', None)
-        if user and user.assigned_facility_id != new_facility.id:
-            user.assigned_facility = new_facility
-            user.save(update_fields=["assigned_facility"])
+            new_assignment = StaffFacilityAssignment.objects.create(
+                staff=staff_profile,
+                facility=new_facility,
+                department=new_department,
+                is_primary=True,
+                is_active=True,
+                effective_from=transfer_date
+            )
 
-        # Restore ACTIVE status once effective
-        if transfer_date <= datetime.date.today() and staff_profile.status == StaffStatusChoices.TRANSFER_PENDING:
-            staff_profile.status = StaffStatusChoices.ACTIVE
-            staff_profile.save(update_fields=["status", "updated_at"])
+            # Update User assigned_facility immediately
+            user = getattr(staff_profile, 'user_account', None)
+            if user and user.assigned_facility_id != new_facility.id:
+                user.assigned_facility = new_facility
+                user.save(update_fields=["assigned_facility"])
+
+            if staff_profile.status == StaffStatusChoices.TRANSFER_PENDING:
+                staff_profile.status = StaffStatusChoices.ACTIVE
+                staff_profile.save(update_fields=["status", "updated_at"])
 
         record_audit_event(
             actor_staff=actor_staff_obj,
@@ -633,8 +714,8 @@ def transfer_staff(staff_profile, new_facility, new_department=None, effective_d
             action_type="TRANSFER_STAFF",
             table_name="staff_profiles",
             record_id=staff_profile.id,
-            payload_before={"facility_id": current_primaries.first().facility_id if current_primaries.exists() else None},
-            payload_after={"facility_id": new_facility.id, "transfer_date": str(transfer_date)}
+            payload_before={"facility_id": current_fac.id if current_fac else None},
+            payload_after={"facility_id": new_facility.id, "transfer_date": str(transfer_date), "status": staff_profile.status}
         )
 
         return new_assignment

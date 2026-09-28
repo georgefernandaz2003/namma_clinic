@@ -62,12 +62,9 @@ class ConsultationViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         staff = get_request_staff(self.request)
-        is_doc = (
-            self.request.user.is_superuser or
-            getattr(self.request.user, "role", "") == "DOCTOR" or
-            staff.designation in ["Medical Officer", "Doctor", "Chief Medical Officer"] or
-            staff.role_assignments.filter(role__code="DOCTOR", is_active=True).exists()
-        )
+        from apps.accounts.permissions import get_user_active_role_codes
+        active_roles = get_user_active_role_codes(self.request.user)
+        is_doc = self.request.user.is_superuser or 'DOCTOR' in active_roles
         if not is_doc:
             from apps.common.exceptions import UnauthorizedDomainAction
             raise UnauthorizedDomainAction("Only medical officers may conduct and record clinical consultations.")
