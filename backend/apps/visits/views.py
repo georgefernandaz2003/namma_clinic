@@ -104,9 +104,17 @@ class VisitViewSet(viewsets.ModelViewSet):
             else:
                 queryset = queryset.filter(status=req_status_upper)
 
-        # Doctor filter (can filter by doctor user id or 'me')
+        # Patient filter if viewing specific patient records/timeline
+        req_pat = self.request.query_params.get('patient', None)
+        if req_pat:
+            queryset = queryset.filter(patient_id=req_pat)
+        elif self.request.user.role == 'DOCTOR':
+            # Strict doctor isolation: doctor only sees their own assigned visits
+            queryset = queryset.filter(assigned_doctor=self.request.user)
+
+        # Doctor filter (can filter by doctor user id or 'me' for non-doctors like admin/nurse)
         req_doc = self.request.query_params.get('doctor', None)
-        if req_doc and req_doc != 'ALL':
+        if req_doc and req_doc != 'ALL' and self.request.user.role != 'DOCTOR':
             if req_doc == 'me':
                 queryset = queryset.filter(assigned_doctor=self.request.user)
             else:
@@ -237,25 +245,22 @@ class VisitViewSet(viewsets.ModelViewSet):
                 'status__in': [req_status, 'WAITING', 'TRIAGED', 'LAB_COMPLETED']
             }
             if target_queue == 'DOCTOR' and request.user.role == 'DOCTOR':
-                # First try to call patient assigned specifically to this doctor
+                # Strictly call patient assigned specifically to this doctor only
                 next_visit = Visit.objects.select_for_update().filter(
                     **filter_kwargs,
                     assigned_doctor=request.user
                 ).annotate(priority_weight=priority_case).order_by('priority_weight', 'arrival_time').first()
 
-                # If no patient assigned to this doctor, check for unassigned patient in pool
                 if not next_visit:
-                    next_visit = Visit.objects.select_for_update().filter(
-                        **filter_kwargs,
-                        assigned_doctor__isnull=True
-                    ).annotate(priority_weight=priority_case).order_by('priority_weight', 'arrival_time').first()
+                    doc_label = request.user.full_name or request.user.username
+                    return Response({'message': f'No waiting patients assigned to Dr. {doc_label} for today.'}, status=status.HTTP_200_OK)
             else:
                 next_visit = Visit.objects.select_for_update().filter(
                     **filter_kwargs
                 ).annotate(priority_weight=priority_case).order_by('priority_weight', 'arrival_time').first()
 
-            if not next_visit:
-                return Response({'message': f'No waiting patients in {target_queue} queue for today.'}, status=status.HTTP_200_OK)
+                if not next_visit:
+                    return Response({'message': f'No waiting patients in {target_queue} queue for today.'}, status=status.HTTP_200_OK)
 
             from_stat = next_visit.status
             next_visit.status = next_status
@@ -336,6 +341,8 @@ class VisitViewSet(viewsets.ModelViewSet):
         queryset = Visit.objects.all()
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
+        if request.user.role == 'DOCTOR':
+            queryset = queryset.filter(assigned_doctor=request.user)
 
         facility_id = request.query_params.get('facility')
         if facility_id:

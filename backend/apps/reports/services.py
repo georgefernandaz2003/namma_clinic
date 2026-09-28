@@ -130,7 +130,7 @@ def get_patient_metrics(target_fac_ids, target_date):
     }
 
 
-def get_visit_and_queue_metrics(target_fac_ids, target_date):
+def get_visit_and_queue_metrics(target_fac_ids, target_date, doctor_user=None):
     """
     Authoritative OPD visits and stage queue metrics:
     Single source of truth for:
@@ -143,6 +143,8 @@ def get_visit_and_queue_metrics(target_fac_ids, target_date):
     - COMPLETED
     """
     opd_visits_qs = Visit.objects.filter(facility_id__in=target_fac_ids, opd_date=target_date)
+    if doctor_user:
+        opd_visits_qs = opd_visits_qs.filter(assigned_doctor=doctor_user)
 
     total = opd_visits_qs.count()
     emergency = opd_visits_qs.filter(priority='EMERGENCY').count()
@@ -589,9 +591,12 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
     scope = get_facility_scope(user, requested_facility_id)
     target_fac_ids = scope['target_fac_ids']
 
+    role = getattr(user, 'role', '')
+    doctor_scope = user if role == 'DOCTOR' else None
+
     # Authoritative entity calculations
     patients = get_patient_metrics(target_fac_ids, target_date)
-    v_metrics = get_visit_and_queue_metrics(target_fac_ids, target_date)
+    v_metrics = get_visit_and_queue_metrics(target_fac_ids, target_date, doctor_user=doctor_scope)
     laboratory = get_laboratory_metrics(target_fac_ids, target_date)
     pharmacy = get_pharmacy_and_inventory_metrics(target_fac_ids, target_date)
     referrals = get_referral_metrics(target_fac_ids)
@@ -599,7 +604,6 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
     alerts = get_alert_metrics(target_fac_ids)
     facility_overview = get_facility_overview(scope['fac_qs'], target_date)
 
-    role = getattr(user, 'role', '')
     action_required = get_action_required(role, v_metrics, laboratory, pharmacy, referrals)
 
     is_today = target_date == datetime.date.today()

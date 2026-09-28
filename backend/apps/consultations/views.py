@@ -64,6 +64,9 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
+        # Strict doctor isolation
+        if self.request.user.role == 'DOCTOR':
+            queryset = queryset.filter(doctor=self.request.user)
         facility_param = self.request.query_params.get('facility')
         if facility_param:
             queryset = queryset.filter(facility_id=facility_param)
@@ -202,6 +205,9 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
+        # Strict doctor isolation: doctor only views their own prescriptions
+        if self.request.user.role == 'DOCTOR':
+            queryset = queryset.filter(doctor=self.request.user)
         facility_param = self.request.query_params.get('facility')
         if facility_param:
             queryset = queryset.filter(facility_id=facility_param)
