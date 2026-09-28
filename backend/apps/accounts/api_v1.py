@@ -1,17 +1,65 @@
-"""
+﻿"""
 IAM REST API (v1).
 Delegates all identity, role, and facility mutations to domain services.
 Direct PUT/PATCH/DELETE mutations are disabled to enforce service workflows and audit trails.
+Role and Permission catalogue definitions are system-level assets restricted to system superusers.
 """
-from rest_framework import serializers, viewsets, status
+from rest_framework import serializers, viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from apps.accounts.models import Person, StaffProfile, RoleMaster, StaffRoleAssignment, StaffFacilityAssignment
+from apps.accounts.models import (
+    Person, StaffProfile, RoleMaster, PermissionMaster, RolePermission,
+    StaffRoleAssignment, StaffFacilityAssignment
+)
+from apps.accounts.serializers import (
+    RoleMasterSerializer, PermissionMasterSerializer, RolePermissionSerializer
+)
 from apps.accounts.services import (
     create_staff_profile, update_staff_status, assign_role,
     end_role_assignment, assign_facility, transfer_staff
 )
 from apps.common.permissions import IsActiveStaff, IsAdministrativeStaff, get_request_staff
+
+class IsSystemAdminForCatalogue(permissions.BasePermission):
+    """
+    Catalogue definitions (Roles, Permissions, RolePermission mappings) are system-level assets.
+    Operational roles (DISTRICT_OFFICER, HOSPITAL_ADMIN, DOCTOR, NURSE, COMPOUNDER, LAB_TECHNICIAN, PHARMACIST)
+    are strictly denied mutation access.
+    Only trusted Django system superusers may create, modify, or delete definitions.
+    """
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return bool(request.user.is_superuser)
+
+class RoleMasterViewSet(viewsets.ModelViewSet):
+    """
+    System-level Role Catalogue ViewSet.
+    Read-only for operational staff; mutations restricted to Django system superusers.
+    """
+    queryset = RoleMaster.objects.all().prefetch_related('role_permissions__permission')
+    serializer_class = RoleMasterSerializer
+    permission_classes = [IsSystemAdminForCatalogue]
+
+class PermissionMasterViewSet(viewsets.ModelViewSet):
+    """
+    System-level Permission Catalogue ViewSet.
+    Read-only for operational staff; mutations restricted to Django system superusers.
+    """
+    queryset = PermissionMaster.objects.all()
+    serializer_class = PermissionMasterSerializer
+    permission_classes = [IsSystemAdminForCatalogue]
+
+class RolePermissionViewSet(viewsets.ModelViewSet):
+    """
+    Role-Permission mapping ViewSet.
+    Read-only for operational staff; mutations restricted to Django system superusers.
+    """
+    queryset = RolePermission.objects.all().select_related('role', 'permission')
+    serializer_class = RolePermissionSerializer
+    permission_classes = [IsSystemAdminForCatalogue]
 
 class PersonSerializer(serializers.ModelSerializer):
     class Meta:
@@ -53,7 +101,6 @@ class TransferStaffSerializer(serializers.Serializer):
     new_department_id = serializers.IntegerField(required=False, allow_null=True)
     effective_date = serializers.DateField(required=False)
 
-
 class StaffProfileViewSet(viewsets.ModelViewSet):
     queryset = StaffProfile.objects.all().select_related('person', 'department')
     serializer_class = StaffProfileSerializer
@@ -85,7 +132,6 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
         updated = update_staff_status(profile, serializer.validated_data['status'], actor_staff=actor)
         return Response(self.get_serializer(updated).data)
 
-
 class RoleAssignmentViewSet(viewsets.ModelViewSet):
     queryset = StaffRoleAssignment.objects.all().select_related('staff', 'role')
     serializer_class = RoleAssignmentSerializer
@@ -115,7 +161,6 @@ class RoleAssignmentViewSet(viewsets.ModelViewSet):
 
         ended = end_role_assignment(assignment, end_date=serializer.validated_data.get('end_date'), actor_staff=actor)
         return Response(self.get_serializer(ended).data)
-
 
 class FacilityAssignmentViewSet(viewsets.ModelViewSet):
     queryset = StaffFacilityAssignment.objects.all().select_related('staff', 'facility')

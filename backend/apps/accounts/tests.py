@@ -1071,6 +1071,9 @@ class PhaseC2RegressionTests(TestCase):
         self.nurse = User.objects.create_user(
             username='nurse_c2', role='NURSE', assigned_facility=self.clinic_a
         )
+        self.compounder = User.objects.create_user(
+            username='compounder_c2', role='COMPOUNDER', assigned_facility=self.clinic_a
+        )
         self.doctor = User.objects.create_user(
             username='doctor_c2', role='DOCTOR', assigned_facility=self.clinic_a
         )
@@ -1100,7 +1103,7 @@ class PhaseC2RegressionTests(TestCase):
 
     def test_fnd08_patient_facility_populates_district_and_dho_visibility(self):
         """Registering a patient with facility auto-populates district and is visible to DHO."""
-        self.client.force_authenticate(user=self.nurse)
+        self.client.force_authenticate(user=self.compounder)
         res = self.client.post('/api/patients/', {
             'name': 'Gowramma Test',
             'age': 45,
@@ -1122,7 +1125,7 @@ class PhaseC2RegressionTests(TestCase):
 
     def test_fnd08_patient_facility_district_mismatch_rejected(self):
         """Attempting to set patient district different from facility district is rejected."""
-        self.client.force_authenticate(user=self.nurse)
+        self.client.force_authenticate(user=self.compounder)
         # Serializer level
         res = self.client.post('/api/patients/', {
             'name': 'Mismatch Test',
@@ -1470,6 +1473,10 @@ class PhaseC3RegressionTests(TestCase):
             username='nurse_c3', password='password', role='NURSE',
             assigned_facility=self.clinic_a
         )
+        self.compounder = User.objects.create_user(
+            username='compounder_c3', password='password', role='COMPOUNDER',
+            assigned_facility=self.clinic_a
+        )
         self.pharmacist = User.objects.create_user(
             username='pharm_c3', password='password', role='PHARMACIST',
             assigned_facility=self.clinic_a
@@ -1604,7 +1611,7 @@ class PhaseC3RegressionTests(TestCase):
 
     def test_fnd20_patient_vulnerability_categories(self):
         """FND-20: Patient registration accepts and persists specific vulnerability categories."""
-        self.client.force_authenticate(user=self.nurse)
+        self.client.force_authenticate(user=self.compounder)
         categories = [
             'General Population',
             'Slum Resident / Low Income Group',

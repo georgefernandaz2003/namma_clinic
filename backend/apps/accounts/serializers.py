@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from apps.accounts.models import User
+from apps.accounts.models import User, RoleMaster, PermissionMaster, RolePermission
+from apps.accounts.permissions import get_user_role_permissions
 
 class UserSerializer(serializers.ModelSerializer):
     facility_name = serializers.ReadOnlyField(source='assigned_facility.facility_name')
@@ -41,11 +42,48 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return None
 
     def get_permissions(self, obj):
-        from apps.accounts.permissions import ROLE_PERMISSIONS
-        return list(ROLE_PERMISSIONS.get(obj.role, set()))
+        return sorted(list(get_user_role_permissions(obj)))
 
     def get_scope_type(self, obj):
         if obj.role == 'DISTRICT_OFFICER':
             return 'DISTRICT'
         return 'FACILITY'
 
+class PermissionMasterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PermissionMaster
+        fields = [
+            'id', 'code', 'name', 'display_name', 'description',
+            'domain', 'action', 'is_active', 'created_at', 'updated_at'
+        ]
+
+class RolePermissionSerializer(serializers.ModelSerializer):
+    permission_code = serializers.CharField(source='permission.code', read_only=True)
+    permission_name = serializers.CharField(source='permission.name', read_only=True)
+    role_code = serializers.CharField(source='role.code', read_only=True)
+
+    class Meta:
+        model = RolePermission
+        fields = [
+            'id', 'role', 'role_code', 'permission', 'permission_code',
+            'permission_name', 'is_active', 'created_at', 'updated_at'
+        ]
+
+class RoleMasterSerializer(serializers.ModelSerializer):
+    permissions_count = serializers.SerializerMethodField()
+    permission_codes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RoleMaster
+        fields = [
+            'id', 'code', 'name', 'display_name', 'description',
+            'scope_level', 'is_system_role', 'is_active',
+            'permissions_count', 'permission_codes',
+            'created_at', 'updated_at'
+        ]
+
+    def get_permissions_count(self, obj):
+        return obj.role_permissions.filter(is_active=True).count()
+
+    def get_permission_codes(self, obj):
+        return list(obj.role_permissions.filter(is_active=True).values_list('permission__code', flat=True))

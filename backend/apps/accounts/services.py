@@ -279,3 +279,118 @@ def transfer_staff(staff_profile, new_facility, new_department=None, effective_d
             user.assigned_facility = new_facility
             user.save(update_fields=["assigned_facility"])
         return new_assignment
+
+
+def seed_roles_and_permissions(stdout=None):
+    """
+    Idempotent deterministic seed mechanism for the 7 operational roles,
+    57 permissions, and role-permission mappings.
+    Safe to execute multiple times. Preserves existing records.
+    """
+    from apps.accounts.models import RoleMaster, PermissionMaster, RolePermission
+    from apps.accounts.constants import SEEDED_ROLES, SEEDED_PERMISSIONS, ROLE_PERMISSION_MAP
+
+    roles_created = 0
+    roles_updated = 0
+    perms_created = 0
+    perms_updated = 0
+    mappings_created = 0
+
+    # 1. Seed Roles
+    role_objs = {}
+    for r_data in SEEDED_ROLES:
+        role, created = RoleMaster.objects.get_or_create(
+            code=r_data["code"],
+            defaults={
+                "name": r_data["name"],
+                "display_name": r_data["display_name"],
+                "description": r_data["description"],
+                "scope_level": r_data["scope_level"],
+                "is_system_role": r_data["is_system_role"],
+                "is_active": r_data["is_active"],
+            }
+        )
+        if created:
+            roles_created += 1
+        else:
+            # Evolve existing role fields if missing or default
+            updated = False
+            if not role.display_name and r_data.get("display_name"):
+                role.display_name = r_data["display_name"]
+                updated = True
+            if not role.description and r_data.get("description"):
+                role.description = r_data["description"]
+                updated = True
+            if role.scope_level != r_data.get("scope_level"):
+                role.scope_level = r_data["scope_level"]
+                updated = True
+            if updated:
+                role.save()
+                roles_updated += 1
+        role_objs[r_data["code"]] = role
+
+    # 2. Seed Permissions
+    perm_objs = {}
+    for p_data in SEEDED_PERMISSIONS:
+        perm, created = PermissionMaster.objects.get_or_create(
+            code=p_data["code"],
+            defaults={
+                "name": p_data["name"],
+                "display_name": p_data["display_name"],
+                "description": p_data["description"],
+                "domain": p_data["domain"],
+                "action": p_data["action"],
+                "is_active": True,
+            }
+        )
+        if created:
+            perms_created += 1
+        else:
+            updated = False
+            if not perm.display_name and p_data.get("display_name"):
+                perm.display_name = p_data["display_name"]
+                updated = True
+            if not perm.domain and p_data.get("domain"):
+                perm.domain = p_data["domain"]
+                updated = True
+            if not perm.action and p_data.get("action"):
+                perm.action = p_data["action"]
+                updated = True
+            if updated:
+                perm.save()
+                perms_updated += 1
+        perm_objs[p_data["code"]] = perm
+
+    # 3. Seed RolePermission Mappings
+    for role_code, perm_codes in ROLE_PERMISSION_MAP.items():
+        role_obj = role_objs.get(role_code)
+        if not role_obj:
+            continue
+        for perm_code in perm_codes:
+            perm_obj = perm_objs.get(perm_code)
+            if not perm_obj:
+                continue
+            mapping, created = RolePermission.objects.get_or_create(
+                role=role_obj,
+                permission=perm_obj,
+                defaults={"is_active": True}
+            )
+            if created:
+                mappings_created += 1
+
+    summary = (
+        f"Role & Permission Catalogue Seed Complete: "
+        f"Roles ({roles_created} created, {roles_updated} updated, {len(role_objs)} total), "
+        f"Permissions ({perms_created} created, {perms_updated} updated, {len(perm_objs)} total), "
+        f"RolePermissions ({mappings_created} created, {RolePermission.objects.count()} total)."
+    )
+    if stdout:
+        stdout.write(summary)
+    return {
+        "roles_created": roles_created,
+        "roles_updated": roles_updated,
+        "perms_created": perms_created,
+        "perms_updated": perms_updated,
+        "mappings_created": mappings_created,
+        "summary": summary
+    }

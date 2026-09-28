@@ -1,4 +1,4 @@
-"""
+﻿"""
 API Version 1 Routing Configuration.
 Authoritative REST API foundation backed exclusively by domain service layer.
 """
@@ -6,7 +6,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from apps.accounts.api_v1 import (
-    StaffProfileViewSet, RoleAssignmentViewSet, FacilityAssignmentViewSet
+    StaffProfileViewSet, RoleAssignmentViewSet, FacilityAssignmentViewSet,
+    RoleMasterViewSet, PermissionMasterViewSet, RolePermissionViewSet
 )
 from apps.facilities.api_v1 import (
     StateViewSet, DistrictViewSet, TalukViewSet, WardViewSet,
@@ -33,10 +34,15 @@ from apps.ncd.api_v1 import (
 
 router_v1 = DefaultRouter()
 
-# IAM
+# IAM - Operational Staff Management
 router_v1.register(r'accounts/staff-profiles', StaffProfileViewSet, basename='v1-staffprofile')
 router_v1.register(r'accounts/role-assignments', RoleAssignmentViewSet, basename='v1-roleassignment')
 router_v1.register(r'accounts/facility-assignments', FacilityAssignmentViewSet, basename='v1-facilityassignment')
+
+# IAM - System Role & Permission Catalogue (System-Level Administration)
+router_v1.register(r'accounts/roles', RoleMasterViewSet, basename='v1-rolemaster')
+router_v1.register(r'accounts/permissions', PermissionMasterViewSet, basename='v1-permissionmaster')
+router_v1.register(r'accounts/role-permissions', RolePermissionViewSet, basename='v1-rolepermission')
 
 # Organization
 router_v1.register(r'organization/states', StateViewSet, basename='v1-state')

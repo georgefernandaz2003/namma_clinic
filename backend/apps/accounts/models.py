@@ -8,6 +8,7 @@ class RoleChoices(models.TextChoices):
     HOSPITAL_ADMIN = 'HOSPITAL_ADMIN', 'Hospital Administrator'
     DOCTOR = 'DOCTOR', 'Doctor'
     NURSE = 'NURSE', 'Nurse'
+    COMPOUNDER = 'COMPOUNDER', 'Compounder'
     LAB_TECHNICIAN = 'LAB_TECHNICIAN', 'Lab Technician'
     PHARMACIST = 'PHARMACIST', 'Pharmacist'
 
@@ -61,18 +62,81 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.username} ({self.get_role_display()})"
 
-class RoleMaster(models.Model):
-    code = models.CharField(max_length=50, unique=True)
-    name = models.CharField(max_length=100)
+class ScopeLevelChoices(models.TextChoices):
+    GLOBAL = 'GLOBAL', 'Global'
+    DISTRICT = 'DISTRICT', 'District'
+    FACILITY = 'FACILITY', 'Facility'
+
+class PermissionMaster(models.Model):
+    code = models.CharField(max_length=100, unique=True, db_index=True)
+    name = models.CharField(max_length=150)
+    display_name = models.CharField(max_length=150, blank=True, default='')
     description = models.TextField(blank=True, default='')
+    domain = models.CharField(max_length=50, db_index=True)
+    action = models.CharField(max_length=50)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'permission_masters'
+        ordering = ['domain', 'code']
+
+    def __str__(self):
+        disp = self.display_name or self.name
+        return f"{disp} [{self.code}]"
+
+class RoleMaster(models.Model):
+    code = models.CharField(max_length=50, unique=True, db_index=True)
+    name = models.CharField(max_length=100)
+    display_name = models.CharField(max_length=150, blank=True, default='')
+    description = models.TextField(blank=True, default='')
+    scope_level = models.CharField(
+        max_length=20,
+        choices=ScopeLevelChoices.choices,
+        default=ScopeLevelChoices.FACILITY
+    )
+    is_system_role = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+    permissions = models.ManyToManyField(
+        'PermissionMaster',
+        through='RolePermission',
+        related_name='roles',
+        blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'role_masters'
+        ordering = ['code']
 
     def __str__(self):
-        return f"{self.name} [{self.code}]"
+        disp = self.display_name or self.name
+        return f"{disp} [{self.code}]"
+
+class RolePermission(models.Model):
+    role = models.ForeignKey(RoleMaster, on_delete=models.CASCADE, related_name='role_permissions')
+    permission = models.ForeignKey(PermissionMaster, on_delete=models.CASCADE, related_name='permission_roles')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'role_permissions'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['role', 'permission'],
+                name='uniq_role_permission'
+            )
+        ]
+        indexes = [
+            models.Index(fields=['role', 'is_active'], name='idx_role_perm_active'),
+            models.Index(fields=['permission', 'is_active'], name='idx_perm_role_active'),
+        ]
+
+    def __str__(self):
+        return f"{self.role.code} -> {self.permission.code}"
 
 class StaffRoleAssignment(models.Model):
     staff = models.ForeignKey(StaffProfile, on_delete=models.RESTRICT, related_name='role_assignments')
