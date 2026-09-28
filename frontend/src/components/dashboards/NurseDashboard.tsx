@@ -63,7 +63,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date, i
         </div>
       </div>
 
-      {/* 4 KPI Cards: 1. Total Patients OPD (with New Patients Indicator), 2. Completed Patients, 3. Triage Waiting, 4. Emergency & Red Flags */}
+      {/* 4 KPI Cards: 1. Total Patients OPD, 2. Triage Waiting, 3. Emergency & Red Flags, 4. Completed Patients */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Card 1: Total Patients Today OPD with New Patients Indicator */}
         <div className="bg-white p-4 rounded-xl border border-purple-200 bg-purple-50/30 shadow-xs flex flex-col justify-between">
@@ -92,26 +92,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date, i
           </p>
         </div>
 
-        {/* Card 2: Completed Patients Count */}
-        <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-xs flex flex-col justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-emerald-800 uppercase flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              Completed Patients
-            </p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <h3 className="text-xl font-black text-emerald-900">
-                {summary?.visits?.completed ?? summary?.queue_summary?.completed ?? kpis.completed ?? 0}
-              </h3>
-              <span className="text-[10px] font-semibold text-emerald-700">Finished</span>
-            </div>
-          </div>
-          <p className="text-[10px] text-emerald-700 font-medium mt-1 pt-1 border-t border-emerald-100">
-            Care &amp; Consultation Completed
-          </p>
-        </div>
-
-        {/* Card 3: Triage Waiting */}
+        {/* Card 2: Triage Waiting */}
         <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/30 shadow-xs flex flex-col justify-between">
           <div>
             <p className="text-[11px] font-bold text-amber-800 uppercase flex items-center gap-1.5">
@@ -128,7 +109,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date, i
           </p>
         </div>
 
-        {/* Card 4: Emergency & Red Flags */}
+        {/* Card 3: Emergency & Red Flags */}
         <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/30 shadow-xs flex flex-col justify-between">
           <div>
             <p className="text-[11px] font-bold text-rose-800 uppercase flex items-center gap-1.5">
@@ -142,6 +123,25 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date, i
           </div>
           <p className="text-[10px] text-rose-700 font-medium mt-1 pt-1 border-t border-rose-100">
             Priority Red Flags
+          </p>
+        </div>
+
+        {/* Card 4: Completed Patients Count (Last Card) */}
+        <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-xs flex flex-col justify-between">
+          <div>
+            <p className="text-[11px] font-bold text-emerald-800 uppercase flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              Completed Patients
+            </p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <h3 className="text-xl font-black text-emerald-900">
+                {summary?.visits?.completed ?? summary?.queue_summary?.completed ?? kpis.completed ?? 0}
+              </h3>
+              <span className="text-[10px] font-semibold text-emerald-700">Finished</span>
+            </div>
+          </div>
+          <p className="text-[10px] text-emerald-700 font-medium mt-1 pt-1 border-t border-emerald-100">
+            Care &amp; Consultation Completed
           </p>
         </div>
       </div>
