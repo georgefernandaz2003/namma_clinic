@@ -27,7 +27,7 @@ export const CreateFacilityModal: React.FC<CreateFacilityModalProps> = ({
   }>({
     facility_name: '',
     facility_code: '',
-    facility_type: 'CLINIC',
+    facility_type: 'NAMMA_CLINIC',
     address: '',
   });
 
@@ -145,7 +145,7 @@ export const CreateFacilityModal: React.FC<CreateFacilityModalProps> = ({
                 onChange={(e) => setFormData({ ...formData, facility_type: e.target.value })}
                 className="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               >
-                <option value="CLINIC">Namma Clinic</option>
+                <option value="NAMMA_CLINIC">Namma Clinic (Urban HWC)</option>
                 <option value="UPHC">Urban PHC</option>
                 <option value="DISPENSARY">Dispensary</option>
                 <option value="HOSPITAL">General Hospital</option>

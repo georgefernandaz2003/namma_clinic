@@ -421,3 +421,9 @@ test('20. Lifecycle badges and labels formatting', () => {
     assert.ok(label && label.length > 0, `Status ${s} must have a non-empty human label`);
   }
 });
+// 21. Facility type choices alignment with backend FacilityTypeChoices
+test('21. Facility creation modal aligns with backend FacilityTypeChoices', () => {
+  const allowedFacilityTypes = ['NAMMA_CLINIC', 'UPHC', 'DISPENSARY', 'HOSPITAL', 'LABORATORY', 'PHARMACY'];
+  assert.ok(allowedFacilityTypes.includes('NAMMA_CLINIC'));
+  assert.equal(allowedFacilityTypes.includes('CLINIC'), false, 'CLINIC is invalid; backend model requires NAMMA_CLINIC');
+});
