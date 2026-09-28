@@ -22,7 +22,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
     if (activeVisit?.triage_details) {
       setActiveTriage(activeVisit.triage_details);
     } else if (activeVisit?.id) {
-      api.get(`triage/?visit=${activeVisit.id}`)
+      api.get(`v1/clinical/triage/?visit=${activeVisit.id}`)
         .then(res => {
           const list = res.data?.results || res.data || [];
           const record = Array.isArray(list) ? list[0] : list;
@@ -37,7 +37,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
   const fetchDoctorQueue = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`visits/?queue=DOCTOR&date=${date}`);
+      const res = await api.get(`v1/visits/?queue=DOCTOR&date=${date}`);
       const list = res.data.results || res.data || [];
       setOpdQueue(list);
       
@@ -61,7 +61,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
       return;
     }
     try {
-      const res = await api.post('visits/call-next/', { queue: 'DOCTOR' });
+      const res = await api.post('v1/visits/call-next/', { queue: 'DOCTOR' });
       if (res.data && res.data.id) {
         setActiveVisit(res.data);
         fetchDoctorQueue();
