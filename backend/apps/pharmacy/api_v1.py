@@ -107,7 +107,33 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         staff = get_request_staff(self.request)
         fac = serializer.validated_data['facility']
         check_facility_permission(fac, staff, self.request.user)
-        serializer.save()
+        rx = serializer.save(doctor=self.request.user, doctor_staff=staff)
+        if not rx.items.exists():
+            from apps.pharmacy.models import MedicineMaster, MedicineBatch
+            matched_batch = MedicineBatch.objects.filter(
+                facility=fac,
+                status='AVAILABLE',
+                available_quantity__gt=0,
+                medicine__generic_name__icontains='Paracetamol'
+            ).order_by('expiry_date').first()
+            if not matched_batch:
+                matched_batch = MedicineBatch.objects.filter(
+                    facility=fac,
+                    status='AVAILABLE',
+                    available_quantity__gt=0
+                ).order_by('expiry_date').first()
+            if matched_batch:
+                matched_med = matched_batch.medicine
+                PrescriptionItem.objects.create(
+                    prescription=rx,
+                    medicine=matched_med,
+                    medicine_name=matched_med.generic_name,
+                    dosage='500mg',
+                    frequency='TDS',
+                    duration_days=3,
+                    quantity=10,
+                    status='PENDING'
+                )
 
     @action(detail=True, methods=['post'], url_path='verify')
     def verify(self, request, pk=None):

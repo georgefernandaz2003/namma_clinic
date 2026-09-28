@@ -194,10 +194,10 @@ class Command(BaseCommand):
                     "address": "Ward 12, Shivajinagar, Bengaluru",
                     "abha": "ABHA-DEMO-0001",
                     "vulnerability": "General Population",
-                    "scenario": "Acute fever with chills (3 days) — PRIMARY LIVE WALKTHROUGH PATIENT",
+                    "scenario": "Patient 01: Fever (Acute fever with chills for 3 days) — PRIMARY LIVE WALKTHROUGH PATIENT",
                     "stage": "REGISTERED_CLEAN"
                 },
-                # 2. In Nurse Triage Queue
+                # 2. Cough / respiratory complaint
                 {
                     "uhid": "NC-KA-2026-0002",
                     "name": "Priya Nair",
@@ -208,10 +208,10 @@ class Command(BaseCommand):
                     "address": "4th Cross, Malleshwaram, Bengaluru",
                     "abha": "ABHA-DEMO-0002",
                     "vulnerability": "General Population",
-                    "scenario": "Sore throat and dry cough (4 days)",
+                    "scenario": "Patient 02: Cough / respiratory complaint (Sore throat and dry cough for 4 days)",
                     "stage": "IN_NURSE_QUEUE"
                 },
-                # 3. Triaged by Nurse, Waiting for Doctor
+                # 3. Headache
                 {
                     "uhid": "NC-KA-2026-0003",
                     "name": "Ravi Shankar",
@@ -222,10 +222,10 @@ class Command(BaseCommand):
                     "address": "2nd Main, Rajajinagar, Bengaluru",
                     "abha": "ABHA-DEMO-0003",
                     "vulnerability": "Slum Resident / Low Income Group",
-                    "scenario": "Generalized weakness and fatigue (2 weeks)",
+                    "scenario": "Patient 03: Headache (Throbbing frontal headache and mild fatigue for 5 days)",
                     "stage": "TRIAGED_WAITING_DOCTOR"
                 },
-                # 4. In Doctor Consultation
+                # 4. Gastric / abdominal complaint
                 {
                     "uhid": "NC-KA-2026-0004",
                     "name": "Meena Devi",
@@ -236,10 +236,10 @@ class Command(BaseCommand):
                     "address": "7th Block, Jayanagar, Bengaluru",
                     "abha": "ABHA-DEMO-0004",
                     "vulnerability": "Senior Citizen / Diabetic",
-                    "scenario": "Recurring headache and blurred vision",
+                    "scenario": "Patient 04: Gastric / abdominal complaint (Epigastric burning discomfort and dyspepsia for 1 week)",
                     "stage": "IN_CONSULTATION"
                 },
-                # 5. Lab Tests Ordered (CBC + Dengue NS1), Awaiting Specimen Collection
+                # 5. General weakness
                 {
                     "uhid": "NC-KA-2026-0005",
                     "name": "Suresh Babu",
@@ -250,10 +250,10 @@ class Command(BaseCommand):
                     "address": "Sector 3, HSR Layout, Bengaluru",
                     "abha": "ABHA-DEMO-0005",
                     "vulnerability": "General Population",
-                    "scenario": "High fever, retro-orbital pain and arthralgia (Suspected Dengue)",
-                    "stage": "LAB_ORDERED_PENDING_SAMPLE"
+                    "scenario": "Patient 05: General weakness (Generalized fatigue, lethargy, and body ache for 2 weeks)",
+                    "stage": "TRIAGED_WAITING_DOCTOR"
                 },
-                # 6. Lab Specimen Collected & Result Entered (Urine Routine), Awaiting MO Verification
+                # 6. Skin complaint
                 {
                     "uhid": "NC-KA-2026-0006",
                     "name": "Kavya Reddy",
@@ -264,10 +264,10 @@ class Command(BaseCommand):
                     "address": "1st Stage, Indiranagar, Bengaluru",
                     "abha": "ABHA-DEMO-0006",
                     "vulnerability": "General Population",
-                    "scenario": "Dysuria and lower abdominal pain (Urinary Tract Infection)",
-                    "stage": "LAB_RESULT_ENTERED"
+                    "scenario": "Patient 06: Skin complaint (Pruritic erythematous rash on forearms for 4 days)",
+                    "stage": "IN_NURSE_QUEUE"
                 },
-                # 7. Doctor Prescribed, Waiting in Pharmacy Queue for Verification
+                # 7. Joint pain
                 {
                     "uhid": "NC-KA-2026-0007",
                     "name": "Manoj Kumar",
@@ -278,10 +278,10 @@ class Command(BaseCommand):
                     "address": "5th Phase, JP Nagar, Bengaluru",
                     "abha": "ABHA-DEMO-0007",
                     "vulnerability": "Slum Household BPL",
-                    "scenario": "Upper Respiratory Tract Infection with productive cough",
-                    "stage": "PHARMACY_PENDING_VERIFY"
+                    "scenario": "Patient 07: Joint pain (Bilateral knee joint stiffness and pain for 3 weeks)",
+                    "stage": "TRIAGED_WAITING_DOCTOR"
                 },
-                # 8. Prescription Verified by Pharmacist, Ready for FEFO Dispense
+                # 8. Routine chronic-condition follow-up
                 {
                     "uhid": "NC-KA-2026-0008",
                     "name": "Anitha Rao",
@@ -292,10 +292,10 @@ class Command(BaseCommand):
                     "address": "8th Main, Basavanagudi, Bengaluru",
                     "abha": "ABHA-DEMO-0008",
                     "vulnerability": "General Population",
-                    "scenario": "Allergic pharyngitis with nasal congestion and myalgia",
-                    "stage": "PHARMACY_VERIFIED_FEFO_READY"
+                    "scenario": "Patient 08: Routine chronic-condition follow-up (Hypertension review and routine medication refill)",
+                    "stage": "TRIAGED_WAITING_DOCTOR"
                 },
-                # 9. Dispensed & Completed (Full double-entry ledger audit trail)
+                # 9. Fever requiring laboratory investigation
                 {
                     "uhid": "NC-KA-2026-0009",
                     "name": "Sanjay Patel",
@@ -306,10 +306,10 @@ class Command(BaseCommand):
                     "address": "3rd Cross, Koramangala, Bengaluru",
                     "abha": "ABHA-DEMO-0009",
                     "vulnerability": "Senior Citizen / Cardiac History",
-                    "scenario": "Tension headache and mild malaise",
-                    "stage": "DISPENSED_COMPLETED"
+                    "scenario": "Patient 09: Fever requiring laboratory investigation (High fever with rigors, CBC & NS1 ordered)",
+                    "stage": "LAB_ORDERED_PENDING_SAMPLE"
                 },
-                # 10. Registered Chronic Care Patient for Routine Follow-Up
+                # 10. General OPD / follow-up
                 {
                     "uhid": "NC-KA-2026-0010",
                     "name": "Deepa Menon",
@@ -320,7 +320,7 @@ class Command(BaseCommand):
                     "address": "6th Block, BTM Layout, Bengaluru",
                     "abha": "ABHA-DEMO-0010",
                     "vulnerability": "General Population",
-                    "scenario": "Chronic joint stiffness and routine follow-up check",
+                    "scenario": "Patient 10: General OPD / follow-up (Preventive wellness check-up and follow-up consultation)",
                     "stage": "REGISTERED_FOLLOWUP"
                 },
             ]
