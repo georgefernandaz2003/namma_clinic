@@ -154,6 +154,7 @@ The `seed_demo` command automatically populates the system with pre-configured a
 
 ## 📄 User Manual & Diagrams
 
+- **Digital User Operations Manual**: [`docs/USER_DOCUMENT.md`](docs/USER_DOCUMENT.md) (Complete step-by-step role-based operational guide, clinical workflows, ICD-10 codification, and troubleshooting).
 - **PDF User Manual**: `Namma_Clinic_Digital_Healthcare_Network_Demo_Manual.pdf` (Comprehensive 30-page user guide covering all modules, workflows, and role capabilities).
 - **System Architecture & Control Flow Diagrams**: Ultra-high-resolution flowcharts are available in the repository root and documentation folder.
 
