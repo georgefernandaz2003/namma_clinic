@@ -29,18 +29,27 @@ class Person(models.Model):
     def __str__(self):
         return f"{self.first_name} {self.last_name}".strip()
 
+class StaffStatusChoices(models.TextChoices):
+    INVITED = 'INVITED', 'Invited'
+    ACTIVE = 'ACTIVE', 'Active'
+    SUSPENDED = 'SUSPENDED', 'Suspended'
+    TRANSFER_PENDING = 'TRANSFER_PENDING', 'Transfer Pending'
+    DEACTIVATED = 'DEACTIVATED', 'Deactivated'
+    PROBATION = 'PROBATION', 'Probation'
+    RETIRED = 'RETIRED', 'Retired'
+    RESIGNED = 'RESIGNED', 'Resigned'
+
+
 class StaffProfile(models.Model):
     person = models.ForeignKey(Person, on_delete=models.RESTRICT, related_name='staff_profiles')
     employee_id = models.CharField(max_length=50, unique=True)
     designation = models.CharField(max_length=100)
     medical_council_reg_number = models.CharField(max_length=50, blank=True, null=True, unique=True)
-    status = models.CharField(max_length=20, default='ACTIVE', choices=[
-        ('PROBATION', 'Probation'),
-        ('ACTIVE', 'Active'),
-        ('SUSPENDED', 'Suspended'),
-        ('RETIRED', 'Retired'),
-        ('RESIGNED', 'Resigned')
-    ])
+    status = models.CharField(
+        max_length=20,
+        default=StaffStatusChoices.ACTIVE,
+        choices=StaffStatusChoices.choices
+    )
     department = models.ForeignKey('facilities.Department', on_delete=models.RESTRICT, null=True, blank=True, related_name='staff_members')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -50,6 +59,7 @@ class StaffProfile(models.Model):
 
     def __str__(self):
         return f"{self.employee_id} - {self.designation} ({self.person.first_name})"
+
 
 class User(AbstractUser):
     """
@@ -155,10 +165,13 @@ class RolePermission(models.Model):
 class StaffRoleAssignment(models.Model):
     staff = models.ForeignKey(StaffProfile, on_delete=models.RESTRICT, related_name='role_assignments')
     role = models.ForeignKey(RoleMaster, on_delete=models.RESTRICT, related_name='staff_assignments')
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.RESTRICT, null=True, blank=True, related_name='staff_role_assignments')
     effective_from = models.DateField(default=datetime.date.today)
     effective_to = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    assigned_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_staff_roles')
 
     class Meta:
         db_table = 'staff_role_assignments'
@@ -168,9 +181,26 @@ class StaffRoleAssignment(models.Model):
                 name='chk_staff_role_dates'
             )
         ]
+        indexes = [
+            models.Index(fields=['staff', 'is_active', 'effective_from'], name='idx_staff_role_active'),
+        ]
+
+    def __init__(self, *args, **kwargs):
+        if 'staff_profile' in kwargs and 'staff' not in kwargs:
+            kwargs['staff'] = kwargs.pop('staff_profile')
+        super().__init__(*args, **kwargs)
+
+    @property
+    def staff_profile(self):
+        return self.staff
+
+    @staff_profile.setter
+    def staff_profile(self, value):
+        self.staff = value
 
     def __str__(self):
         return f"{self.staff.employee_id} -> {self.role.code} (from {self.effective_from})"
+
 
 class StaffFacilityAssignment(models.Model):
     staff = models.ForeignKey(StaffProfile, on_delete=models.RESTRICT, related_name='facility_assignments')

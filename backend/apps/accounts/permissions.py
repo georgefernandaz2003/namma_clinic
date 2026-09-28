@@ -1,4 +1,5 @@
-﻿"""
+import datetime
+"""
 IAM Authorization & Scoping Engine.
 Authoritative source of truth: RoleMaster + RolePermission + PermissionMaster.
 User.role is a transitional legacy field that cannot independently grant permissions.
@@ -214,33 +215,61 @@ ROLE_PERMISSIONS = {
 
 def get_user_active_role_codes(user):
     """
-    Resolves the set of active role codes for an authenticated user.
-    Supports Multi-Role resolution:
-    1. Active StaffRoleAssignment records for the user's StaffProfile
-    2. Transitional legacy User.role ONLY IF represented by an active RoleMaster in the DB
+    Resolves the authoritative set of active role codes for an authenticated user.
+    Authoritative Resolution Invariant:
+    1. If a StaffProfile exists AND has any StaffRoleAssignment records:
+       - Effective roles = active StaffRoleAssignment roles ONLY.
+       - User.role MUST be ignored for authorization (has ZERO authorization weight).
+       - If the StaffProfile status is not ACTIVE (e.g. SUSPENDED, DEACTIVATED, INVITED),
+         returns set() (fails closed).
+       - Only assignments where is_active=True, role__is_active=True, and
+         (effective_to is NULL or effective_to >= today) and effective_from <= today
+         are considered active.
+    2. If NO StaffRoleAssignment records exist for the user (legacy transitional fallback):
+       - User.role is considered ONLY IF represented by an active RoleMaster in the DB.
+       - If StaffProfile exists and is inactive, fails closed (returns set()).
+       - Clearly marked as transitional behavior for unassigned/legacy fixtures.
     """
     if not user or not user.is_authenticated:
         return set()
 
-    roles = set()
+    # Live database check on user account active status
+    if not getattr(user, 'is_active', True):
+        return set()
 
-    # 1. Multi-role resolution via active StaffProfile -> StaffRoleAssignment
+    from django.db import models
+    from apps.accounts.models import RoleMaster
+
     staff_profile = getattr(user, 'staff_profile', None)
-    if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') == 'ACTIVE':
+
+    # 1. Authoritative resolution: StaffProfile with StaffRoleAssignment records
+    if staff_profile and staff_profile.role_assignments.exists():
+        # Lifecycle enforcement: INVITED, SUSPENDED, DEACTIVATED cannot perform operational actions
+        if getattr(staff_profile, 'status', 'ACTIVE') != 'ACTIVE':
+            return set()
+
+        today = datetime.date.today()
         active_assignments = staff_profile.role_assignments.filter(
             is_active=True,
             role__is_active=True
+        ).filter(
+            models.Q(effective_from__lte=today) & (models.Q(effective_to__isnull=True) | models.Q(effective_to__gte=today))
         ).values_list('role__code', flat=True)
-        roles.update(active_assignments)
 
-    # 2. Transitional legacy User.role fallback (ONLY if active in RoleMaster)
+        # Invariant: User.role is strictly ignored when StaffRoleAssignment exists
+        return set(active_assignments)
+
+    # If staff profile exists but has no role assignments, verify lifecycle status
+    if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') != 'ACTIVE':
+        return set()
+
+    # 2. Transitional legacy User.role fallback (ONLY if active in RoleMaster catalogue)
     legacy_role = getattr(user, 'role', None)
     if legacy_role:
-        from apps.accounts.models import RoleMaster
         if RoleMaster.objects.filter(code=legacy_role, is_active=True).exists():
-            roles.add(legacy_role)
+            return {legacy_role}
 
-    return roles
+    return set()
 
 
 def get_user_role_permissions(user):
@@ -250,7 +279,11 @@ def get_user_role_permissions(user):
     Database (RoleMaster + RolePermission + PermissionMaster) is the SOLE authoritative source.
     User.role alone CANNOT grant any permissions without active database catalogue entries.
     """
-    if not user or not user.is_authenticated:
+    if not user or not user.is_authenticated or not getattr(user, 'is_active', True):
+        return set()
+
+    staff_profile = getattr(user, 'staff_profile', None)
+    if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') != 'ACTIVE':
         return set()
 
     # Superuser has all seeded canonical permissions
@@ -286,7 +319,11 @@ def has_role_permission(user, permission_name):
     Evaluates against database-backed RolePermission catalogue exclusively.
     User.role cannot independently grant permissions.
     """
-    if not user or not user.is_authenticated:
+    if not user or not user.is_authenticated or not getattr(user, 'is_active', True):
+        return False
+
+    staff_profile = getattr(user, 'staff_profile', None)
+    if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') != 'ACTIVE':
         return False
 
     if getattr(user, 'is_superuser', False):
@@ -320,20 +357,50 @@ def get_accessible_facility_ids_for_user(user):
     Facility Scoping Helper:
     - DISTRICT_OFFICER: Returns list of facility IDs in user's assigned district.
       FAILS CLOSED (returns []) if assigned_district_id is NULL.
-    - Operational Users (HOSPITAL_ADMIN, DOCTOR, NURSE, COMPOUNDER, LAB_TECHNICIAN, PHARMACIST):
-      Returns [user.assigned_facility_id] only.
+    - Staff with StaffFacilityAssignment: Returns list of authorized facility IDs.
+      If status is TRANSFER_PENDING, strictly restricts to primary facility (no dual access).
+    - Operational Users fallback: Returns [user.assigned_facility_id] only.
     """
-    if not user or not user.is_authenticated:
+    if not user or not user.is_authenticated or not getattr(user, 'is_active', True):
         return []
 
-    if user.role == 'DISTRICT_OFFICER':
-        if user.assigned_district_id:
+    staff_profile = getattr(user, 'staff_profile', None)
+    if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') in ['INVITED', 'SUSPENDED', 'DEACTIVATED']:
+        return []
+
+    from django.db import models
+
+    # Check District Officer role
+    user_roles = get_user_active_role_codes(user)
+    if 'DISTRICT_OFFICER' in user_roles or getattr(user, 'role', None) == 'DISTRICT_OFFICER':
+        if getattr(user, 'assigned_district_id', None):
             from apps.facilities.models import Facility
             return list(Facility.objects.filter(district_id=user.assigned_district_id).values_list('id', flat=True))
         # NULL district must fail closed. DHO role does NOT grant statewide access.
         return []
 
-    if user.assigned_facility_id:
+    # Check StaffFacilityAssignment if present on StaffProfile
+    if staff_profile:
+        today = datetime.date.today()
+        fac_qs = staff_profile.facility_assignments.filter(
+            is_active=True
+        ).filter(
+            models.Q(effective_from__lte=today) & (models.Q(effective_to__isnull=True) | models.Q(effective_to__gte=today))
+        )
+        if getattr(staff_profile, 'status', 'ACTIVE') == 'TRANSFER_PENDING':
+            # Do not silently grant access to both old and new facilities; restrict to primary
+            primary_id = fac_qs.filter(is_primary=True).values_list('facility_id', flat=True).first()
+            if primary_id:
+                return [primary_id]
+            if getattr(user, 'assigned_facility_id', None):
+                return [user.assigned_facility_id]
+            return []
+
+        fac_ids = list(fac_qs.values_list('facility_id', flat=True))
+        if fac_ids:
+            return list(set(fac_ids))
+
+    if getattr(user, 'assigned_facility_id', None):
         return [user.assigned_facility_id]
 
     return []
@@ -343,33 +410,46 @@ def can_access_facility(user, facility_id):
     """
     Verifies if user has authorization to access the specified facility ID.
     - DISTRICT_OFFICER: Scoped strictly to assigned district. NULL district FAILS CLOSED (returns False).
-    - Operational Users: Scoped strictly to user.assigned_facility_id.
+    - Operational Users: Scoped strictly to authorized facilities.
     """
-    if not user or not user.is_authenticated or not facility_id:
+    if not user or not user.is_authenticated or not getattr(user, 'is_active', True) or not facility_id:
         return False
-    if user.role == 'DISTRICT_OFFICER':
-        if user.assigned_district_id:
-            from apps.facilities.models import Facility
-            return Facility.objects.filter(id=facility_id, district_id=user.assigned_district_id).exists()
-        # NULL district fails closed.
+
+    staff_profile = getattr(user, 'staff_profile', None)
+    if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') in ['INVITED', 'SUSPENDED', 'DEACTIVATED']:
         return False
-    return user.assigned_facility_id == int(facility_id)
+
+    accessible_ids = get_accessible_facility_ids_for_user(user)
+    try:
+        return int(facility_id) in accessible_ids
+    except (ValueError, TypeError):
+        return False
 
 
 class IsAuthenticatedAndRoleAuthorized(permissions.BasePermission):
-    """DRF permission checking authentication."""
+    """DRF permission checking authentication and live database account status."""
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated)
+        if not request.user or not request.user.is_authenticated or not getattr(request.user, 'is_active', True):
+            return False
+        staff_profile = getattr(request.user, 'staff_profile', None)
+        if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') in ['INVITED', 'SUSPENDED', 'DEACTIVATED']:
+            return False
+        return True
 
 
 class HasPermission(permissions.BasePermission):
     """
-    DRF Custom Permission class checking method or view-level permission.
+    DRF Custom Permission class checking method or view-level permission against live database catalogue.
     """
     message = "You do not have permission to perform this action."
 
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
+        if not request.user or not request.user.is_authenticated or not getattr(request.user, 'is_active', True):
+            return False
+
+        staff_profile = getattr(request.user, 'staff_profile', None)
+        if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') in ['INVITED', 'SUSPENDED', 'DEACTIVATED']:
+            self.message = f"Account is {staff_profile.status.lower()}. Operational access is denied."
             return False
 
         action = getattr(view, 'action', None)
@@ -392,16 +472,22 @@ class HasFacilityScope(permissions.BasePermission):
     DRF Permission enforcing Facility & Resource Scoping on API requests:
     - DISTRICT_OFFICER: Read-only oversight across facilities in assigned district. Cannot mutate clinical or facility records.
       Fails closed if assigned_district_id is NULL.
-    - Operational Staff: Scoped strictly to their assigned facility.
+    - Operational Staff: Scoped strictly to their authorized facilities.
     """
     message = "You do not have authorization to access resources outside your assigned facility or district scope."
 
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
+        if not request.user or not request.user.is_authenticated or not getattr(request.user, 'is_active', True):
+            return False
+
+        staff_profile = getattr(request.user, 'staff_profile', None)
+        if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') in ['INVITED', 'SUSPENDED', 'DEACTIVATED']:
+            self.message = f"Account is {staff_profile.status.lower()}. Operational access is denied."
             return False
 
         # District Officer is blocked from direct clinical, demographic, surveillance, and facility procurement mutations
-        if request.user.role == 'DISTRICT_OFFICER':
+        user_roles = get_user_active_role_codes(request.user)
+        if 'DISTRICT_OFFICER' in user_roles or getattr(request.user, 'role', None) == 'DISTRICT_OFFICER':
             if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
                 mutation_restricted_views = {
                     'ConsultationViewSet', 'PrescriptionViewSet', 'TriageVitalsViewSet', 'DispenseMedicineView',
@@ -418,14 +504,19 @@ class HasFacilityScope(permissions.BasePermission):
         return True
 
     def has_object_permission(self, request, view, obj):
-        if not request.user or not request.user.is_authenticated:
+        if not request.user or not request.user.is_authenticated or not getattr(request.user, 'is_active', True):
             return False
 
-        if request.user.role == 'DISTRICT_OFFICER':
+        staff_profile = getattr(request.user, 'staff_profile', None)
+        if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') in ['INVITED', 'SUSPENDED', 'DEACTIVATED']:
+            return False
+
+        user_roles = get_user_active_role_codes(request.user)
+        if 'DISTRICT_OFFICER' in user_roles or getattr(request.user, 'role', None) == 'DISTRICT_OFFICER':
             if request.method not in permissions.SAFE_METHODS:
                 return False
             # Check district isolation. NULL district fails closed!
-            if not request.user.assigned_district_id:
+            if not getattr(request.user, 'assigned_district_id', None):
                 return False
 
             from apps.facilities.models import Facility
@@ -447,18 +538,17 @@ class HasFacilityScope(permissions.BasePermission):
                 return obj_fac_id in dist_fac_ids
             return True
 
-        user_fac_id = request.user.assigned_facility_id
-        if not user_fac_id:
+        accessible_fac_ids = get_accessible_facility_ids_for_user(request.user)
+        if not accessible_fac_ids:
             return False
 
-        obj_fac_id = getattr(obj, 'facility_id', None) or getattr(obj, 'assigned_facility_id', None) or getattr(obj, 'registered_at_facility_id', None)
-
-        # Cross-facility referral exemption: if user's facility is destination or source of referral
+        # Cross-facility referral exemption: if user's accessible facilities include destination or source
         if hasattr(obj, 'source_facility_id') and hasattr(obj, 'destination_facility_id'):
-            if obj.source_facility_id == user_fac_id or obj.destination_facility_id == user_fac_id:
+            if obj.source_facility_id in accessible_fac_ids or obj.destination_facility_id in accessible_fac_ids:
                 return True
 
+        obj_fac_id = getattr(obj, 'facility_id', None) or getattr(obj, 'assigned_facility_id', None) or getattr(obj, 'registered_at_facility_id', None)
         if obj_fac_id:
-            return obj_fac_id == user_fac_id
+            return obj_fac_id in accessible_fac_ids
 
         return True

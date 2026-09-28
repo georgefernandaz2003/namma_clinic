@@ -1,13 +1,13 @@
-"""
-IAM Domain Services: Professional Identity, Role Assignments, and Facility Postings.
-Decouples staff clinical identity from mutable user authentication accounts.
+﻿"""
+IAM Domain Services: Professional Identity, Role Assignments, Account Lifecycle, and Postings.
+Authoritative domain logic with anti-privilege escalation, multi-role assignment, and durable auditing.
 """
 import datetime
 from django.db import transaction
 from django.utils import timezone
 from apps.accounts.models import (
-    Person, StaffProfile, RoleMaster,
-    StaffRoleAssignment, StaffFacilityAssignment
+    Person, StaffProfile, StaffStatusChoices, RoleMaster,
+    StaffRoleAssignment, StaffFacilityAssignment, User, RoleChoices
 )
 from apps.common.exceptions import (
     DomainValidationError,
@@ -18,9 +18,50 @@ from apps.common.exceptions import (
 )
 from apps.audit.services import record_audit_event
 
+
+def resolve_actor(actor):
+    """
+    Extracts (actor_user, actor_staff, actor_role) from either User, StaffProfile, or None.
+    """
+    if actor is None:
+        return None, None, "SYSTEM"
+
+    if isinstance(actor, User):
+        actor_user = actor
+        actor_staff = getattr(actor, 'staff_profile', None)
+        actor_role = getattr(actor, 'role', 'SYSTEM')
+        if actor_staff:
+            assigned = StaffRoleAssignment.objects.filter(staff=actor_staff, is_active=True).select_related('role').first()
+            if assigned:
+                actor_role = assigned.role.code
+        return actor_user, actor_staff, actor_role
+
+    if isinstance(actor, StaffProfile):
+        actor_staff = actor
+        actor_user = getattr(actor, 'user_account', None)
+        assigned = StaffRoleAssignment.objects.filter(staff=actor_staff, is_active=True).select_related('role').first()
+        if assigned:
+            actor_role = assigned.role.code
+        elif actor_user and actor_user.role:
+            actor_role = actor_user.role
+        elif actor_staff.designation in ["Hospital Administrator", "System Administrator", "Medical Superintendent"]:
+            actor_role = "HOSPITAL_ADMIN"
+        elif actor_staff.designation in ["District Health Officer"]:
+            actor_role = "DISTRICT_OFFICER"
+        elif actor_staff.designation in ["Staff Nurse"]:
+            actor_role = "NURSE"
+        elif actor_staff.designation in ["Medical Officer"]:
+            actor_role = "DOCTOR"
+        else:
+            actor_role = actor.designation
+        return actor_user, actor_staff, actor_role
+
+    return None, None, "SYSTEM"
+
+
 def is_administrative_staff(staff_profile):
     """Checks if a StaffProfile holds administrative privileges."""
-    if not staff_profile or staff_profile.status != "ACTIVE":
+    if not staff_profile or staff_profile.status != StaffStatusChoices.ACTIVE:
         return False
     admin_designations = [
         "Hospital Administrator", "System Administrator",
@@ -28,13 +69,114 @@ def is_administrative_staff(staff_profile):
     ]
     if staff_profile.designation in admin_designations:
         return True
-    admin_roles = ["ADMIN", "SYSTEM_ADMIN", "HOSPITAL_ADMIN", "DHO"]
+    admin_roles = ["ADMIN", "SYSTEM_ADMIN", "HOSPITAL_ADMIN", "DHO", "DISTRICT_OFFICER"]
     return StaffRoleAssignment.objects.filter(
         staff=staff_profile,
         role__code__in=admin_roles,
         is_active=True
     ).exists()
 
+
+def validate_admin_actor(actor, target_facility=None, target_staff=None, target_role=None, action=None):
+    """
+    Validates anti-privilege escalation rules:
+    - Operational roles cannot perform staff/role administration.
+    - HOSPITAL_ADMIN (Clinic Admin) can only manage staff within their assigned facility.
+    - HOSPITAL_ADMIN cannot assign DISTRICT_OFFICER or system-level roles.
+    - DISTRICT_OFFICER can only manage staff within their assigned district.
+    - Self-assignment / self-escalation is strictly prohibited.
+    """
+    actor_user, actor_staff, actor_role = resolve_actor(actor)
+    if actor is None:
+        return actor_user, actor_staff, actor_role
+
+    # Django Superuser bypasses scoping
+    if actor_user and getattr(actor_user, 'is_superuser', False):
+        return actor_user, actor_staff, actor_role
+
+    # Inactive actor denied
+    if actor_staff and actor_staff.status != StaffStatusChoices.ACTIVE:
+        raise UnauthorizedDomainAction(f"Inactive staff '{actor_staff.employee_id}' cannot perform administrative actions.")
+    if actor_user and not actor_user.is_active:
+        raise UnauthorizedDomainAction(f"Inactive user '{actor_user.username}' cannot perform administrative actions.")
+
+    # 1. Administrative check for staff actor
+    if actor_staff and not is_administrative_staff(actor_staff) and not (actor_user and actor_user.is_superuser):
+        if action in ['transfer', 'assign_facility']:
+            pass
+        else:
+            raise UnauthorizedDomainAction(f"Staff '{actor_staff.employee_id}' lacks administrative authority.")
+
+    # Operational roles cannot perform admin actions
+    operational_roles = ['DOCTOR', 'NURSE', 'COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST']
+    if actor_role in operational_roles:
+        if action in ['transfer', 'assign_facility']:
+            pass
+        else:
+            raise UnauthorizedDomainAction(f"Operational role '{actor_role}' is not authorized to perform staff administration.")
+
+    # 2. Self-assignment / Self-escalation check (role assignment)
+    if target_role:
+        if target_staff and actor_staff and target_staff.id == actor_staff.id:
+            raise UnauthorizedDomainAction("Users cannot modify or assign roles to themselves.")
+        if target_staff and actor_user and getattr(actor_user, 'staff_profile_id', None) == target_staff.id:
+            raise UnauthorizedDomainAction("Users cannot modify or assign roles to themselves.")
+
+    # 3. Hospital Admin (Clinic Admin) Scoping
+    if actor_role in ['HOSPITAL_ADMIN', 'ADMIN']:
+        admin_fac_id = getattr(actor_user, 'assigned_facility_id', None) if actor_user else None
+        if not admin_fac_id and actor_staff:
+            primary_fa = actor_staff.facility_assignments.filter(is_primary=True, is_active=True).first()
+            if primary_fa:
+                admin_fac_id = primary_fa.facility_id
+
+        # Target facility scope check (for assignments)
+        if target_facility and admin_fac_id and action != 'transfer' and target_facility.id != admin_fac_id:
+            raise UnauthorizedDomainAction(
+                f"Clinic Admin of facility #{admin_fac_id} cannot administer foreign facility #{target_facility.id}."
+            )
+
+        # Target staff scope check: target staff must belong to clinic admin's facility
+        if target_staff and admin_fac_id:
+            staff_in_fac = target_staff.facility_assignments.filter(facility_id=admin_fac_id, is_active=True).exists()
+            target_user = getattr(target_staff, 'user_account', None)
+            if not staff_in_fac and target_user and target_user.assigned_facility_id != admin_fac_id:
+                raise UnauthorizedDomainAction(
+                    f"Clinic Admin cannot administer staff '{target_staff.employee_id}' outside assigned facility."
+                )
+
+        # Target role scope check: Clinic Admin cannot grant DHO or system roles
+        if target_role:
+            target_role_code = target_role.code if hasattr(target_role, 'code') else str(target_role)
+            restricted_roles = ['DISTRICT_OFFICER', 'DHO', 'SYSTEM_ADMIN', 'SUPERUSER']
+            if target_role_code in restricted_roles:
+                raise UnauthorizedDomainAction(
+                    f"Clinic Admin cannot assign privileged role '{target_role_code}'."
+                )
+
+    # 4. District Officer Scoping
+    if actor_role in ['DISTRICT_OFFICER', 'DHO']:
+        dist_id = getattr(actor_user, 'assigned_district_id', None) if actor_user else None
+        if not dist_id:
+            raise UnauthorizedDomainAction("District Officer with NULL district fails closed.")
+
+        if target_facility and target_facility.district_id != dist_id:
+            raise UnauthorizedDomainAction(
+                f"District Officer cannot administer facility #{target_facility.id} outside assigned district #{dist_id}."
+            )
+
+        if target_staff:
+            staff_dist_ok = target_staff.facility_assignments.filter(
+                facility__district_id=dist_id, is_active=True
+            ).exists()
+            target_user = getattr(target_staff, 'user_account', None)
+            if not staff_dist_ok and target_user and target_user.assigned_district_id != dist_id:
+                if target_user.assigned_facility and target_user.assigned_facility.district_id != dist_id:
+                    raise UnauthorizedDomainAction(
+                        f"District Officer cannot administer staff '{target_staff.employee_id}' outside assigned district #{dist_id}."
+                    )
+
+    return actor_user, actor_staff, actor_role
 
 
 def create_staff_profile(
@@ -43,12 +185,10 @@ def create_staff_profile(
     designation,
     department=None,
     medical_council_reg_number=None,
-    status="ACTIVE",
+    status=StaffStatusChoices.ACTIVE,
     actor_staff=None
 ):
-    """
-    Creates a new professional StaffProfile linked to a natural Person.
-    """
+    """Creates a new professional StaffProfile linked to a natural Person."""
     if not employee_id:
         raise DomainValidationError("employee_id is required for StaffProfile.", code="MISSING_EMPLOYEE_ID")
     if not designation:
@@ -79,42 +219,203 @@ def create_staff_profile(
         return profile
 
 
-def update_staff_status(staff_profile, new_status, actor_staff=None):
+def invite_staff(
+    email,
+    first_name,
+    last_name,
+    gender,
+    date_of_birth,
+    employee_id,
+    designation,
+    facility,
+    role_code=None,
+    phone_number=None,
+    department=None,
+    actor=None
+):
     """
-    Updates the operational lifecycle status of a StaffProfile.
+    Onboards a new staff member in INVITED lifecycle state.
+    Creates Person, StaffProfile (INVITED), User account (is_active=False),
+    optional StaffRoleAssignment, and StaffFacilityAssignment.
     """
-    valid_statuses = ["PROBATION", "ACTIVE", "SUSPENDED", "RETIRED", "RESIGNED"]
-    if new_status not in valid_statuses:
-        raise InvalidStateTransition("StaffProfile", staff_profile.status, new_status)
+    actor_user, actor_staff, actor_role = validate_admin_actor(
+        actor=actor,
+        target_facility=facility,
+        target_role=role_code
+    )
+
+    if not employee_id:
+        raise DomainValidationError("employee_id is required.", code="MISSING_EMPLOYEE_ID")
+    if StaffProfile.objects.filter(employee_id=employee_id).exists():
+        raise DomainValidationError(f"StaffProfile '{employee_id}' already exists.", code="DUPLICATE_EMPLOYEE_ID")
+
+    with transaction.atomic():
+        person = Person.objects.create(
+            first_name=first_name,
+            last_name=last_name or '',
+            gender=gender,
+            date_of_birth=date_of_birth,
+            phone_number=phone_number or ''
+        )
+
+        profile = StaffProfile.objects.create(
+            person=person,
+            employee_id=employee_id,
+            designation=designation,
+            department=department,
+            status=StaffStatusChoices.INVITED
+        )
+
+        # User account created with is_active=False until invitation accepted/activated
+        user_role = role_code if role_code in RoleChoices.values else RoleChoices.DOCTOR
+        username = employee_id.lower().replace("-", "_")
+        if User.objects.filter(username=username).exists():
+            username = f"{username}_{person.id}"
+
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=None,
+            first_name=first_name,
+            last_name=last_name or '',
+            role=user_role,
+            assigned_facility=facility,
+            assigned_district=facility.district if facility else None,
+            staff_profile=profile,
+            is_active=False
+        )
+
+        # Primary Facility Assignment
+        if facility:
+            StaffFacilityAssignment.objects.create(
+                staff=profile,
+                facility=facility,
+                department=department,
+                is_primary=True,
+                effective_from=datetime.date.today(),
+                is_active=True
+            )
+
+        # Role Assignment if provided
+        if role_code:
+            role_master = RoleMaster.objects.filter(code=role_code, is_active=True).first()
+            if role_master:
+                StaffRoleAssignment.objects.create(
+                    staff=profile,
+                    role=role_master,
+                    facility=facility,
+                    effective_from=datetime.date.today(),
+                    is_active=True,
+                    assigned_by=actor_user
+                )
+
+        record_audit_event(
+            actor_staff=actor_staff,
+            actor_user_id=actor_user.id if actor_user else None,
+            actor_role_snapshot=actor_role,
+            facility=facility,
+            action_type="INVITE_STAFF",
+            table_name="staff_profiles",
+            record_id=profile.id,
+            payload_after={
+                "employee_id": profile.employee_id,
+                "status": StaffStatusChoices.INVITED,
+                "role_code": role_code,
+                "facility_id": facility.id if facility else None
+            }
+        )
+
+        return profile, user
+
+
+def activate_staff(staff_profile, actor=None):
+    """
+    Activates an invited staff profile and activates their associated user account.
+    """
+    primary_fa = staff_profile.facility_assignments.filter(is_primary=True, is_active=True).first()
+    facility = primary_fa.facility if primary_fa else None
+
+    actor_user, actor_staff, actor_role = validate_admin_actor(
+        actor=actor,
+        target_facility=facility,
+        target_staff=staff_profile
+    )
+
+    if staff_profile.status not in [StaffStatusChoices.INVITED, StaffStatusChoices.SUSPENDED]:
+        raise InvalidStateTransition("StaffProfile", staff_profile.status, StaffStatusChoices.ACTIVE)
 
     old_status = staff_profile.status
-    staff_profile.status = new_status
-    staff_profile.save(update_fields=["status", "updated_at"])
+    with transaction.atomic():
+        staff_profile.status = StaffStatusChoices.ACTIVE
+        staff_profile.save(update_fields=["status", "updated_at"])
 
-    record_audit_event(
-        actor_staff=actor_staff,
-        actor_role_snapshot=actor_staff.designation if actor_staff else "SYSTEM",
-        action_type="UPDATE",
-        table_name="staff_profiles",
-        record_id=staff_profile.id,
-        payload_before={"status": old_status},
-        payload_after={"status": new_status}
-    )
+        user = getattr(staff_profile, 'user_account', None)
+        if user:
+            user.is_active = True
+            user.save(update_fields=["is_active"])
+
+        record_audit_event(
+            actor_staff=actor_staff,
+            actor_user_id=actor_user.id if actor_user else None,
+            actor_role_snapshot=actor_role,
+            facility=facility,
+            action_type="ACTIVATE_STAFF",
+            table_name="staff_profiles",
+            record_id=staff_profile.id,
+            payload_before={"status": old_status},
+            payload_after={"status": StaffStatusChoices.ACTIVE}
+        )
+
     return staff_profile
 
 
-def assign_role(staff_profile, role, effective_from=None, effective_to=None, actor_staff=None):
+def update_staff_status(staff_profile, new_status, actor_staff=None):
+    """Updates the operational lifecycle status of a StaffProfile."""
+    if new_status not in StaffStatusChoices.values:
+        raise InvalidStateTransition("StaffProfile", staff_profile.status, new_status)
+
+    old_status = staff_profile.status
+    with transaction.atomic():
+        staff_profile.status = new_status
+        staff_profile.save(update_fields=["status", "updated_at"])
+
+        # Synchronize user account active status
+        user = getattr(staff_profile, 'user_account', None)
+        if user:
+            if new_status in [StaffStatusChoices.SUSPENDED, StaffStatusChoices.DEACTIVATED, StaffStatusChoices.INVITED]:
+                user.is_active = False
+            elif new_status == StaffStatusChoices.ACTIVE:
+                user.is_active = True
+            user.save(update_fields=["is_active"])
+
+        record_audit_event(
+            actor_staff=actor_staff,
+            actor_role_snapshot=actor_staff.designation if actor_staff else "SYSTEM",
+            action_type="UPDATE",
+            table_name="staff_profiles",
+            record_id=staff_profile.id,
+            payload_before={"status": old_status},
+            payload_after={"status": new_status}
+        )
+    return staff_profile
+
+
+def assign_role(staff_profile, role, facility=None, effective_from=None, effective_to=None, actor=None, actor_staff=None):
     """
-    Assigns a dynamic role to a StaffProfile with effective-date validation and overlap prevention.
+    Authoritative role assignment to a StaffProfile with effective-date validation,
+    overlap prevention, anti-privilege escalation, and audit logging.
     """
-    if actor_staff:
-        if actor_staff.status != "ACTIVE":
-            raise UnauthorizedDomainAction(f"Inactive staff '{actor_staff.employee_id}' cannot assign roles.")
-        privileged_roles = ["ADMIN", "SYSTEM_ADMIN", "HOSPITAL_ADMIN", "SUPERUSER"]
-        if role.code in privileged_roles and not is_administrative_staff(actor_staff):
-            raise UnauthorizedDomainAction(
-                f"Staff '{actor_staff.employee_id}' lacks administrative authority to assign privileged role '{role.code}'."
-            )
+    effective_actor = actor or actor_staff
+    primary_fa = staff_profile.facility_assignments.filter(is_primary=True, is_active=True).first()
+    context_facility = facility or (primary_fa.facility if primary_fa else None)
+
+    actor_user, actor_staff_obj, actor_role = validate_admin_actor(
+        actor=effective_actor,
+        target_facility=context_facility,
+        target_staff=staff_profile,
+        target_role=role
+    )
+
     today = datetime.date.today()
     start_date = effective_from or today
 
@@ -138,47 +439,66 @@ def assign_role(staff_profile, role, effective_from=None, effective_to=None, act
         assignment = StaffRoleAssignment.objects.create(
             staff=staff_profile,
             role=role,
+            facility=context_facility,
             effective_from=start_date,
             effective_to=effective_to,
-            is_active=True
+            is_active=True,
+            assigned_by=actor_user
         )
 
         record_audit_event(
-            actor_staff=actor_staff,
-            actor_role_snapshot=actor_staff.designation if actor_staff else "SYSTEM",
-            action_type="CREATE",
+            actor_staff=actor_staff_obj,
+            actor_user_id=actor_user.id if actor_user else None,
+            actor_role_snapshot=actor_role,
+            facility=context_facility,
+            action_type="ASSIGN_ROLE",
             table_name="staff_role_assignments",
             record_id=assignment.id,
             payload_after={
                 "staff_id": staff_profile.id,
                 "role_code": role.code,
                 "effective_from": str(start_date),
-                "effective_to": str(effective_to) if effective_to else None
+                "effective_to": str(effective_to) if effective_to else None,
+                "facility_id": context_facility.id if context_facility else None
             }
         )
         return assignment
 
 
-def end_role_assignment(assignment, end_date=None, actor_staff=None):
+def end_role_assignment(assignment, end_date=None, actor=None, actor_staff=None):
     """
-    Terminates an active role assignment preserving historical records.
+    Terminates an active role assignment preserving historical records and auditing.
     """
+    effective_actor = actor or actor_staff
+    primary_fa = assignment.staff.facility_assignments.filter(is_primary=True, is_active=True).first()
+    context_facility = assignment.facility or (primary_fa.facility if primary_fa else None)
+
+    actor_user, actor_staff_obj, actor_role = validate_admin_actor(
+        actor=effective_actor,
+        target_facility=context_facility,
+        target_staff=assignment.staff,
+        target_role=assignment.role
+    )
+
     effective_end = end_date or datetime.date.today()
     if effective_end < assignment.effective_from:
         raise InvalidAssignmentPeriodError(assignment.effective_from, effective_end)
 
-    assignment.effective_to = effective_end
-    assignment.is_active = False
-    assignment.save(update_fields=["effective_to", "is_active"])
+    with transaction.atomic():
+        assignment.effective_to = effective_end
+        assignment.is_active = False
+        assignment.save(update_fields=["effective_to", "is_active", "updated_at"])
 
-    record_audit_event(
-        actor_staff=actor_staff,
-        actor_role_snapshot=actor_staff.designation if actor_staff else "SYSTEM",
-        action_type="UPDATE",
-        table_name="staff_role_assignments",
-        record_id=assignment.id,
-        payload_after={"is_active": False, "effective_to": str(effective_end)}
-    )
+        record_audit_event(
+            actor_staff=actor_staff_obj,
+            actor_user_id=actor_user.id if actor_user else None,
+            actor_role_snapshot=actor_role,
+            facility=context_facility,
+            action_type="END_ROLE",
+            table_name="staff_role_assignments",
+            record_id=assignment.id,
+            payload_after={"is_active": False, "effective_to": str(effective_end)}
+        )
     return assignment
 
 
@@ -189,14 +509,21 @@ def assign_facility(
     is_primary=False,
     effective_from=None,
     effective_to=None,
+    actor=None,
     actor_staff=None
 ):
     """
     Assigns a StaffProfile to a healthcare Facility / Department.
     If is_primary=True, terminates any prior active primary facility assignment.
     """
-    if actor_staff and actor_staff.status != "ACTIVE":
-        raise UnauthorizedDomainAction(f"Inactive staff '{actor_staff.employee_id}' cannot assign facilities.")
+    effective_actor = actor or actor_staff
+    actor_user, actor_staff_obj, actor_role = validate_admin_actor(
+        actor=effective_actor,
+        target_facility=facility,
+        target_staff=staff_profile,
+        action='assign_facility'
+    )
+
     today = datetime.date.today()
     start_date = effective_from or today
 
@@ -205,7 +532,7 @@ def assign_facility(
 
     with transaction.atomic():
         if is_primary:
-            # Demote or terminate prior primary facility assignment
+            # Demote prior primary facility assignments
             prior_primaries = StaffFacilityAssignment.objects.filter(
                 staff=staff_profile,
                 is_primary=True,
@@ -226,10 +553,11 @@ def assign_facility(
         )
 
         record_audit_event(
-            actor_staff=actor_staff,
-            actor_role_snapshot=actor_staff.designation if actor_staff else "SYSTEM",
+            actor_staff=actor_staff_obj,
+            actor_user_id=actor_user.id if actor_user else None,
+            actor_role_snapshot=actor_role,
             facility=facility,
-            action_type="CREATE",
+            action_type="ASSIGN_FACILITY",
             table_name="staff_facility_assignments",
             record_id=assignment.id,
             payload_after={
@@ -242,16 +570,28 @@ def assign_facility(
         return assignment
 
 
-def transfer_staff(staff_profile, new_facility, new_department=None, effective_date=None, actor_staff=None):
+def transfer_staff(staff_profile, new_facility, new_department=None, effective_date=None, actor=None, actor_staff=None):
     """
     Atomically transfers a staff member to a new primary facility.
     """
-    if actor_staff and actor_staff.status != "ACTIVE":
-        raise UnauthorizedDomainAction(f"Inactive staff '{actor_staff.employee_id}' cannot transfer staff.")
+    effective_actor = actor or actor_staff
+    actor_user, actor_staff_obj, actor_role = validate_admin_actor(
+        actor=effective_actor,
+        target_facility=new_facility,
+        target_staff=staff_profile,
+        action='transfer'
+    )
+
     transfer_date = effective_date or datetime.date.today()
     yesterday = transfer_date - datetime.timedelta(days=1)
 
     with transaction.atomic():
+        # Set intermediate status if transfer is in the future
+        old_status = staff_profile.status
+        if transfer_date > datetime.date.today():
+            staff_profile.status = StaffStatusChoices.TRANSFER_PENDING
+            staff_profile.save(update_fields=["status", "updated_at"])
+
         # Close current primary facility assignments
         current_primaries = StaffFacilityAssignment.objects.filter(
             staff=staff_profile,
@@ -265,20 +605,130 @@ def transfer_staff(staff_profile, new_facility, new_department=None, effective_d
             cur.save(update_fields=["effective_to", "is_active", "is_primary"])
 
         # Create new primary assignment
-        new_assignment = assign_facility(
-            staff_profile=staff_profile,
+        new_assignment = StaffFacilityAssignment.objects.create(
+            staff=staff_profile,
             facility=new_facility,
             department=new_department,
             is_primary=True,
-            effective_from=transfer_date,
-            actor_staff=actor_staff
+            is_active=True,
+            effective_from=transfer_date
         )
-        from apps.accounts.models import User
-        user = User.objects.filter(staff_profile=staff_profile).first()
+
+        # Update User assigned_facility
+        user = getattr(staff_profile, 'user_account', None)
         if user and user.assigned_facility_id != new_facility.id:
             user.assigned_facility = new_facility
             user.save(update_fields=["assigned_facility"])
+
+        # Restore ACTIVE status once effective
+        if transfer_date <= datetime.date.today() and staff_profile.status == StaffStatusChoices.TRANSFER_PENDING:
+            staff_profile.status = StaffStatusChoices.ACTIVE
+            staff_profile.save(update_fields=["status", "updated_at"])
+
+        record_audit_event(
+            actor_staff=actor_staff_obj,
+            actor_user_id=actor_user.id if actor_user else None,
+            actor_role_snapshot=actor_role,
+            facility=new_facility,
+            action_type="TRANSFER_STAFF",
+            table_name="staff_profiles",
+            record_id=staff_profile.id,
+            payload_before={"facility_id": current_primaries.first().facility_id if current_primaries.exists() else None},
+            payload_after={"facility_id": new_facility.id, "transfer_date": str(transfer_date)}
+        )
+
         return new_assignment
+
+
+def suspend_staff(staff_profile, reason=None, actor=None, actor_staff=None):
+    """
+    Suspends a staff member, denying operational access across all facilities.
+    """
+    effective_actor = actor or actor_staff
+    primary_fa = staff_profile.facility_assignments.filter(is_primary=True, is_active=True).first()
+    context_facility = primary_fa.facility if primary_fa else None
+
+    actor_user, actor_staff_obj, actor_role = validate_admin_actor(
+        actor=effective_actor,
+        target_facility=context_facility,
+        target_staff=staff_profile
+    )
+
+    old_status = staff_profile.status
+    with transaction.atomic():
+        staff_profile.status = StaffStatusChoices.SUSPENDED
+        staff_profile.save(update_fields=["status", "updated_at"])
+
+        user = getattr(staff_profile, 'user_account', None)
+        if user:
+            user.is_active = False
+            user.save(update_fields=["is_active"])
+
+        record_audit_event(
+            actor_staff=actor_staff_obj,
+            actor_user_id=actor_user.id if actor_user else None,
+            actor_role_snapshot=actor_role,
+            facility=context_facility,
+            action_type="SUSPEND_STAFF",
+            table_name="staff_profiles",
+            record_id=staff_profile.id,
+            payload_before={"status": old_status},
+            payload_after={"status": StaffStatusChoices.SUSPENDED, "reason": reason}
+        )
+    return staff_profile
+
+
+def deactivate_staff(staff_profile, reason=None, actor=None, actor_staff=None):
+    """
+    Permanently deactivates a staff profile, revoking account login and role assignments.
+    """
+    effective_actor = actor or actor_staff
+    primary_fa = staff_profile.facility_assignments.filter(is_primary=True, is_active=True).first()
+    context_facility = primary_fa.facility if primary_fa else None
+
+    actor_user, actor_staff_obj, actor_role = validate_admin_actor(
+        actor=effective_actor,
+        target_facility=context_facility,
+        target_staff=staff_profile
+    )
+
+    old_status = staff_profile.status
+    today = datetime.date.today()
+
+    with transaction.atomic():
+        staff_profile.status = StaffStatusChoices.DEACTIVATED
+        staff_profile.save(update_fields=["status", "updated_at"])
+
+        # Revoke user account
+        user = getattr(staff_profile, 'user_account', None)
+        if user:
+            user.is_active = False
+            user.save(update_fields=["is_active"])
+
+        # Inactivate active role assignments
+        StaffRoleAssignment.objects.filter(staff=staff_profile, is_active=True).update(
+            is_active=False,
+            effective_to=today
+        )
+
+        # Inactivate active facility assignments
+        StaffFacilityAssignment.objects.filter(staff=staff_profile, is_active=True).update(
+            is_active=False,
+            effective_to=today
+        )
+
+        record_audit_event(
+            actor_staff=actor_staff_obj,
+            actor_user_id=actor_user.id if actor_user else None,
+            actor_role_snapshot=actor_role,
+            facility=context_facility,
+            action_type="DEACTIVATE_STAFF",
+            table_name="staff_profiles",
+            record_id=staff_profile.id,
+            payload_before={"status": old_status},
+            payload_after={"status": StaffStatusChoices.DEACTIVATED, "reason": reason}
+        )
+    return staff_profile
 
 
 def seed_roles_and_permissions(stdout=None):
@@ -313,7 +763,6 @@ def seed_roles_and_permissions(stdout=None):
         if created:
             roles_created += 1
         else:
-            # Evolve existing role fields if missing or default
             updated = False
             if not role.display_name and r_data.get("display_name"):
                 role.display_name = r_data["display_name"]
