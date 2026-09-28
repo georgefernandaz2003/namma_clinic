@@ -132,6 +132,21 @@ test('Nurse dashboard queue metrics calculation and tab filtering', async (t) =>
       token_number: 4,
       priority: 'NORMAL',
     },
+    {
+      id: 5,
+      visit_id: 'VIS-20260925-0005',
+      patient: 105,
+      facility: 1,
+      facility_name: 'Urban Primary Health Centre',
+      visit_date: '2026-09-25',
+      opd_date: '2026-09-25',
+      visit_type: 'OPD_GENERAL',
+      status: 'WAITING_FOR_LAB',
+      current_queue: 'LAB',
+      chief_complaint: 'Fever with chills',
+      token_number: 5,
+      priority: 'NORMAL',
+    },
   ];
 
   await t.test('calculates nurse metrics authoritatively from backend visits', () => {
@@ -142,17 +157,17 @@ test('Nurse dashboard queue metrics calculation and tab filtering', async (t) =>
     );
     const triagedVisits = mockVisits.filter(
       (v) =>
-        ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION', 'COMPLETED'].includes(v.status) &&
-        v.current_queue !== 'TRIAGE'
+        v.current_queue !== 'TRIAGE' &&
+        !['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
     );
     const emergencyOrHighVisits = mockVisits.filter(
       (v) => v.priority === 'EMERGENCY' || v.priority === 'HIGH'
     );
 
     assert.equal(pendingVisits.length, 2, 'Pending visits must be 2');
-    assert.equal(triagedVisits.length, 2, 'Triaged visits must be 2');
+    assert.equal(triagedVisits.length, 3, 'Triaged visits must include WAITING_FOR_LAB');
     assert.equal(emergencyOrHighVisits.length, 2, 'High priority/emergency visits must be 2');
-    assert.equal(mockVisits.length, 4, 'Total encounters must be 4');
+    assert.equal(mockVisits.length, 5, 'Total encounters must be 5');
   });
 
   await t.test('filters visits correctly by tab selection', () => {
@@ -166,8 +181,8 @@ test('Nurse dashboard queue metrics calculation and tab filtering', async (t) =>
         }
         if (tab === 'TRIAGED') {
           return (
-            ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION', 'COMPLETED'].includes(v.status) &&
-            v.current_queue !== 'TRIAGE'
+            v.current_queue !== 'TRIAGE' &&
+            !['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
           );
         }
         return true;
@@ -175,8 +190,8 @@ test('Nurse dashboard queue metrics calculation and tab filtering', async (t) =>
     };
 
     assert.equal(filterQueue('PENDING').length, 2);
-    assert.equal(filterQueue('TRIAGED').length, 2);
-    assert.equal(filterQueue('ALL').length, 4);
+    assert.equal(filterQueue('TRIAGED').length, 3);
+    assert.equal(filterQueue('ALL').length, 5);
   });
 
   await t.test('handles empty queue gracefully without crashing', () => {

@@ -10,7 +10,7 @@ from apps.facilities.models import Facility
 from apps.patients.models import Patient
 from apps.visits.models import Visit
 from apps.consultations.models import Consultation, Prescription
-from apps.laboratory.models import LabOrder
+from apps.laboratory.models import LabOrder, DiagnosticOrder
 from apps.pharmacy.models import MedicineBatch, InventoryTransaction
 from apps.referrals.models import Referral, FollowUp
 from apps.ncd.models import NCDRecord
@@ -69,8 +69,18 @@ class DashboardSummaryView(APIView):
         in_triage = opd_visits_qs.filter(current_queue='TRIAGE', status='IN_TRIAGE').count()
         doctor_waiting = opd_visits_qs.filter(current_queue='DOCTOR', status__in=['WAITING_FOR_DOCTOR', 'TRIAGED']).count()
         in_consultation = opd_visits_qs.filter(current_queue='DOCTOR', status='IN_CONSULTATION').count()
-        lab_pending = LabOrder.objects.filter(facility_id__in=target_fac_ids, order_date__date=target_date, status__in=['ORDERED', 'SAMPLE_COLLECTED']).count()
-        pharmacy_waiting = Prescription.objects.filter(facility_id__in=target_fac_ids, date=target_date, status='PENDING').count()
+        # Authoritative Diagnostic Orders (Phase 25) with fallback to legacy LabOrder
+        diag_orders_target_qs = DiagnosticOrder.objects.filter(facility_id__in=target_fac_ids, order_date=target_date)
+        if diag_orders_target_qs.exists():
+            lab_pending = diag_orders_target_qs.exclude(status__in=['VERIFIED', 'CANCELLED']).count()
+        else:
+            lab_pending = LabOrder.objects.filter(facility_id__in=target_fac_ids, order_date__date=target_date, status__in=['ORDERED', 'SAMPLE_COLLECTED']).count()
+
+        # Authoritative Prescription lifecycle waiting in pharmacy
+        pharmacy_waiting = Prescription.objects.filter(
+            facility_id__in=target_fac_ids, date=target_date,
+            status__in=['PENDING_VERIFICATION', 'VERIFIED', 'PARTIALLY_DISPENSED', 'ACTIVE', 'PENDING']
+        ).count()
         completed_count = opd_visits_qs.filter(status='COMPLETED').count()
 
         # Overall Totals
@@ -114,18 +124,27 @@ class DashboardSummaryView(APIView):
         followups_pending = followups_qs.filter(status__in=['PENDING', 'DUE_TODAY', 'OVERDUE']).count()
         followups_completed = followups_qs.filter(status='COMPLETED').count()
 
-        # Global Pharmacy Counts
+        # Global Pharmacy Counts (authoritative prescription lifecycle)
         rx_facility_qs = Prescription.objects.filter(facility_id__in=target_fac_ids)
         rx_total_count = rx_facility_qs.count()
-        rx_pending_count = rx_facility_qs.filter(status__in=['ACTIVE', 'PENDING', 'PARTIALLY_DISPENSED']).count()
+        rx_pending_count = rx_facility_qs.filter(
+            status__in=['PENDING_VERIFICATION', 'VERIFIED', 'PARTIALLY_DISPENSED', 'ACTIVE', 'PENDING']
+        ).count()
         rx_dispensed_today_count = rx_facility_qs.filter(status='DISPENSED', date=target_date).count()
 
-        # Global Lab Counts
-        lab_facility_qs = LabOrder.objects.filter(facility_id__in=target_fac_ids)
-        lab_ordered_count = lab_facility_qs.filter(status='ORDERED').count()
-        lab_sample_collected_count = lab_facility_qs.filter(status='SAMPLE_COLLECTED').count()
-        lab_verified_count = lab_facility_qs.filter(status='VERIFIED').count()
-        lab_total_count = lab_facility_qs.count()
+        # Global Lab Counts (authoritative Phase 25 DiagnosticOrder with fallback to legacy LabOrder)
+        diag_facility_qs = DiagnosticOrder.objects.filter(facility_id__in=target_fac_ids)
+        if diag_facility_qs.exists():
+            lab_ordered_count = diag_facility_qs.filter(status='ORDERED').count()
+            lab_sample_collected_count = diag_facility_qs.filter(status__in=['SAMPLE_COLLECTED', 'RECEIVED_IN_LAB', 'IN_TESTING', 'RESULT_ENTERED']).count()
+            lab_verified_count = diag_facility_qs.filter(status='VERIFIED').count()
+            lab_total_count = diag_facility_qs.count()
+        else:
+            lab_facility_qs = LabOrder.objects.filter(facility_id__in=target_fac_ids)
+            lab_ordered_count = lab_facility_qs.filter(status='ORDERED').count()
+            lab_sample_collected_count = lab_facility_qs.filter(status='SAMPLE_COLLECTED').count()
+            lab_verified_count = lab_facility_qs.filter(status='VERIFIED').count()
+            lab_total_count = lab_facility_qs.count()
 
         # Staff Counts
         from apps.accounts.models import User

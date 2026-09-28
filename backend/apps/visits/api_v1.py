@@ -20,7 +20,7 @@ class VisitSerializer(serializers.ModelSerializer):
         model = Visit
         fields = [
             'id', 'visit_id', 'patient', 'facility', 'visit_type',
-            'opd_date', 'current_queue', 'status', 'token_number'
+            'opd_date', 'current_queue', 'status', 'priority', 'token_number'
         ]
         read_only_fields = ['visit_id']
 

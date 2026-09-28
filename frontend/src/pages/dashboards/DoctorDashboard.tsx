@@ -59,7 +59,7 @@ export const DoctorDashboard: React.FC = () => {
 
   // Authoritative metrics calculated strictly from backend response data (zero fake KPIs)
   const readyVisits = visits.filter(
-    (v) => v.current_queue === 'DOCTOR' || ['TRIAGED', 'WAITING_FOR_DOCTOR', 'REGISTERED', 'WAITING_FOR_TRIAGE'].includes(v.status)
+    (v) => (v.current_queue === 'DOCTOR' || !v.current_queue) && ['TRIAGED', 'WAITING_FOR_DOCTOR'].includes(v.status)
   );
   const inConsultationVisits = visits.filter((v) => v.status === 'IN_CONSULTATION');
   const labReviewVisits = visits.filter((v) => ['DOCTOR_REVIEW', 'LAB_COMPLETED', 'WAITING_FOR_LAB'].includes(v.status));
@@ -67,7 +67,7 @@ export const DoctorDashboard: React.FC = () => {
 
   const filteredVisits = visits.filter((v) => {
     if (filterTab === 'READY') {
-      return v.current_queue === 'DOCTOR' || ['TRIAGED', 'WAITING_FOR_DOCTOR', 'REGISTERED', 'WAITING_FOR_TRIAGE'].includes(v.status);
+      return (v.current_queue === 'DOCTOR' || !v.current_queue) && ['TRIAGED', 'WAITING_FOR_DOCTOR'].includes(v.status);
     }
     if (filterTab === 'IN_CONSULTATION') return v.status === 'IN_CONSULTATION';
     if (filterTab === 'LAB_REVIEW') return ['DOCTOR_REVIEW', 'LAB_COMPLETED', 'WAITING_FOR_LAB'].includes(v.status);

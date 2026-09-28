@@ -61,8 +61,8 @@ export const NurseDashboard: React.FC = () => {
 
   const triagedVisits = visits.filter(
     (v) =>
-      ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION', 'COMPLETED'].includes(v.status) &&
-      v.current_queue !== 'TRIAGE'
+      v.current_queue !== 'TRIAGE' &&
+      !['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
   );
 
   const emergencyOrHighVisits = visits.filter(
@@ -78,8 +78,8 @@ export const NurseDashboard: React.FC = () => {
     }
     if (filterTab === 'TRIAGED') {
       return (
-        ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION', 'COMPLETED'].includes(v.status) &&
-        v.current_queue !== 'TRIAGE'
+        v.current_queue !== 'TRIAGE' &&
+        !['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
       );
     }
     return true;

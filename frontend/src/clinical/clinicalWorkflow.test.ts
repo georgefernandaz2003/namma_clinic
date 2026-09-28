@@ -116,13 +116,13 @@ test('Doctor workspace queue processing and filter handling', async (t) => {
   await t.test('calculates queue metrics authoritatively from real visits data', () => {
     const totalToday = mockVisits.length;
     const awaitingDoctor = mockVisits.filter(
-      (v) => (v.current_queue === 'DOCTOR' || !v.current_queue) && v.status !== 'COMPLETED'
+      (v) => (v.current_queue === 'DOCTOR' || !v.current_queue) && ['TRIAGED', 'WAITING_FOR_DOCTOR'].includes(v.status)
     ).length;
     const inConsultation = mockVisits.filter((v) => v.status === 'IN_CONSULTATION').length;
     const completed = mockVisits.filter((v) => v.status === 'COMPLETED').length;
 
     assert.equal(totalToday, 3);
-    assert.equal(awaitingDoctor, 2);
+    assert.equal(awaitingDoctor, 1);
     assert.equal(inConsultation, 1);
     assert.equal(completed, 1);
   });
