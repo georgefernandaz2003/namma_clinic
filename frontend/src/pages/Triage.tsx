@@ -32,19 +32,26 @@ export const Triage: React.FC = () => {
   const [glucose, setGlucose] = useState('175');
   const [notes, setNotes] = useState('High BP and elevated glucose detected. High risk flag auto-triggered.');
   const [saving, setSaving] = useState(false);
-  const [completedInfo, setCompletedInfo] = useState<{ patientName: string; tokenNumber?: string | number } | null>(null);
+  const [completedInfo, setCompletedInfo] = useState<{ patientName: string; tokenNumber?: string | number; doctorName?: string } | null>(null);
 
-  const loadQueue = async () => {
+  const loadQueue = async (targetId?: number | null) => {
     if (!activeFacility) return;
     try {
       const res = await api.get(`visits/?facility=${activeFacility.id}&queue=TRIAGE`);
       const list: Visit[] = res.data.results || res.data || [];
       setWaitingVisits(list);
 
-      if (stateVisitId) {
-        const found = list.find((v) => v.id === stateVisitId);
-        if (found) setSelectedVisit(found);
-        else if (list.length > 0) setSelectedVisit(list[0]);
+      const effectiveTargetId = targetId !== undefined ? targetId : stateVisitId;
+
+      if (effectiveTargetId) {
+        const found = list.find((v) => v.id === effectiveTargetId);
+        if (found) {
+          setSelectedVisit(found);
+        } else if (list.length > 0) {
+          setSelectedVisit(list[0]);
+        } else {
+          setSelectedVisit(null);
+        }
       } else if (list.length > 0) {
         setSelectedVisit(list[0]);
       } else {
@@ -54,7 +61,6 @@ export const Triage: React.FC = () => {
       console.error('Failed to load triage queue', e);
     }
   };
-
 
   useEffect(() => {
     loadQueue();
@@ -127,9 +133,13 @@ export const Triage: React.FC = () => {
             nurse_notes: notes
           });
 
+          // Immediately remove the completed patient from the triage screen
+          setSelectedVisit(null);
+
           setCompletedInfo({
             patientName,
-            tokenNumber: tokenNum
+            tokenNumber: tokenNum,
+            doctorName: chosenDocName
           });
 
           // Reset vitals form for next patient
@@ -143,7 +153,12 @@ export const Triage: React.FC = () => {
           setGlucose('100');
           setNotes('');
 
-          await loadQueue();
+          // Clear location.state so stateVisitId won't re-select the completed patient
+          if (location.state?.visitId) {
+            navigate(location.pathname, { replace: true, state: {} });
+          }
+
+          await loadQueue(null);
         } finally {
           setSaving(false);
         }
@@ -233,7 +248,10 @@ export const Triage: React.FC = () => {
               {waitingVisits.map((v) => (
                 <div
                   key={v.id}
-                  onClick={() => setSelectedVisit(v)}
+                  onClick={() => {
+                    setSelectedVisit(v);
+                    setCompletedInfo(null);
+                  }}
                   className={`p-3 rounded-xl border transition cursor-pointer ${
                     selectedVisit?.id === v.id
                       ? 'bg-emerald-50 border-emerald-500 text-slate-900 shadow-xs'
@@ -451,8 +469,38 @@ export const Triage: React.FC = () => {
               </button>
             </form>
           ) : (
-            <div className="p-12 text-center text-xs text-slate-400">
-              Select a patient from the queue to start logging triage vitals.
+            <div className="p-16 text-center space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-100 shadow-2xs">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-800">
+                {waitingVisits.length === 0
+                  ? 'All Waiting Patients Triaged'
+                  : 'Ready for Next Patient'}
+              </h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                {waitingVisits.length === 0
+                  ? 'There are currently no patients waiting in the triage queue. Newly registered patients will appear on the left.'
+                  : 'Select a patient from the waiting queue on the left to start logging triage vitals.'}
+              </p>
+              {waitingVisits.length === 0 && (
+                <div className="pt-2 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/queue')}
+                    className="px-3.5 py-1.5 text-xs font-bold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition cursor-pointer shadow-2xs"
+                  >
+                    View OPD Queue
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/consultation')}
+                    className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-teal-600 text-white hover:bg-teal-500 transition cursor-pointer shadow-2xs"
+                  >
+                    Go to Doctor Console
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
