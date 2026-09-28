@@ -9,6 +9,7 @@ import {
   Clock, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw,
   ChevronDown, ChevronUp, FlaskConical
 } from 'lucide-react';
+import { ICD10Select } from '../components/ui/ICD10Select';
 
 export const Consultation: React.FC = () => {
   const { activeFacility, allFacilities, user } = useAuth();
@@ -31,7 +32,7 @@ export const Consultation: React.FC = () => {
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [history] = useState('Known history of hypertension, poor compliance.');
   const [assessment, setAssessment] = useState('High BP 148/96 mmHg with elevated blood glucose.');
-  const [diagCode] = useState('E11.9 / I10');
+  const [diagCode, setDiagCode] = useState('E11.9 / I10');
   const [diagName, setDiagName] = useState('Type 2 Diabetes Mellitus with Essential Hypertension');
   const [notes] = useState('Advised low salt diet, lifestyle modifications, and regular monitoring.');
 
@@ -135,6 +136,20 @@ export const Consultation: React.FC = () => {
       setPatientLabHistory([]);
     } finally {
       setLoadingLab(false);
+    }
+
+    try {
+      const cRes = await api.get(`consultations/?visit=${v.id}`);
+      const cList = cRes.data.results || cRes.data || [];
+      if (cList.length > 0) {
+        const c = cList[0];
+        if (c.diagnosis_code) setDiagCode(c.diagnosis_code);
+        if (c.diagnosis_name) setDiagName(c.diagnosis_name);
+        if (c.clinical_assessment) setAssessment(c.clinical_assessment);
+        if (c.chief_complaint) setChiefComplaint(c.chief_complaint);
+      }
+    } catch (e) {
+      // ignore
     }
   };
 
@@ -605,16 +620,15 @@ export const Consultation: React.FC = () => {
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">ICD-10 Diagnosis Code & Name *</label>
-                  <input
-                    type="text"
-                    value={diagName}
-                    onChange={(e) => setDiagName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
-                    required
-                  />
-                </div>
+                <ICD10Select
+                  value={diagName}
+                  code={diagCode}
+                  onChange={(newCode, newName) => {
+                    setDiagCode(newCode);
+                    setDiagName(newName);
+                  }}
+                  required
+                />
               </div>
 
               <div>

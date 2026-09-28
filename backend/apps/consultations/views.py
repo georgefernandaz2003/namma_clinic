@@ -67,6 +67,9 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         facility_param = self.request.query_params.get('facility')
         if facility_param:
             queryset = queryset.filter(facility_id=facility_param)
+        visit_param = self.request.query_params.get('visit')
+        if visit_param:
+            queryset = queryset.filter(visit_id=visit_param)
         return queryset
 
     def create(self, request, *args, **kwargs):
