@@ -17,6 +17,9 @@ export const PatientDetail: React.FC = () => {
   const navigate = useNavigate();
   const { user, activeFacility } = useAuth();
   const isDistrictOfficer = user?.role === 'DISTRICT_OFFICER';
+  const isCompounder = user?.role === 'COMPOUNDER';
+  const isLabTech = user?.role === 'LAB_TECHNICIAN';
+  const isPharmacist = user?.role === 'PHARMACIST';
 
   // Navigation Tab State
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'VISITS' | 'MEDICAL_RECORDS' | 'LAB_REPORTS' | 'PRESCRIPTIONS' | 'DOCUMENTS'>('OVERVIEW');
@@ -484,7 +487,7 @@ export const PatientDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* 6 Tabs EMR Navigation Bar */}
+      {/* Role-Appropriate EMR Navigation Bar */}
       <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap gap-1 text-xs font-bold">
         <button
           onClick={() => setActiveTab('OVERVIEW')}
@@ -495,7 +498,7 @@ export const PatientDetail: React.FC = () => {
           }`}
         >
           <History className="w-4 h-4 text-blue-600" />
-          <span>Overview</span>
+          <span>{isCompounder ? 'Demographics & Intake' : 'Overview'}</span>
         </button>
 
         <button
@@ -507,44 +510,50 @@ export const PatientDetail: React.FC = () => {
           }`}
         >
           <Clock className="w-4 h-4 text-emerald-600" />
-          <span>Visits ({recordsData.visits.length})</span>
+          <span>{isCompounder ? 'OPD Encounters' : 'Visits'} ({recordsData.visits.length})</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('MEDICAL_RECORDS')}
-          className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
-            activeTab === 'MEDICAL_RECORDS'
-              ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Stethoscope className="w-4 h-4 text-indigo-600" />
-          <span>Medical Records ({recordsData.medical_records.length})</span>
-        </button>
+        {!isCompounder && !isLabTech && !isPharmacist && (
+          <button
+            onClick={() => setActiveTab('MEDICAL_RECORDS')}
+            className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
+              activeTab === 'MEDICAL_RECORDS'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Stethoscope className="w-4 h-4 text-indigo-600" />
+            <span>Medical Records ({recordsData.medical_records.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('LAB_REPORTS')}
-          className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
-            activeTab === 'LAB_REPORTS'
-              ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Activity className="w-4 h-4 text-teal-600" />
-          <span>Lab Reports ({recordsData.lab_reports.length})</span>
-        </button>
+        {!isCompounder && !isPharmacist && (
+          <button
+            onClick={() => setActiveTab('LAB_REPORTS')}
+            className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
+              activeTab === 'LAB_REPORTS'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Activity className="w-4 h-4 text-teal-600" />
+            <span>Lab Reports ({recordsData.lab_reports.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('PRESCRIPTIONS')}
-          className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
-            activeTab === 'PRESCRIPTIONS'
-              ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Pill className="w-4 h-4 text-amber-600" />
-          <span>Prescriptions ({recordsData.prescriptions.length})</span>
-        </button>
+        {!isCompounder && !isLabTech && (
+          <button
+            onClick={() => setActiveTab('PRESCRIPTIONS')}
+            className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
+              activeTab === 'PRESCRIPTIONS'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Pill className="w-4 h-4 text-amber-600" />
+            <span>Prescriptions ({recordsData.prescriptions.length})</span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab('DOCUMENTS')}
@@ -562,8 +571,9 @@ export const PatientDetail: React.FC = () => {
       {/* TAB 1: OVERVIEW */}
       {activeTab === 'OVERVIEW' && (
         <div className="space-y-6">
-          {/* Clinical Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          {/* Clinical Summary Cards - Restricted to Clinical Staff */}
+          {!isCompounder ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             <div className="glass-panel p-4 rounded-xl border border-slate-200 bg-white space-y-2">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
@@ -609,6 +619,17 @@ export const PatientDetail: React.FC = () => {
               )}
             </div>
           </div>
+          ) : (
+            <div className="p-4 rounded-xl border border-slate-200 bg-white text-xs space-y-2">
+              <div className="flex items-center gap-2 text-slate-800 font-bold border-b border-slate-100 pb-2">
+                <User className="w-4 h-4 text-emerald-600" />
+                <span>Front-Desk Demographic Registration Summary</span>
+              </div>
+              <p className="text-slate-600 text-[11px]">
+                Patient registered under facility front desk scope. Clinical consultations, vitals measurements, and prescriptions are restricted to certified clinical staff.
+              </p>
+            </div>
+          )}
 
           {/* Longitudinal Timeline Log */}
           <div className="glass-panel p-6 rounded-2xl border border-slate-200 bg-white space-y-5 shadow-xs">
@@ -667,14 +688,18 @@ export const PatientDetail: React.FC = () => {
                       className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-medium min-w-[160px]"
                     >
                       <option value="ALL">All Events</option>
-                      <option value="VISIT">Clinic Visits</option>
-                      <option value="TRIAGE">Nurse Triage</option>
-                      <option value="CONSULTATION">Diagnoses</option>
-                      <option value="PRESCRIPTION">Prescriptions</option>
-                      <option value="LAB">Lab Investigations</option>
+                      <option value="VISIT">{isCompounder ? 'OPD Encounters' : 'Clinic Visits'}</option>
                       <option value="DOCUMENT">Uploaded Documents</option>
-                      <option value="REFERRAL">Referrals</option>
-                      <option value="OTHER">Other Events</option>
+                      {!isCompounder && (
+                        <>
+                          <option value="TRIAGE">Nurse Triage</option>
+                          <option value="CONSULTATION">Diagnoses</option>
+                          {!isLabTech && <option value="PRESCRIPTION">Prescriptions</option>}
+                          {!isPharmacist && <option value="LAB">Lab Investigations</option>}
+                          <option value="REFERRAL">Referrals</option>
+                          <option value="OTHER">Other Events</option>
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>

@@ -38,8 +38,8 @@ test('Compounder Role Boundary & Patient Registration Authorization (Phase 27A)'
     assert.equal(permissions.has('triage.view'), false, 'triage.view must be removed from Compounder');
   });
 
-  await t.test('4. Compounder navigation exposes Patients/Queue and lands on /patients', () => {
-    assert.equal(getRoleLandingRoute('COMPOUNDER'), '/patients');
+  await t.test('4. Compounder navigation exposes Patients/Queue and lands on /dashboard/compounder', () => {
+    assert.equal(getRoleLandingRoute('COMPOUNDER'), '/dashboard/compounder');
     const navSections = getRoleNavigation('COMPOUNDER');
     const allItems = navSections.flatMap((s) => s.items);
     const hasPatients = allItems.some((item) => item.path === '/patients');

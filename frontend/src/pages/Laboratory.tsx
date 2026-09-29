@@ -184,9 +184,9 @@ export const Laboratory: React.FC = () => {
     const firstTm = pendingReqs.length > 0 ? testMasterMap.get(pendingReqs[0].test_master) : null;
     const defaultType = firstTm ? firstTm.specimen_type : 'WHOLE_BLOOD';
 
-    // Generate compliant barcode
-    const randomHex = Math.floor(1000 + Math.random() * 9000);
-    setSpecimenBarcode(`SMP-2026-${randomHex}`);
+    // Generate compliant specimen accession barcode
+    const barcodeSuffix = selectedOrder ? String(selectedOrder.id).padStart(4, '0') : '0001';
+    setSpecimenBarcode(`SMP-2026-${barcodeSuffix}`);
     setSpecimenType(defaultType || 'WHOLE_BLOOD');
     setSelectedReqIdsForSpecimen(pendingReqs.map((r) => r.id));
     setCollectingForOrder(true);

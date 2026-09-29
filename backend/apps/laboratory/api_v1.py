@@ -59,6 +59,24 @@ class AmendResultSerializer(serializers.Serializer):
     amended_value_numeric = serializers.DecimalField(max_digits=12, decimal_places=4, required=False, allow_null=True)
 
 
+
+from rest_framework.permissions import BasePermission
+
+class DiagnosticAccessPermission(BasePermission):
+    """
+    Denies diagnostic laboratory records to Compounder and Pharmacist.
+    Allows Lab Technician, Doctor, Nurse, Hospital Admin, District Officer, Superuser.
+    """
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated or not request.user.is_active:
+            return False
+        if request.user.is_superuser:
+            return True
+        role = getattr(request.user, 'role', '')
+        if role in ['COMPOUNDER', 'PHARMACIST']:
+            return False
+        return True
+
 class DiagnosticTestMasterViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = DiagnosticTestMaster.objects.filter(is_active=True)
     serializer_class = DiagnosticTestMasterSerializer
@@ -67,7 +85,7 @@ class DiagnosticTestMasterViewSet(viewsets.ReadOnlyModelViewSet):
 class DiagnosticOrderViewSet(viewsets.ModelViewSet):
     queryset = DiagnosticOrder.objects.all().select_related('visit', 'facility', 'ordering_doctor_staff')
     serializer_class = DiagnosticOrderSerializer
-    permission_classes = [IsActiveStaff, FacilityScopedPermission]
+    permission_classes = [IsActiveStaff, DiagnosticAccessPermission, FacilityScopedPermission]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -98,7 +116,7 @@ class DiagnosticOrderViewSet(viewsets.ModelViewSet):
 class TestRequestViewSet(viewsets.ModelViewSet):
     queryset = TestRequest.objects.all().select_related('diagnostic_order', 'test_master', 'specimen')
     serializer_class = TestRequestSerializer
-    permission_classes = [IsActiveStaff]
+    permission_classes = [IsActiveStaff, DiagnosticAccessPermission]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -126,7 +144,7 @@ class TestRequestViewSet(viewsets.ModelViewSet):
 class SpecimenViewSet(viewsets.ModelViewSet):
     queryset = Specimen.objects.all().select_related('diagnostic_order', 'collected_by_staff')
     serializer_class = SpecimenSerializer
-    permission_classes = [IsActiveStaff]
+    permission_classes = [IsActiveStaff, DiagnosticAccessPermission]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -166,7 +184,7 @@ class DiagnosticResultViewSet(viewsets.ModelViewSet):
     """
     queryset = DiagnosticResult.objects.all().select_related('test_request', 'entered_by_staff', 'verified_by_staff')
     serializer_class = DiagnosticResultSerializer
-    permission_classes = [IsActiveStaff]
+    permission_classes = [IsActiveStaff, DiagnosticAccessPermission]
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):

@@ -10,6 +10,7 @@ import DoctorDashboard from './pages/dashboards/DoctorDashboard';
 import NurseDashboard from './pages/dashboards/NurseDashboard';
 import LabDashboard from './pages/dashboards/LabDashboard';
 import PharmacyDashboard from './pages/dashboards/PharmacyDashboard';
+import CompounderDashboard from './pages/dashboards/CompounderDashboard';
 import NotFound from './pages/NotFound';
 
 import { HealthcareNetwork } from './pages/HealthcareNetwork';
@@ -109,6 +110,14 @@ export const App: React.FC = () => {
             element={
               <ProtectedRoute allowedRoles={['PHARMACIST']}>
                 <PharmacyDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/compounder"
+            element={
+              <ProtectedRoute allowedRoles={['COMPOUNDER']}>
+                <CompounderDashboard />
               </ProtectedRoute>
             }
           />

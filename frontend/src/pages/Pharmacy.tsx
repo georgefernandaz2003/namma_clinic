@@ -43,12 +43,13 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorAlert from '../components/common/ErrorAlert';
 
 export const Pharmacy: React.FC = () => {
-  const { activeFacility } = useAuth();
+  const { activeFacility, user } = useAuth();
+  const isPharmacist = user?.role === 'PHARMACIST' || Boolean(user?.is_superuser);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Active View Tab: Dispensing Console vs Inventory Ledger Audit
   type ConsoleTab = 'DISPENSING' | 'LEDGER_AUDIT';
-  const [consoleTab, setConsoleTab] = useState<ConsoleTab>('DISPENSING');
+  const [consoleTab, setConsoleTab] = useState<ConsoleTab>(user?.role === 'PHARMACIST' || user?.is_superuser ? 'DISPENSING' : 'LEDGER_AUDIT');
 
   // Data State
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
@@ -95,14 +96,15 @@ export const Pharmacy: React.FC = () => {
     setError(null);
 
     try {
-      const [rxData, batchData, medData, ledgerData, visitData] = await Promise.all([
-        getPrescriptions(activeFacility?.id ? { facility: activeFacility.id } : undefined),
+      const promises: [Promise<Prescription[]>, Promise<MedicineBatch[]>, Promise<MedicineMaster[]>, Promise<InventoryLedger[]>, Promise<Visit[]>] = [
+        isPharmacist ? getPrescriptions(activeFacility?.id ? { facility: activeFacility.id } : undefined) : Promise.resolve([]),
         getMedicineBatches(activeFacility?.id ? { facility: activeFacility.id } : undefined),
         getMedicines(),
         getInventoryLedger(activeFacility?.id ? { facility: activeFacility.id } : undefined),
         getVisits(activeFacility?.id ? { facility: activeFacility.id } : undefined)
-      ]);
+      ];
 
+      const [rxData, batchData, medData, ledgerData, visitData] = await Promise.all(promises);
       setPrescriptions(rxData);
       setBatches(batchData);
       setMedicines(medData);
@@ -355,16 +357,18 @@ export const Pharmacy: React.FC = () => {
         <div className="flex items-center gap-2">
           {/* View Tab Switcher */}
           <div className="flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-bold">
-            <button
-              onClick={() => setConsoleTab('DISPENSING')}
-              className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                consoleTab === 'DISPENSING'
-                  ? 'bg-white text-teal-800 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Prescription Dispensing
-            </button>
+            {isPharmacist && (
+              <button
+                onClick={() => setConsoleTab('DISPENSING')}
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                  consoleTab === 'DISPENSING'
+                    ? 'bg-white text-teal-800 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Prescription Dispensing
+              </button>
+            )}
             <button
               onClick={() => setConsoleTab('LEDGER_AUDIT')}
               className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
@@ -400,7 +404,7 @@ export const Pharmacy: React.FC = () => {
         </div>
       )}
 
-      {consoleTab === 'DISPENSING' ? (
+      {isPharmacist && consoleTab === 'DISPENSING' ? (
         /* Main Grid: Prescriptions Queue (Left) vs Prescription Dispense Console (Right) */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: Requisition Queue */}

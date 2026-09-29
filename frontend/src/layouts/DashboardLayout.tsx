@@ -300,16 +300,18 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full" />
             </Link>
 
-            <button
-              type="button"
-              onClick={handleResetDemo}
-              disabled={resetting}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-              aria-label="Reset demo dataset"
-            >
-              <RotateCcw className={`w-3.5 h-3.5 text-amber-600 ${resetting ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{resetting ? 'Resetting...' : 'Reset Demo'}</span>
-            </button>
+            {user?.is_superuser && (
+              <button
+                type="button"
+                onClick={handleResetDemo}
+                disabled={resetting}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                aria-label="Reset demo dataset"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 text-amber-600 ${resetting ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{resetting ? 'Resetting...' : 'Reset Demo'}</span>
+              </button>
+            )}
 
             <button
               type="button"

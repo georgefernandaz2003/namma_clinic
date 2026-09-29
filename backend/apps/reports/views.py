@@ -389,6 +389,11 @@ class ResetDemoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        if not request.user or not request.user.is_superuser:
+            return Response(
+                {'error': 'Only system superusers are authorized to reset demonstration data.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         try:
             call_command('reset_demo_data', confirm_demo_reset=True)
             return Response({'status': 'SUCCESS', 'message': 'Demo dataset reset to pristine demonstration state!'})

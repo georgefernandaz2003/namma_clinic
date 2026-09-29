@@ -27,7 +27,7 @@ export const ROLE_DASHBOARD_ROUTES: Record<Role, string> = {
   HOSPITAL_ADMIN: '/dashboard/admin',
   DOCTOR: '/dashboard/doctor',
   NURSE: '/dashboard/nurse',
-  COMPOUNDER: '/patients',
+  COMPOUNDER: '/dashboard/compounder',
   LAB_TECHNICIAN: '/dashboard/lab',
   PHARMACIST: '/dashboard/pharmacy',
 };
@@ -252,7 +252,8 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
     {
       title: 'PATIENT INTAKE & REGISTRATION',
       items: [
-        { name: 'Patient Registration', path: '/patients', iconName: 'Users', description: 'Patient intake, registration, and demographic records' },
+        { name: 'Front Desk Console', path: '/dashboard/compounder', iconName: 'LayoutDashboard', description: 'Front desk intake, registration, duplicate warning, and tokens' },
+        { name: 'Patient Directory', path: '/patients', iconName: 'Users', description: 'Patient demographic records and registration list' },
         { name: 'OPD Queue', path: '/queue', iconName: 'Clock', description: 'Outpatient flow and token management' },
       ],
     },

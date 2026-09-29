@@ -71,6 +71,24 @@ class InventoryLedgerSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+
+from rest_framework.permissions import BasePermission
+
+class PharmacyAccessPermission(BasePermission):
+    """
+    Denies prescription and dispensation records to Compounder and Lab Technician.
+    Allows Pharmacist, Doctor, Nurse, Hospital Admin, District Officer, Superuser.
+    """
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated or not request.user.is_active:
+            return False
+        if request.user.is_superuser:
+            return True
+        role = getattr(request.user, 'role', '')
+        if role in ['COMPOUNDER', 'LAB_TECHNICIAN']:
+            return False
+        return True
+
 class MedicineMasterViewSet(viewsets.ModelViewSet):
     queryset = MedicineMaster.objects.all()
     serializer_class = MedicineMasterSerializer
@@ -93,7 +111,7 @@ class MedicineBatchViewSet(viewsets.ReadOnlyModelViewSet):
 class PrescriptionViewSet(viewsets.ModelViewSet):
     queryset = Prescription.objects.all().select_related('consultation', 'patient', 'facility').prefetch_related('items')
     serializer_class = PrescriptionSerializer
-    permission_classes = [IsActiveStaff, FacilityScopedPermission]
+    permission_classes = [IsActiveStaff, PharmacyAccessPermission, FacilityScopedPermission]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -218,7 +236,7 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
 class DispensationViewSet(viewsets.ModelViewSet):
     queryset = Dispensation.objects.all().select_related('prescription', 'facility', 'dispensed_by_staff').prefetch_related('items')
     serializer_class = DispensationSerializer
-    permission_classes = [IsActiveStaff, FacilityScopedPermission]
+    permission_classes = [IsActiveStaff, PharmacyAccessPermission, FacilityScopedPermission]
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):

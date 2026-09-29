@@ -62,6 +62,7 @@ export interface UserProfile {
   district_name?: string;
   permissions: string[];
   scope_type: ScopeType;
+  is_superuser?: boolean;
 }
 
 export type User = UserProfile;
