@@ -6,6 +6,8 @@ Enforces role-based clinical privacy boundaries:
 - Triage: NURSE, DOCTOR, SUPERUSER only (denies Compounder, Lab Tech, Pharmacist, Admin, DHO)
 - Consultation: DOCTOR, SUPERUSER only (denies Compounder, Lab Tech, Pharmacist, Nurse, Admin, DHO)
 """
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers, viewsets, permissions
 from rest_framework.permissions import BasePermission
 from rest_framework.exceptions import PermissionDenied
@@ -104,7 +106,44 @@ class TriageVitalsViewSet(viewsets.ModelViewSet):
         staff = get_request_staff(self.request)
         visit = serializer.validated_data['visit']
         check_facility_permission(visit.facility, staff, self.request.user)
-        serializer.save(nurse=self.request.user)
+
+        with transaction.atomic():
+            serializer.save(nurse=self.request.user)
+            self._advance_visit_queue(visit, is_update=False)
+
+    def perform_update(self, serializer):
+        staff = get_request_staff(self.request)
+        visit = serializer.validated_data.get('visit', serializer.instance.visit)
+        check_facility_permission(visit.facility, staff, self.request.user)
+
+        with transaction.atomic():
+            serializer.save(nurse=self.request.user)
+            self._advance_visit_queue(visit, is_update=True)
+
+    def _advance_visit_queue(self, visit, is_update=False):
+        from apps.visits.models import VisitStatusHistory
+        from_stat = visit.status
+        now = timezone.now()
+
+        visit.status = 'WAITING_FOR_DOCTOR'
+        visit.current_queue = 'DOCTOR'
+        visit.triage_end_time = now
+        visit.save()
+
+        if hasattr(visit, 'token'):
+            visit.token.status = 'TRIAGED'
+            visit.token.save()
+
+        action_note = "Nurse triage updated" if is_update else "Nurse triage logged"
+        VisitStatusHistory.objects.create(
+            visit=visit,
+            from_status=from_stat,
+            to_status='WAITING_FOR_DOCTOR',
+            queue='DOCTOR',
+            performed_by=self.request.user,
+            performed_by_role=getattr(self.request.user, 'role', ''),
+            notes=f"{action_note} by {self.request.user.full_name or self.request.user.username}"
+        )
 
 
 class ConsultationViewSet(viewsets.ModelViewSet):

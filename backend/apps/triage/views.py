@@ -1,6 +1,8 @@
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers, viewsets, permissions, status
 from rest_framework.response import Response
-from django.utils import timezone
+
 from apps.triage.models import TriageVitals
 from apps.visits.models import Visit
 from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
@@ -12,6 +14,7 @@ class TriageVitalsSerializer(serializers.ModelSerializer):
     class Meta:
         model = TriageVitals
         fields = '__all__'
+
 
 class TriageVitalsViewSet(viewsets.ModelViewSet):
     queryset = TriageVitals.objects.all().select_related('visit', 'patient', 'nurse')
@@ -40,19 +43,34 @@ class TriageVitalsViewSet(viewsets.ModelViewSet):
         if not visit_id:
             return Response({'error': 'Visit is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        existing_triage = TriageVitals.objects.filter(visit_id=visit_id).first()
-        if existing_triage:
-            serializer = self.get_serializer(existing_triage, data=request.data, partial=True)
+        with transaction.atomic():
+            existing_triage = TriageVitals.objects.filter(visit_id=visit_id).first()
+            if existing_triage:
+                serializer = self.get_serializer(existing_triage, data=request.data, partial=True)
+                serializer.is_valid(raise_exception=True)
+                triage = serializer.save(nurse=self.request.user)
+                self._update_visit_queue(triage, is_update=True)
+                return Response(self.get_serializer(triage).data, status=status.HTTP_200_OK)
+
+            serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             triage = serializer.save(nurse=self.request.user)
-            self._update_visit_queue(triage, is_update=True)
-            return Response(self.get_serializer(triage).data, status=status.HTTP_200_OK)
+            self._update_visit_queue(triage, is_update=False)
+            return Response(self.get_serializer(triage).data, status=status.HTTP_201_CREATED)
 
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        triage = serializer.save(nurse=self.request.user)
-        self._update_visit_queue(triage, is_update=False)
-        return Response(self.get_serializer(triage).data, status=status.HTTP_201_CREATED)
+    def update(self, request, *args, **kwargs):
+        with transaction.atomic():
+            response = super().update(request, *args, **kwargs)
+            instance = self.get_object()
+            self._update_visit_queue(instance, is_update=True)
+            return response
+
+    def partial_update(self, request, *args, **kwargs):
+        with transaction.atomic():
+            response = super().partial_update(request, *args, **kwargs)
+            instance = self.get_object()
+            self._update_visit_queue(instance, is_update=True)
+            return response
 
     def _update_visit_queue(self, triage, is_update=False):
         visit = triage.visit
@@ -77,4 +95,3 @@ class TriageVitalsViewSet(viewsets.ModelViewSet):
             performed_by_role=getattr(self.request.user, 'role', ''),
             notes=f"{action_note} by {self.request.user.full_name or self.request.user.username}"
         )
-

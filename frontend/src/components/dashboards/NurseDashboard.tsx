@@ -48,7 +48,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date, i
     setLoading(true);
     try {
       // 1. Fetch Visits for target date
-      const visitsRes = await api.get(`visits/?date=${date}`);
+      const visitsRes = await api.get(`v1/visits/?date=${date}`);
       const visitsList = visitsRes.data.results || visitsRes.data || [];
       setAllVisits(visitsList);
 

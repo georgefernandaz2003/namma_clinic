@@ -53,7 +53,7 @@ export const Queue: React.FC = () => {
   const loadPatients = async () => {
     try {
       const facQuery = activeFacility?.id ? `?facility=${activeFacility.id}` : '';
-      const res = await api.get(`patients/${facQuery}`);
+      const res = await api.get(`v1/patients/${facQuery}`);
       const patList = res.data.results || res.data || [];
       setPatients(patList);
       if (patList.length > 0) {

@@ -71,6 +71,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const userFac = facs.find((f) => f.id === userFacId);
           if (userFac) {
             setActiveFacilityState(userFac);
+          } else if (userData.facility_details) {
+            setActiveFacilityState(userData.facility_details as any);
           } else if (facs.length > 0) {
             setActiveFacilityState(facs[0]);
           }
@@ -86,6 +88,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch (facErr) {
         console.warn('Could not retrieve full facilities list', facErr);
+        if (userData.facility_details) {
+          setActiveFacilityState(userData.facility_details as any);
+        }
       }
     } catch (e) {
       console.error('Session initialization error:', e);

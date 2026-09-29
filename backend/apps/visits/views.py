@@ -175,7 +175,7 @@ class VisitViewSet(viewsets.ModelViewSet):
                 queue='TRIAGE',
                 performed_by=request.user,
                 performed_by_role=getattr(request.user, 'role', ''),
-                notes=f"Issued OPD Token #{token_number} for {today}"
+                notes=f"Issued OPD Token #{token.token_number} for {today}"
             )
 
         return Response(VisitSerializer(visit).data, status=status.HTTP_201_CREATED)

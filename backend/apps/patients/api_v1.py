@@ -26,6 +26,29 @@ class DuplicatePatientError(exceptions.APIException):
     default_detail = "A patient with matching demographic records (name and mobile) already exists at this facility."
     default_code = "duplicate_patient"
 
+    def __init__(self, detail=None, existing_patient=None):
+        if existing_patient is not None:
+            msg = f"A patient with matching demographic records (name and mobile) is already registered at this facility with ID: {existing_patient.patient_id}."
+            data = {
+                "detail": msg,
+                "error": msg,
+                "existing_patient": {
+                    "id": existing_patient.id,
+                    "patient_id": existing_patient.patient_id,
+                    "name": existing_patient.name,
+                    "mobile": existing_patient.mobile,
+                    "gender": existing_patient.gender,
+                    "age": existing_patient.age,
+                    "registered_at_facility": existing_patient.registered_at_facility_id,
+                    "registration_date": str(existing_patient.registration_date) if existing_patient.registration_date else None,
+                }
+            }
+            super().__init__(data)
+        elif detail is not None and isinstance(detail, str):
+            super().__init__({"detail": detail, "error": detail})
+        else:
+            super().__init__(detail)
+
 
 class IsPatientRegistrationStaff(permissions.BasePermission):
     """
@@ -155,9 +178,7 @@ class PatientViewSet(viewsets.ModelViewSet):
                         normalized_mobile=normalized_mobile
                     ).first()
                     if existing:
-                        raise DuplicatePatientError(
-                            f"A patient with matching demographic records (name and mobile) is already registered at this facility with ID: {existing.patient_id}."
-                        )
+                        raise DuplicatePatientError(existing_patient=existing)
 
                     return super().create(request, *args, **kwargs)
             except IntegrityError as exc:
@@ -168,10 +189,9 @@ class PatientViewSet(viewsets.ModelViewSet):
                         normalized_name=normalized_name,
                         normalized_mobile=normalized_mobile
                     ).first()
-                    pat_id_str = f" with ID: {existing.patient_id}" if existing else ""
-                    raise DuplicatePatientError(
-                        f"A patient with matching demographic records (name and mobile) is already registered at this facility{pat_id_str}."
-                    )
+                    if existing:
+                        raise DuplicatePatientError(existing_patient=existing)
+                    raise DuplicatePatientError("A patient with matching demographic records (name and mobile) is already registered at this facility.")
                 raise
         else:
             return super().create(request, *args, **kwargs)

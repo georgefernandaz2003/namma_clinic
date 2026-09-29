@@ -454,7 +454,7 @@ export const PatientDetail: React.FC = () => {
               Vulnerability: {patient.vulnerability_information || 'General BPL'}
             </span>
             <span className="px-3 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-900 border border-blue-200 font-mono">
-              ABHA: {patient.ABHA_ID_DEMO || 'ABHA-2026-PENDING'}
+              ABHA: {patient.ABHA_ID_DEMO || 'Not linked'}
             </span>
           </div>
         </div>

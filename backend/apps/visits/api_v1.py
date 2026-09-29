@@ -212,7 +212,17 @@ class VisitViewSet(viewsets.ModelViewSet):
                 arrival_time=timezone.now()
             )
             # Authoritative token issuance backed by FacilityDailyCounter
-            issue_opd_token(visit=visit, facility=fac, priority=priority)
+            token = issue_opd_token(visit=visit, facility=fac, priority=priority)
+
+            VisitStatusHistory.objects.create(
+                visit=visit,
+                from_status='NONE',
+                to_status='WAITING_FOR_TRIAGE',
+                queue='TRIAGE',
+                performed_by=request.user,
+                performed_by_role=getattr(request.user, 'role', ''),
+                notes=f"Issued OPD Token #{token.token_number} for {today}"
+            )
 
         return Response(VisitSerializer(visit).data, status=status.HTTP_201_CREATED)
 

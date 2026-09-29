@@ -39,7 +39,7 @@ export const Patients: React.FC = () => {
   const loadPatients = async () => {
     try {
       const facQuery = activeFacility?.id ? `?facility=${activeFacility.id}` : '';
-      const res = await api.get(`patients/${facQuery}`);
+      const res = await api.get(`v1/patients/${facQuery}`);
       setPatients(res.data.results || res.data || []);
     } catch (e) {
       console.error('Failed to load patients', e);
@@ -53,7 +53,7 @@ export const Patients: React.FC = () => {
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await api.post('patients/', {
+      const res = await api.post('v1/patients/', {
         name,
         age: parseInt(age) || 30,
         gender,
@@ -293,7 +293,7 @@ export const Patients: React.FC = () => {
                   <label className="block text-slate-700 font-bold mb-1">ABHA ID (Optional)</label>
                   <input
                     type="text"
-                    placeholder="ABHA-2026-XXXX"
+                    placeholder="14-digit ABHA (optional)"
                     value={abhaId}
                     onChange={(e) => setAbhaId(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"

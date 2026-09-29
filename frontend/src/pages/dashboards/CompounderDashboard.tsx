@@ -11,7 +11,8 @@ import {
 import ErrorAlert from '../../components/common/ErrorAlert';
 
 export const CompounderDashboard: React.FC = () => {
-  const { activeFacility } = useAuth();
+  const { user, activeFacility: authFacility } = useAuth();
+  const activeFacility = authFacility || (user?.facility_details ? (user.facility_details as any) : (user?.assigned_facility ? { id: user.assigned_facility, facility_name: user.facility_name || 'Assigned Facility', facility_code: '' } : null));
   const navigate = useNavigate();
 
   // Data States
@@ -55,7 +56,7 @@ export const CompounderDashboard: React.FC = () => {
     try {
       const facQuery = activeFacility?.id ? `?facility=${activeFacility.id}` : '';
       const [patientsRes, visitsRes] = await Promise.all([
-        api.get(`patients/${facQuery}`),
+        api.get(`v1/patients/${facQuery}`),
         api.get(`v1/visits/${facQuery ? facQuery + '&date=today' : '?date=today'}`)
       ]);
 
@@ -112,7 +113,7 @@ export const CompounderDashboard: React.FC = () => {
     setSuccessMsg(null);
 
     try {
-      const res = await api.post('patients/', {
+      const res = await api.post('v1/patients/', {
         name: regName.trim(),
         age: parseInt(regAge) || 30,
         gender: regGender,
@@ -135,8 +136,19 @@ export const CompounderDashboard: React.FC = () => {
       await loadDashboardData(true);
     } catch (err: any) {
       let msg = 'Failed to register patient.';
-      if (err.response?.data?.error) {
+      if (err.response?.status === 409) {
+        const dup = err.response.data?.existing_patient;
+        if (dup) {
+          msg = `Duplicate patient detected: "${dup.name}" (${dup.patient_id}) with mobile ${dup.mobile} is already registered at this facility.`;
+          setDuplicateWarning(`Patient "${dup.name}" (${dup.patient_id}) already exists at this facility.`);
+        } else {
+          msg = err.response.data?.error || err.response.data?.detail || 'A patient with matching name and mobile already exists at this facility.';
+          setDuplicateWarning(msg);
+        }
+      } else if (err.response?.data?.error) {
         msg = err.response.data.error;
+      } else if (err.response?.data?.detail) {
+        msg = err.response.data.detail;
       } else if (err.response?.data && typeof err.response.data === 'object') {
         msg = Object.entries(err.response.data)
           .map(([k, v]) => `${k.toUpperCase()}: ${Array.isArray(v) ? v.join(', ') : v}`)
