@@ -104,7 +104,8 @@ export const Queue: React.FC = () => {
       alert('OPD tokens can only be issued for the current operational day (Today).');
       return;
     }
-    if (!selectedPatientId || !activeFacility) {
+    const effectiveFacility = activeFacility || (user?.facility_details ? (user.facility_details as any) : (user?.assigned_facility ? { id: user.assigned_facility, facility_name: user.facility_name || 'Assigned Facility', facility_code: '' } : null));
+    if (!selectedPatientId || !effectiveFacility) {
       alert('Please select a patient and facility');
       return;
     }
@@ -112,14 +113,14 @@ export const Queue: React.FC = () => {
     try {
       const res = await api.post('v1/visits/', {
         patient: selectedPatientId,
-        facility: activeFacility.id,
+        facility: effectiveFacility.id,
         visit_type: visitType,
         priority,
         chief_complaint: chiefComplaint
       });
       const newVisit = res.data;
       const tokNum = newVisit.token_details?.token_number || newVisit.id;
-      alert(`OPD Token #${tokNum} Issued Successfully!\nUnique Scope: ${activeFacility.facility_name} • Date: ${selectedDate} • Token #${tokNum}`);
+      alert(`OPD Token #${tokNum} Issued Successfully!\nUnique Scope: ${effectiveFacility.facility_name} • Date: ${selectedDate} • Token #${tokNum}`);
       setShowTokenModal(false);
       setChiefComplaint('');
       loadQueue();

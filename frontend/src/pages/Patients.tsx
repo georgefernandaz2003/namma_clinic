@@ -36,9 +36,11 @@ export const Patients: React.FC = () => {
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
+  const currentFacility = activeFacility || (user?.facility_details ? (user.facility_details as any) : (user?.assigned_facility ? { id: user.assigned_facility, facility_name: user.facility_name || 'Assigned Facility', facility_code: '' } : null));
+
   const loadPatients = async () => {
     try {
-      const facQuery = activeFacility?.id ? `?facility=${activeFacility.id}` : '';
+      const facQuery = currentFacility?.id ? `?facility=${currentFacility.id}` : '';
       const res = await api.get(`v1/patients/${facQuery}`);
       setPatients(res.data.results || res.data || []);
     } catch (e) {
@@ -48,7 +50,7 @@ export const Patients: React.FC = () => {
 
   useEffect(() => {
     loadPatients();
-  }, [activeFacility]);
+  }, [activeFacility, user]);
 
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,12 +92,20 @@ export const Patients: React.FC = () => {
 
   const handleIssueTokenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!targetPatient || !activeFacility) return;
+    if (!targetPatient) {
+      alert('Please select a valid registered patient.');
+      return;
+    }
+    const effectiveFacility = currentFacility || activeFacility;
+    if (!effectiveFacility) {
+      alert('Facility context is required. Please ensure an active facility is assigned.');
+      return;
+    }
     setSubmittingToken(true);
     try {
       const res = await api.post('v1/visits/', {
         patient: targetPatient.id,
-        facility: activeFacility.id,
+        facility: effectiveFacility.id,
         visit_type: visitType,
         priority,
         chief_complaint: chiefComplaint
@@ -106,7 +116,7 @@ export const Patients: React.FC = () => {
       setChiefComplaint('');
       navigate('/queue');
     } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to issue OPD token');
+      alert(e.response?.data?.error || e.response?.data?.detail || 'Failed to issue OPD token');
     } finally {
       setSubmittingToken(false);
     }

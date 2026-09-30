@@ -176,6 +176,15 @@ class VisitViewSet(viewsets.ModelViewSet):
 
         if not patient_id:
             raise exceptions.ValidationError({'patient': 'Please select a valid registered patient.'})
+
+        staff = get_request_staff(request, required=False)
+        # Authoritative facility derivation from staff context if client did not supply or to ensure consistency
+        if not facility_id:
+            if staff and staff.facility_id:
+                facility_id = staff.facility_id
+            elif getattr(request.user, 'assigned_facility_id', None):
+                facility_id = request.user.assigned_facility_id
+
         if not facility_id:
             raise exceptions.ValidationError({'facility': 'Facility context is required.'})
 
@@ -185,7 +194,6 @@ class VisitViewSet(viewsets.ModelViewSet):
         except Facility.DoesNotExist:
             raise exceptions.ValidationError({'facility': 'Invalid facility ID.'})
 
-        staff = get_request_staff(request, required=False)
         check_facility_permission(fac, staff, request.user)
 
         from apps.patients.models import Patient
@@ -193,6 +201,11 @@ class VisitViewSet(viewsets.ModelViewSet):
             pat = Patient.objects.get(pk=patient_id)
         except Patient.DoesNotExist:
             raise exceptions.ValidationError({'patient': 'Patient not found.'})
+
+        # Ensure patient registered facility matches visit facility unless cross-facility authorized
+        if pat.registered_at_facility_id and pat.registered_at_facility_id != fac.id:
+            if not request.user.is_superuser and getattr(request.user, 'role', '') not in ['DISTRICT_OFFICER']:
+                raise exceptions.PermissionDenied("Patient is registered at a different facility.")
 
         today = datetime.date.today()
         vis_id = f"VIS-{today.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"

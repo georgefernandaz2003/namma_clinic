@@ -117,17 +117,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('refresh_token', refresh);
       setToken(access);
 
-      // Immediately fetch profile
-      const userRes = await apiClient.get<UserProfile>('auth/me/', {
-        headers: { Authorization: `Bearer ${access}` },
-      });
-      const userData = userRes.data;
-      if (userData.facility_details) {
-        userData.facility_name = userData.facility_name || userData.facility_details.facility_name;
-        userData.facility_type = userData.facility_type || userData.facility_details.facility_type;
-        userData.district_name = userData.district_name || userData.facility_details.district_name;
-      }
-      setUser(userData);
+      // Immediately synchronize user profile and facility operational scope
+      await refreshUserData();
     } catch (err: unknown) {
       const parsedMsg = parseApiError(err);
       setError(parsedMsg);

@@ -337,12 +337,20 @@ export const PatientDetail: React.FC = () => {
   // Issue Token Submit
   const handleIssueTokenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!patient || !activeFacility) return;
+    if (!patient) {
+      alert('Please select a valid registered patient.');
+      return;
+    }
+    const currentFacility = activeFacility || (user?.facility_details ? (user.facility_details as any) : (user?.assigned_facility ? { id: user.assigned_facility, facility_name: user.facility_name || 'Assigned Facility', facility_code: '' } : null));
+    if (!currentFacility) {
+      alert('Facility context is required. Please ensure an active facility is assigned.');
+      return;
+    }
     setSubmittingToken(true);
     try {
       const res = await api.post('v1/visits/', {
         patient: patient.id,
-        facility: activeFacility.id,
+        facility: currentFacility.id,
         visit_type: visitType,
         priority,
         chief_complaint: chiefComplaint
@@ -352,7 +360,7 @@ export const PatientDetail: React.FC = () => {
       setShowTokenModal(false);
       navigate('/queue');
     } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to issue OPD token');
+      alert(e.response?.data?.error || e.response?.data?.detail || 'Failed to issue OPD token');
     } finally {
       setSubmittingToken(false);
     }
