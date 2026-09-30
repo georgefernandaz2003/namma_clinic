@@ -192,7 +192,24 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         fac = serializer.validated_data['facility']
         check_facility_permission(fac, staff, self.request.user)
         rx = serializer.save(doctor=self.request.user, doctor_staff=staff)
-        if not rx.items.exists():
+        items_data = self.request.data.get('items', [])
+        if items_data:
+            from apps.pharmacy.models import MedicineMaster
+            from apps.consultations.models import PrescriptionItem
+            for itm in items_data:
+                med_id = itm.get('medicine') or itm.get('medicine_id')
+                med = MedicineMaster.objects.get(pk=med_id)
+                PrescriptionItem.objects.create(
+                    prescription=rx,
+                    medicine=med,
+                    medicine_name=itm.get('medicine_name', med.generic_name),
+                    dosage=itm.get('dosage', '500mg'),
+                    frequency=itm.get('frequency', 'TDS'),
+                    duration_days=int(itm.get('duration_days', 3)),
+                    quantity=int(itm.get('quantity', 10)),
+                    status='PENDING'
+                )
+        elif not rx.items.exists():
             from apps.pharmacy.models import MedicineMaster, MedicineBatch
             matched_batch = MedicineBatch.objects.filter(
                 facility=fac,
@@ -505,13 +522,15 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         staff = get_request_staff(request)
         check_facility_permission(po.facility, staff, request.user)
 
-        is_admin = (
+        from apps.accounts.permissions import has_role_permission
+        can_approve = (
             request.user.is_superuser or
+            has_role_permission(request.user, 'purchase_order.approve') or
             getattr(request.user, 'role', '') in ['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'] or
             (staff and staff.role_assignments.filter(role__code__in=['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'], is_active=True).exists())
         )
-        if not is_admin:
-            return Response({'error': 'Only Hospital Administrators or District Officers can approve purchase orders.'}, status=status.HTTP_403_FORBIDDEN)
+        if not can_approve:
+            return Response({'error': 'Only users with purchase_order.approve permission can approve purchase orders.'}, status=status.HTTP_403_FORBIDDEN)
 
         if po.status not in ['PENDING_APPROVAL', 'DRAFT']:
             return Response({'error': f"Cannot approve purchase order in status '{po.status}'."}, status=status.HTTP_400_BAD_REQUEST)

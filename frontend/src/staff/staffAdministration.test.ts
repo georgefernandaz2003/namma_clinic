@@ -386,13 +386,14 @@ test('18. Role catalogue: strictly prohibits SYSTEM_ADMIN, SUPER_ADMIN, and CLIN
   assert.equal(allRoles.includes('SYSTEM_ADMIN'), false);
   assert.equal(allRoles.includes('SUPER_ADMIN'), false);
   assert.equal(allRoles.includes('CLINIC_ADMIN'), false);
-  // Exactly the 7 approved operational roles
-  assert.equal(allRoles.length, 7);
+  // Exactly the 8 approved operational roles (including INVENTORY from Phase 27)
+  assert.equal(allRoles.length, 8);
   assert.deepEqual(allRoles.sort(), [
     'COMPOUNDER',
     'DISTRICT_OFFICER',
     'DOCTOR',
     'HOSPITAL_ADMIN',
+    'INVENTORY',
     'LAB_TECHNICIAN',
     'NURSE',
     'PHARMACIST',
