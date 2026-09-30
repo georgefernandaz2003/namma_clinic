@@ -64,7 +64,7 @@ from rest_framework.permissions import BasePermission
 
 class DiagnosticAccessPermission(BasePermission):
     """
-    Denies diagnostic laboratory records to Compounder and Pharmacist.
+    Denies diagnostic laboratory records to Compounder, Pharmacist, and Inventory.
     Allows Lab Technician, Doctor, Nurse, Hospital Admin, District Officer, Superuser.
     """
     def has_permission(self, request, view):
@@ -72,10 +72,17 @@ class DiagnosticAccessPermission(BasePermission):
             return False
         if request.user.is_superuser:
             return True
+        from apps.accounts.permissions import get_user_active_role_codes
+        staff = getattr(request.user, 'staff_profile', None)
+        if staff and staff.role_assignments.exists():
+            active_roles = get_user_active_role_codes(request.user)
+            allowed = {'LAB_TECHNICIAN', 'DOCTOR', 'NURSE', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER'}
+            return bool(active_roles.intersection(allowed))
+
         role = getattr(request.user, 'role', '')
-        if role in ['COMPOUNDER', 'PHARMACIST']:
+        if role in ['COMPOUNDER', 'PHARMACIST', 'INVENTORY']:
             return False
-        return True
+        return role in ['LAB_TECHNICIAN', 'DOCTOR', 'NURSE', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER']
 
 class DiagnosticTestMasterViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = DiagnosticTestMaster.objects.filter(is_active=True)

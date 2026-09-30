@@ -23,7 +23,8 @@ from apps.accounts.permissions import get_user_active_role_codes
 class ClinicalTriagePermission(BasePermission):
     """
     Access to clinical triage records is restricted to clinical nursing and medical staff.
-    Denies Compounder, Lab Tech, Pharmacist, Hospital Admin, District Officer.
+    Denies Compounder, Lab Tech, Pharmacist, Hospital Admin, District Officer, Inventory.
+    Enforces active database role assignments strictly.
     """
     def has_permission(self, request, view):
         user = getattr(request, 'user', None)
@@ -32,15 +33,15 @@ class ClinicalTriagePermission(BasePermission):
         if user.is_superuser:
             return True
 
-        role = getattr(user, 'role', '')
-        if role in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER']:
-            return False
-
-        if request.method not in permissions.SAFE_METHODS:
+        # Check authoritative active role assignments first
+        staff = getattr(user, 'staff_profile', None)
+        if staff and staff.role_assignments.exists():
             active_roles = get_user_active_role_codes(user)
-            if active_roles:
-                return bool({'NURSE', 'DOCTOR'}.intersection(active_roles))
-            return role in ['NURSE', 'DOCTOR']
+            return bool({'NURSE', 'DOCTOR'}.intersection(active_roles))
+
+        role = getattr(user, 'role', '')
+        if role in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER', 'INVENTORY']:
+            return False
 
         return role in ['NURSE', 'DOCTOR']
 
@@ -48,7 +49,8 @@ class ClinicalTriagePermission(BasePermission):
 class PhysicianConsultationPermission(BasePermission):
     """
     Access to physician consultation records is restricted to medical officers.
-    Denies Compounder, Lab Tech, Pharmacist, Nurse, Hospital Admin, District Officer.
+    Denies Compounder, Lab Tech, Pharmacist, Nurse, Hospital Admin, District Officer, Inventory.
+    Enforces active database role assignments strictly.
     """
     def has_permission(self, request, view):
         user = getattr(request, 'user', None)
@@ -57,15 +59,15 @@ class PhysicianConsultationPermission(BasePermission):
         if user.is_superuser:
             return True
 
-        role = getattr(user, 'role', '')
-        if role in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST', 'NURSE', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER']:
-            return False
-
-        if request.method not in permissions.SAFE_METHODS:
+        # Check authoritative active role assignments first
+        staff = getattr(user, 'staff_profile', None)
+        if staff and staff.role_assignments.exists():
             active_roles = get_user_active_role_codes(user)
-            if active_roles:
-                return 'DOCTOR' in active_roles
-            return role == 'DOCTOR'
+            return 'DOCTOR' in active_roles
+
+        role = getattr(user, 'role', '')
+        if role in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST', 'NURSE', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER', 'INVENTORY']:
+            return False
 
         return role == 'DOCTOR'
 
