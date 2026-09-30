@@ -63,7 +63,16 @@ SEEDED_ROLES = [
         "code": "PHARMACIST",
         "name": "Pharmacist",
         "display_name": "Pharmacist",
-        "description": "Prescription verification, medicine dispensing, inventory ledger, and batch tracking",
+        "description": "Prescription verification, medicine dispensing, and clinical batch tracking",
+        "scope_level": "FACILITY",
+        "is_system_role": True,
+        "is_active": True
+    },
+    {
+        "code": "INVENTORY",
+        "name": "Inventory Manager",
+        "display_name": "Inventory Manager",
+        "description": "Stock management, medicine batch tracking, purchase orders, and goods receipt notes",
         "scope_level": "FACILITY",
         "is_system_role": True,
         "is_active": True
@@ -630,6 +639,10 @@ ROLE_PERMISSION_MAP = {
         "prescription.reject",
         "dispensation.create",
         "dispensation.read",
+        "inventory.read",
+        "medicine_batch.read"
+    ],
+    "INVENTORY": [
         "inventory.read",
         "inventory.adjust",
         "medicine_batch.read",

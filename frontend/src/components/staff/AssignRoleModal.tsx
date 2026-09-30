@@ -42,6 +42,7 @@ export const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
         { value: 'COMPOUNDER', label: 'Compounder' },
         { value: 'LAB_TECHNICIAN', label: 'Lab Technician' },
         { value: 'PHARMACIST', label: 'Pharmacist' },
+        { value: 'INVENTORY', label: 'Inventory Manager' },
         { value: 'HOSPITAL_ADMIN', label: 'Hospital Admin (Clinic Admin)' },
       ]
     : [
@@ -50,6 +51,7 @@ export const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
         { value: 'COMPOUNDER', label: 'Compounder' },
         { value: 'LAB_TECHNICIAN', label: 'Lab Technician' },
         { value: 'PHARMACIST', label: 'Pharmacist' },
+        { value: 'INVENTORY', label: 'Inventory Manager' },
       ];
 
   const todayStr = new Date().toISOString().split('T')[0];

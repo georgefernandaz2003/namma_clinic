@@ -44,12 +44,12 @@ import ErrorAlert from '../components/common/ErrorAlert';
 
 export const Pharmacy: React.FC = () => {
   const { activeFacility, user } = useAuth();
-  const isPharmacist = user?.role === 'PHARMACIST' || Boolean(user?.is_superuser);
+  const isPharmacist = user?.role === 'PHARMACIST' || (user?.roles && user.roles.includes('PHARMACIST')) || Boolean(user?.is_superuser);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Active View Tab: Dispensing Console vs Inventory Ledger Audit
   type ConsoleTab = 'DISPENSING' | 'LEDGER_AUDIT';
-  const [consoleTab, setConsoleTab] = useState<ConsoleTab>(user?.role === 'PHARMACIST' || user?.is_superuser ? 'DISPENSING' : 'LEDGER_AUDIT');
+  const [consoleTab, setConsoleTab] = useState<ConsoleTab>(isPharmacist ? 'DISPENSING' : 'LEDGER_AUDIT');
 
   // Data State
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);

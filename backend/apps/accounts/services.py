@@ -891,15 +891,17 @@ def seed_roles_and_permissions(stdout=None):
                 perms_updated += 1
         perm_objs[p_data["code"]] = perm
 
-    # 3. Seed RolePermission Mappings
+    # 3. Seed and Reconcile RolePermission Mappings
     for role_code, perm_codes in ROLE_PERMISSION_MAP.items():
         role_obj = role_objs.get(role_code)
         if not role_obj:
             continue
+        valid_perm_ids = set()
         for perm_code in perm_codes:
             perm_obj = perm_objs.get(perm_code)
             if not perm_obj:
                 continue
+            valid_perm_ids.add(perm_obj.id)
             mapping, created = RolePermission.objects.get_or_create(
                 role=role_obj,
                 permission=perm_obj,
@@ -907,12 +909,18 @@ def seed_roles_and_permissions(stdout=None):
             )
             if created:
                 mappings_created += 1
+            elif not mapping.is_active:
+                mapping.is_active = True
+                mapping.save(update_fields=["is_active"])
+
+        # Reconcile: Deactivate any permissions removed from this role
+        RolePermission.objects.filter(role=role_obj).exclude(permission_id__in=valid_perm_ids).update(is_active=False)
 
     summary = (
         f"Role & Permission Catalogue Seed Complete: "
         f"Roles ({roles_created} created, {roles_updated} updated, {len(role_objs)} total), "
         f"Permissions ({perms_created} created, {perms_updated} updated, {len(perm_objs)} total), "
-        f"RolePermissions ({mappings_created} created, {RolePermission.objects.count()} total)."
+        f"RolePermissions ({mappings_created} created, {RolePermission.objects.filter(is_active=True).count()} active)."
     )
     if stdout:
         stdout.write(summary)

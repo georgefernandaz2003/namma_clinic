@@ -76,16 +76,22 @@ from rest_framework.permissions import BasePermission
 
 class PharmacyAccessPermission(BasePermission):
     """
-    Denies prescription and dispensation records to Compounder and Lab Technician.
+    Denies prescription and dispensation records to Compounder, Lab Technician, and Inventory-only users.
     Allows Pharmacist, Doctor, Nurse, Hospital Admin, District Officer, Superuser.
+    Preserves multi-role access (e.g. INVENTORY + PHARMACIST).
     """
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated or not request.user.is_active:
             return False
         if request.user.is_superuser:
             return True
+        from apps.accounts.permissions import get_user_active_role_codes
+        active_roles = get_user_active_role_codes(request.user)
+        if active_roles:
+            allowed_clinical_roles = {'PHARMACIST', 'DOCTOR', 'NURSE', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER'}
+            return bool(active_roles.intersection(allowed_clinical_roles))
         role = getattr(request.user, 'role', '')
-        if role in ['COMPOUNDER', 'LAB_TECHNICIAN']:
+        if role in ['COMPOUNDER', 'LAB_TECHNICIAN', 'INVENTORY']:
             return False
         return True
 
@@ -372,9 +378,12 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         from apps.facilities.models import Facility
+        from apps.accounts.permissions import has_role_permission
         staff = get_request_staff(request)
         fac = Facility.objects.get(pk=request.data['facility'])
         check_facility_permission(fac, staff, request.user)
+        if not has_role_permission(request.user, 'purchase_order.create'):
+            return Response({'error': 'You do not have permission to create purchase orders.'}, status=status.HTTP_403_FORBIDDEN)
         ven = Vendor.objects.get(pk=request.data['vendor'])
 
         po = create_purchase_order(
@@ -418,6 +427,7 @@ class GoodsReceiptNoteViewSet(viewsets.ModelViewSet):
         return qs
 
     def create(self, request, *args, **kwargs):
+        from apps.accounts.permissions import has_role_permission
         serializer = ReceiveGRNSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         staff = get_request_staff(request)
@@ -426,6 +436,8 @@ class GoodsReceiptNoteViewSet(viewsets.ModelViewSet):
         po = PurchaseOrder.objects.get(pk=serializer.validated_data['purchase_order_id'])
         fac = Facility.objects.get(pk=serializer.validated_data['facility_id'])
         check_facility_permission(fac, staff, request.user)
+        if not has_role_permission(request.user, 'goods_receipt.create'):
+            return Response({'error': 'You do not have permission to record goods receipts.'}, status=status.HTTP_403_FORBIDDEN)
 
         items = []
         for itm in serializer.validated_data['items_received']:

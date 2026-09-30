@@ -10,7 +10,8 @@ export type Role =
   | 'NURSE'
   | 'COMPOUNDER'
   | 'LAB_TECHNICIAN'
-  | 'PHARMACIST';
+  | 'PHARMACIST'
+  | 'INVENTORY';
 
 export const ROLE_LABELS: Record<Role, string> = {
   DISTRICT_OFFICER: 'District Health Officer',
@@ -20,6 +21,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   COMPOUNDER: 'Compounder',
   LAB_TECHNICIAN: 'Lab Technician',
   PHARMACIST: 'Pharmacist',
+  INVENTORY: 'Inventory Manager',
 };
 
 export type ScopeType = 'DISTRICT' | 'FACILITY' | 'GLOBAL';

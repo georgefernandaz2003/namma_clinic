@@ -205,6 +205,10 @@ ROLE_PERMISSIONS = {
     'PHARMACIST': {
         'prescription.view', 'prescription.read', 'prescription.verify', 'prescription.hold', 'prescription.reject',
         'pharmacy.view', 'pharmacy.dispense', 'dispensation.create', 'dispensation.read',
+        'inventory.view', 'inventory.read', 'medicine_batch.read',
+        'reports.view', 'reports.export', 'clinic.view', 'dashboard.view'
+    },
+    'INVENTORY': {
         'inventory.view', 'inventory.read', 'inventory.create', 'inventory.update', 'inventory.adjust',
         'medicine_batch.read', 'reports.view', 'reports.export', 'clinic.view', 'dashboard.view',
         'po.view', 'po.create', 'po.update', 'po.receive', 'vendor.view', 'vendor.create', 'vendor.update',

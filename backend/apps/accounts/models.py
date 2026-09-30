@@ -11,6 +11,7 @@ class RoleChoices(models.TextChoices):
     COMPOUNDER = 'COMPOUNDER', 'Compounder'
     LAB_TECHNICIAN = 'LAB_TECHNICIAN', 'Lab Technician'
     PHARMACIST = 'PHARMACIST', 'Pharmacist'
+    INVENTORY = 'INVENTORY', 'Inventory Manager'
 
 class Person(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

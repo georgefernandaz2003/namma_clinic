@@ -38,7 +38,11 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
     'clinic.view', 'dashboard.view'
   ]),
   PHARMACIST: new Set([
-    'prescription.view', 'pharmacy.view', 'pharmacy.dispense', 'inventory.view', 'inventory.create', 'inventory.update',
+    'prescription.view', 'pharmacy.view', 'pharmacy.dispense', 'inventory.view',
+    'reports.view', 'reports.export', 'clinic.view', 'dashboard.view'
+  ]),
+  INVENTORY: new Set([
+    'inventory.view', 'inventory.create', 'inventory.update',
     'reports.view', 'reports.export', 'clinic.view', 'dashboard.view'
   ])
 };
@@ -50,7 +54,8 @@ export const HUMAN_ROLE_LABELS: Record<Role, string> = {
   NURSE: 'Nurse',
   COMPOUNDER: 'Compounder',
   LAB_TECHNICIAN: 'Lab Technician',
-  PHARMACIST: 'Pharmacist'
+  PHARMACIST: 'Pharmacist',
+  INVENTORY: 'Inventory Manager'
 };
 
 export const getHumanRoleLabel = (role: Role | string | undefined): string => {
@@ -82,6 +87,9 @@ export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
   ],
   PHARMACIST: [
     '/', '/queue', '/pharmacy', '/infrastructure', '/alerts'
+  ],
+  INVENTORY: [
+    '/', '/infrastructure', '/alerts'
   ]
 };
 

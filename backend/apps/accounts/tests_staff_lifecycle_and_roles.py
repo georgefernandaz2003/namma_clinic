@@ -170,10 +170,16 @@ class StaffLifecycleAndRoleAssignmentTests(TestCase):
         self.assertFalse(has_role_permission(self.user_jane, 'consultation.create'))
         self.assertFalse(has_role_permission(self.user_jane, 'pharmacy.dispense'))
 
-    # 4. NURSE_COMPOUNDER does not exist
+    # 4. NURSE_COMPOUNDER and composite roles do not exist
     def test_04_nurse_compounder_role_does_not_exist(self):
         self.assertFalse(RoleMaster.objects.filter(code='NURSE_COMPOUNDER').exists())
+        self.assertFalse(RoleMaster.objects.filter(code='PHARMACY_INVENTORY').exists())
+        self.assertFalse(RoleMaster.objects.filter(code='INVENTORY_PHARMACIST').exists())
+        self.assertFalse(RoleMaster.objects.filter(code='STORE_PHARMACIST').exists())
         self.assertNotIn('NURSE_COMPOUNDER', RoleChoices.values)
+        self.assertNotIn('PHARMACY_INVENTORY', RoleChoices.values)
+        self.assertNotIn('INVENTORY_PHARMACIST', RoleChoices.values)
+        self.assertNotIn('STORE_PHARMACIST', RoleChoices.values)
 
     # 5. User.role cannot add an unauthorized role when StaffRoleAssignment exists
     def test_05_user_role_cannot_add_unauthorized_role_when_sra_exists(self):
@@ -384,8 +390,8 @@ class StaffLifecycleAndRoleAssignmentTests(TestCase):
 
         self.assertGreater(AuditLogEntry.objects.count(), initial_count)
 
-    # 20. Existing seven roles remain exactly seven
-    def test_20_existing_seven_roles_remain_exactly_seven(self):
+    # 20. Existing eight roles remain exactly eight (including INVENTORY)
+    def test_20_existing_eight_roles_remain_exactly_eight(self):
         expected_roles = {
             'DISTRICT_OFFICER',
             'HOSPITAL_ADMIN',
@@ -393,9 +399,10 @@ class StaffLifecycleAndRoleAssignmentTests(TestCase):
             'NURSE',
             'COMPOUNDER',
             'LAB_TECHNICIAN',
-            'PHARMACIST'
+            'PHARMACIST',
+            'INVENTORY'
         }
         actual_roles = set(RoleMaster.objects.values_list('code', flat=True))
         self.assertEqual(actual_roles, expected_roles)
-        self.assertEqual(RoleMaster.objects.count(), 7)
-        self.assertEqual(len(RoleChoices.values), 7)
+        self.assertEqual(RoleMaster.objects.count(), 8)
+        self.assertEqual(len(RoleChoices.values), 8)

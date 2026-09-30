@@ -186,14 +186,14 @@ class RolePermissionCatalogueHardeningTests(TestCase):
         self.assertTrue(has_role_permission(self.user_doctor, "lab_order.create"))
 
     # 6. Existing seven roles remain intact
-    def test_06_existing_seven_roles_remain_intact(self):
+    def test_06_existing_eight_roles_remain_intact(self):
         expected_roles = {
             "DISTRICT_OFFICER", "HOSPITAL_ADMIN", "DOCTOR",
-            "NURSE", "COMPOUNDER", "LAB_TECHNICIAN", "PHARMACIST"
+            "NURSE", "COMPOUNDER", "LAB_TECHNICIAN", "PHARMACIST", "INVENTORY"
         }
         roles = set(RoleMaster.objects.values_list('code', flat=True))
         self.assertEqual(roles, expected_roles)
-        self.assertEqual(RoleMaster.objects.count(), 7)
+        self.assertEqual(RoleMaster.objects.count(), 8)
 
     # 7. No SYSTEM_ADMIN operational role exists
     def test_07_no_system_admin_operational_role(self):
@@ -202,12 +202,18 @@ class RolePermissionCatalogueHardeningTests(TestCase):
         self.assertNotIn("SYSTEM_ADMIN", [c[0] for c in RoleChoices.choices])
         self.assertNotIn("SUPER_ADMIN", [c[0] for c in RoleChoices.choices])
 
-    # 8. No NURSE_COMPOUNDER role exists
+    # 8. No NURSE_COMPOUNDER or composite role exists
     def test_08_no_nurse_compounder_role(self):
         self.assertFalse(RoleMaster.objects.filter(code="NURSE_COMPOUNDER").exists())
         self.assertFalse(RoleMaster.objects.filter(code="CLINIC_ADMIN").exists())
+        self.assertFalse(RoleMaster.objects.filter(code="PHARMACY_INVENTORY").exists())
+        self.assertFalse(RoleMaster.objects.filter(code="INVENTORY_PHARMACIST").exists())
+        self.assertFalse(RoleMaster.objects.filter(code="STORE_PHARMACIST").exists())
         self.assertNotIn("NURSE_COMPOUNDER", [c[0] for c in RoleChoices.choices])
         self.assertNotIn("CLINIC_ADMIN", [c[0] for c in RoleChoices.choices])
+        self.assertNotIn("PHARMACY_INVENTORY", [c[0] for c in RoleChoices.choices])
+        self.assertNotIn("INVENTORY_PHARMACIST", [c[0] for c in RoleChoices.choices])
+        self.assertNotIn("STORE_PHARMACIST", [c[0] for c in RoleChoices.choices])
 
     # 9. Compounder still has exactly the approved seven permissions
     def test_09_compounder_has_exactly_approved_seven_permissions(self):
@@ -342,9 +348,9 @@ class RolePermissionCatalogueHardeningTests(TestCase):
         # Prohibited for both: consultation.create
         self.assertFalse(has_role_permission(multi_user, "consultation.create"))
 
-        # 2. Complete explicit matrix generation (399 cells)
+        # 2. Complete explicit matrix generation (456 cells for 8 operational roles)
         matrix = generate_role_permission_matrix()
-        self.assertEqual(len(matrix), 7 * 57)
+        self.assertEqual(len(matrix), 8 * 57)
         for cell in matrix:
             self.assertIn(cell["access"], ["ALLOW", "DENY"])
             self.assertTrue(bool(cell["reason"]))
