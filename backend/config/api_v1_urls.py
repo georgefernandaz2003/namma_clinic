@@ -1,4 +1,4 @@
-﻿"""
+"""
 API Version 1 Routing Configuration.
 Authoritative REST API foundation backed exclusively by domain service layer.
 """
@@ -92,5 +92,6 @@ router_v1.register(r'alerts', OperationalAlertViewSet, basename='v1-alert')
 router_v1.register(r'audit', AuditLogEntryViewSet, basename='v1-audit')
 
 urlpatterns = [
+    path('patients/patients/', PatientViewSet.as_view({'get': 'list', 'post': 'create'}), name='v1-patient-patients-alias'),
     path('', include(router_v1.urls)),
 ]

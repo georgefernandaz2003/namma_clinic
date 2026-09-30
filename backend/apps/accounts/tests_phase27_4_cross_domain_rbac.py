@@ -211,3 +211,53 @@ class Phase274CrossDomainRBACAuditTests(TestCase):
         # Facility 2 user cannot adjust Facility 1 batch
         res_adj = c_fac2.post(f"/api/v1/pharmacy/batches/{self.batch.id}/adjust/", {"quantity_delta": 1})
         self.assertIn(res_adj.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
+
+    def test_patient_payload_privacy_verification(self):
+        """
+        Phase 27.4A: Verify exact payload privacy and role-appropriate boundaries.
+        INVENTORY receives NO patient identifiers or clinical data (403 Forbidden).
+        Authorized roles receive demographic records without clinical data.
+        """
+        c_inv = APIClient()
+        c_inv.force_authenticate(user=self.u_inv)
+
+        # INVENTORY blocked from patient registry
+        res_inv = c_inv.get("/api/v1/patients/")
+        self.assertEqual(res_inv.status_code, status.HTTP_403_FORBIDDEN)
+        res_inv_alias = c_inv.get("/api/v1/patients/patients/")
+        self.assertEqual(res_inv_alias.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Authorized roles can read demographic registry
+        for user, role_code in [
+            (self.u_doc, "DOCTOR"),
+            (self.u_nurse, "NURSE"),
+            (self.u_comp, "COMPOUNDER"),
+            (self.u_lab, "LAB_TECHNICIAN"),
+            (self.u_phm, "PHARMACIST"),
+            (self.u_admin, "HOSPITAL_ADMIN"),
+        ]:
+            c_auth = APIClient()
+            c_auth.force_authenticate(user=user)
+            res = c_auth.get("/api/v1/patients/")
+            self.assertEqual(res.status_code, status.HTTP_200_OK, f"Failed for {role_code}")
+            data = res.json()
+            items = data.get("results", data) if isinstance(data, dict) else data
+            self.assertTrue(len(items) > 0)
+            first = items[0]
+            # Verify patient demographic fields
+            self.assertIn("patient_id", first)
+            self.assertIn("name", first)
+            # Verify ZERO clinical data leakage in patient payload
+            self.assertNotIn("diagnosis", first)
+            self.assertNotIn("vitals", first)
+            self.assertNotIn("clinical_notes", first)
+            self.assertNotIn("prescription", first)
+
+        # Verify clinical EMR boundary: Compounder & Pharmacist strictly denied consultation notes
+        c_comp = APIClient()
+        c_comp.force_authenticate(user=self.u_comp)
+        self.assertEqual(c_comp.get("/api/v1/clinical/consultations/").status_code, status.HTTP_403_FORBIDDEN)
+
+        c_phm = APIClient()
+        c_phm.force_authenticate(user=self.u_phm)
+        self.assertEqual(c_phm.get("/api/v1/clinical/consultations/").status_code, status.HTTP_403_FORBIDDEN)

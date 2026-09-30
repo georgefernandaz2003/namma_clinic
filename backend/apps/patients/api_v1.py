@@ -77,7 +77,10 @@ class IsPatientRegistrationStaff(permissions.BasePermission):
         if view.action in ['update', 'partial_update'] or request.method in ['PUT', 'PATCH']:
             return has_role_permission(user, 'patients.update_demographics')
 
-        return True
+        if request.method in permissions.SAFE_METHODS:
+            return has_role_permission(user, 'patients.read')
+
+        return False
 
     def has_object_permission(self, request, view, obj):
         user = getattr(request, 'user', None)
@@ -90,7 +93,10 @@ class IsPatientRegistrationStaff(permissions.BasePermission):
         if request.method in ['PUT', 'PATCH']:
             return has_role_permission(user, 'patients.update_demographics')
 
-        return True
+        if request.method in permissions.SAFE_METHODS:
+            return has_role_permission(user, 'patients.read')
+
+        return False
 
 
 class PatientSerializer(serializers.ModelSerializer):
