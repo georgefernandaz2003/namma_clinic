@@ -284,8 +284,11 @@ export interface InventoryLedger {
   remarks?: string;
   transaction_timestamp: string;
   batch: number;
+  batch_number?: string;
+  medicine_name?: string;
   facility: number;
   performed_by_staff: number;
+  performed_by_name?: string;
 }
 
 

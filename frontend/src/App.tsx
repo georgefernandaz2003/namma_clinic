@@ -37,6 +37,7 @@ import { Integrations } from './pages/Integrations';
 import { Compliance } from './pages/Compliance';
 import { Audit } from './pages/Audit';
 import { StaffAdministration } from './pages/StaffAdministration';
+import { InventoryConsole } from './pages/InventoryConsole';
 
 export const App: React.FC = () => {
   return (
@@ -142,6 +143,9 @@ export const App: React.FC = () => {
           <Route path="/consultation" element={<ProtectedRoute allowedRoles={['DOCTOR']}><Consultation /></ProtectedRoute>} />
           <Route path="/lab" element={<ProtectedRoute><Laboratory /></ProtectedRoute>} />
           <Route path="/pharmacy" element={<ProtectedRoute><Pharmacy /></ProtectedRoute>} />
+          <Route path="/inventory" element={<ProtectedRoute allowedRoles={['INVENTORY', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER']}><InventoryConsole /></ProtectedRoute>} />
+          <Route path="/inventory/*" element={<ProtectedRoute allowedRoles={['INVENTORY', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER']}><InventoryConsole /></ProtectedRoute>} />
+          <Route path="/dashboard/inventory" element={<ProtectedRoute allowedRoles={['INVENTORY', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER']}><InventoryConsole /></ProtectedRoute>} />
           <Route path="/referrals" element={<ProtectedRoute><Referrals /></ProtectedRoute>} />
           <Route path="/followups" element={<ProtectedRoute><FollowUps /></ProtectedRoute>} />
           <Route path="/ncd" element={<ProtectedRoute><NCD /></ProtectedRoute>} />

@@ -189,6 +189,11 @@ def receive_goods_receipt(
                 rejection_reason=entry.get("rejection_reason", ""),
             )
 
+            po_item.received_quantity = (po_item.received_quantity or 0) + qty_rec
+            po_item.accepted_quantity = (po_item.accepted_quantity or 0) + qty_acc
+            po_item.rejected_quantity = (po_item.rejected_quantity or 0) + qty_rej
+            po_item.save(update_fields=["received_quantity", "accepted_quantity", "rejected_quantity"])
+
             if qty_acc > 0:
                 batch, _ = MedicineBatch.objects.get_or_create(
                     facility=facility,
@@ -215,7 +220,11 @@ def receive_goods_receipt(
                     bucket_deltas={"available_quantity": qty_acc}
                 )
 
-        purchase_order.status = "PARTIALLY_RECEIVED"
+        all_received = all(i.received_quantity >= i.ordered_quantity for i in purchase_order.items.all())
+        if all_received and purchase_order.items.exists():
+            purchase_order.status = "RECEIVED"
+        else:
+            purchase_order.status = "PARTIALLY_RECEIVED"
         purchase_order.save(update_fields=["status"])
 
         record_audit_event(

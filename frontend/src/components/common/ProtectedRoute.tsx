@@ -28,9 +28,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  const userRoles = ([user?.role, ...(user?.roles || [])].filter(Boolean)) as Role[];
+
   // 1. Explicit allowedRoles check if defined on the route
   if (allowedRoles && allowedRoles.length > 0) {
-    const isRoleAllowed = user?.role && allowedRoles.includes(user.role);
+    const isRoleAllowed = userRoles.some(r => allowedRoles.includes(r));
     if (!isRoleAllowed) {
       return (
         <DashboardLayout>
@@ -45,7 +47,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
   }
 
   // 2. Global route matrix permission check
-  const isAllowed = isRouteAllowedForRole(user?.role, location.pathname);
+  const isAllowed = userRoles.some(r => isRouteAllowedForRole(r, location.pathname));
 
   return (
     <DashboardLayout>

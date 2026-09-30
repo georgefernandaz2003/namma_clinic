@@ -1,4 +1,4 @@
-﻿import type { Role } from '../types';
+import type { Role } from '../types';
 
 export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
   DISTRICT_OFFICER: new Set([
@@ -42,7 +42,9 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
     'reports.view', 'reports.export', 'clinic.view', 'dashboard.view'
   ]),
   INVENTORY: new Set([
-    'inventory.view', 'inventory.create', 'inventory.update',
+    'inventory.view', 'inventory.create', 'inventory.update', 'inventory.adjust',
+    'procurement.view', 'procurement.create', 'procurement.update',
+    'goods_receipt.create', 'goods_receipt.view',
     'reports.view', 'reports.export', 'clinic.view', 'dashboard.view'
   ])
 };
@@ -68,10 +70,10 @@ export const getHumanRoleLabel = (role: Role | string | undefined): string => {
 
 export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
   DISTRICT_OFFICER: [
-    '/', '/admin/staff', '/network', '/facilities', '/patients', '/queue', '/ncd', '/surveillance', '/referrals', '/pharmacy', '/infrastructure', '/reports', '/alerts', '/compliance', '/audit', '/ars', '/quality', '/integrations'
+    '/', '/admin/staff', '/network', '/facilities', '/patients', '/queue', '/ncd', '/surveillance', '/referrals', '/pharmacy', '/inventory', '/infrastructure', '/reports', '/alerts', '/compliance', '/audit', '/ars', '/quality', '/integrations'
   ],
   HOSPITAL_ADMIN: [
-    '/', '/admin/staff', '/patients', '/queue', '/facilities', '/pharmacy', '/referrals', '/followups', '/infrastructure', '/reports', '/alerts', '/ars', '/quality', '/integrations'
+    '/', '/admin/staff', '/patients', '/queue', '/facilities', '/pharmacy', '/inventory', '/referrals', '/followups', '/infrastructure', '/reports', '/alerts', '/ars', '/quality', '/integrations'
   ],
   DOCTOR: [
     '/', '/patients', '/queue', '/consultation', '/lab', '/referrals', '/followups', '/alerts', '/ncd'
@@ -89,7 +91,7 @@ export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
     '/', '/queue', '/pharmacy', '/infrastructure', '/alerts'
   ],
   INVENTORY: [
-    '/', '/infrastructure', '/alerts'
+    '/', '/inventory', '/alerts'
   ]
 };
 

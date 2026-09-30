@@ -31,6 +31,11 @@ class MedicineMasterSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class MedicineBatchSerializer(serializers.ModelSerializer):
+    medicine_name = serializers.ReadOnlyField(source='medicine.generic_name')
+    medicine_brand = serializers.ReadOnlyField(source='medicine.brand_name')
+    vendor_name = serializers.ReadOnlyField(source='vendor.vendor_name')
+    facility_name = serializers.ReadOnlyField(source='facility.facility_name')
+
     class Meta:
         model = MedicineBatch
         fields = '__all__'
@@ -66,6 +71,10 @@ class DispensationSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class InventoryLedgerSerializer(serializers.ModelSerializer):
+    batch_number = serializers.ReadOnlyField(source='batch.batch_number')
+    medicine_name = serializers.ReadOnlyField(source='batch.medicine.generic_name')
+    performed_by_name = serializers.ReadOnlyField(source='performed_by_staff.employee_id')
+
     class Meta:
         model = InventoryLedger
         fields = '__all__'
@@ -101,7 +110,7 @@ class MedicineMasterViewSet(viewsets.ModelViewSet):
     permission_classes = [IsActiveStaff]
 
 class MedicineBatchViewSet(viewsets.ReadOnlyModelViewSet):
-    """Read-only view of medicine batches. Direct balance modification is forbidden."""
+    """Read-only view of medicine batches. Direct balance modification is forbidden; adjustments strictly flow through post_inventory_movement."""
     queryset = MedicineBatch.objects.all().select_related('medicine', 'facility')
     serializer_class = MedicineBatchSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
@@ -113,6 +122,57 @@ class MedicineBatchViewSet(viewsets.ReadOnlyModelViewSet):
         if permitted is not None:
             qs = qs.filter(facility_id__in=permitted)
         return qs
+
+    @action(detail=True, methods=['post'], url_path='adjust')
+    def adjust(self, request, pk=None):
+        from apps.accounts.permissions import has_role_permission
+        batch = self.get_object()
+        staff = get_request_staff(request)
+        check_facility_permission(batch.facility, staff, request.user)
+
+        if not has_role_permission(request.user, 'inventory.adjust'):
+            return Response({'error': 'You do not have permission to adjust inventory stock.'}, status=status.HTTP_403_FORBIDDEN)
+
+        physical_count = request.data.get('physical_count')
+        quantity_delta = request.data.get('quantity_delta')
+        remarks = request.data.get('remarks') or request.data.get('reason') or 'Physical count reconciliation'
+
+        if physical_count is not None:
+            try:
+                p_count = int(physical_count)
+            except (ValueError, TypeError):
+                return Response({'error': 'Physical count must be an integer.'}, status=status.HTTP_400_BAD_REQUEST)
+            if p_count < 0:
+                return Response({'error': 'Physical count cannot be negative.'}, status=status.HTTP_400_BAD_REQUEST)
+            delta = p_count - batch.available_quantity
+        elif quantity_delta is not None:
+            try:
+                delta = int(quantity_delta)
+            except (ValueError, TypeError):
+                return Response({'error': 'Quantity delta must be an integer.'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response({'error': 'Either physical_count or quantity_delta is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if delta == 0:
+            return Response({'message': 'Stock count matches system balance. No adjustment required.', 'batch': self.get_serializer(batch).data})
+
+        ledger_entry = post_inventory_movement(
+            batch=batch,
+            facility=batch.facility,
+            performed_by_staff=staff,
+            transaction_type='AUDIT_CORRECTION',
+            quantity_delta=delta,
+            reference_entity_type='StockAdjustment',
+            reference_entity_id=None,
+            remarks=remarks
+        )
+        batch.refresh_from_db()
+        return Response({
+            'message': f"Stock adjusted successfully by {delta:+d} units.",
+            'batch': self.get_serializer(batch).data,
+            'ledger_id': ledger_entry.id,
+            'balance_after': ledger_entry.balance_after
+        })
 
 class PrescriptionViewSet(viewsets.ModelViewSet):
     queryset = Prescription.objects.all().select_related('consultation', 'patient', 'facility').prefetch_related('items')
@@ -319,12 +379,16 @@ class VendorSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
+    medicine_name = serializers.ReadOnlyField(source='medicine.generic_name')
+
     class Meta:
         model = PurchaseOrderItem
         fields = '__all__'
 
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     items = PurchaseOrderItemSerializer(many=True, read_only=True)
+    vendor_name = serializers.ReadOnlyField(source='vendor.vendor_name')
+    facility_name = serializers.ReadOnlyField(source='facility.facility_name')
 
     class Meta:
         model = PurchaseOrder
@@ -344,7 +408,7 @@ class ReceiveGRNItemSerializer(serializers.Serializer):
     quantity_received = serializers.IntegerField(min_value=1)
     quantity_accepted = serializers.IntegerField(min_value=0)
     quantity_rejected = serializers.IntegerField(required=False, default=0)
-    rejection_reason = serializers.CharField(required=False, default="")
+    rejection_reason = serializers.CharField(required=False, allow_blank=True, default="")
 
 class ReceiveGRNSerializer(serializers.Serializer):
     purchase_order_id = serializers.IntegerField()
@@ -352,7 +416,18 @@ class ReceiveGRNSerializer(serializers.Serializer):
     facility_id = serializers.IntegerField()
     items_received = ReceiveGRNItemSerializer(many=True)
 
+class GoodsReceiptItemSerializer(serializers.ModelSerializer):
+    medicine_name = serializers.ReadOnlyField(source='medicine.generic_name')
+
+    class Meta:
+        model = GoodsReceiptItem
+        fields = '__all__'
+
 class GoodsReceiptNoteSerializer(serializers.ModelSerializer):
+    vendor_name = serializers.ReadOnlyField(source='vendor.vendor_name')
+    po_number = serializers.ReadOnlyField(source='purchase_order.po_number')
+    items = GoodsReceiptItemSerializer(many=True, read_only=True)
+
     class Meta:
         model = GoodsReceiptNote
         fields = '__all__'
@@ -380,28 +455,69 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         from apps.facilities.models import Facility
         from apps.accounts.permissions import has_role_permission
         staff = get_request_staff(request)
-        fac = Facility.objects.get(pk=request.data['facility'])
+        fac_id = request.data.get('facility') or getattr(request.user, 'assigned_facility_id', None)
+        if not fac_id:
+            return Response({'error': 'Facility ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        fac = Facility.objects.get(pk=fac_id)
         check_facility_permission(fac, staff, request.user)
         if not has_role_permission(request.user, 'purchase_order.create'):
             return Response({'error': 'You do not have permission to create purchase orders.'}, status=status.HTTP_403_FORBIDDEN)
         ven = Vendor.objects.get(pk=request.data['vendor'])
 
+        items_in = []
+        for itm in request.data.get('items', []):
+            med_id = itm.get('medicine') or itm.get('medicine_id')
+            med = MedicineMaster.objects.get(pk=med_id)
+            qty = int(itm.get('ordered_quantity', 1))
+            price = float(itm.get('unit_price') or itm.get('unit_cost') or 5.0)
+            items_in.append({
+                'medicine': med,
+                'ordered_quantity': qty,
+                'unit_price': price
+            })
+
         po = create_purchase_order(
             facility=fac,
             vendor=ven,
             created_by_staff=staff,
-            po_number=request.data.get('po_number')
+            po_number=request.data.get('po_number'),
+            items=items_in if items_in else None
         )
         return Response(self.get_serializer(po).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], url_path='approve', permission_classes=[IsAdministrativeStaff])
+    @action(detail=True, methods=['post'], url_path='submit-approval')
+    def submit_approval(self, request, pk=None):
+        from apps.accounts.permissions import has_role_permission
+        po = self.get_object()
+        staff = get_request_staff(request)
+        check_facility_permission(po.facility, staff, request.user)
+        if not has_role_permission(request.user, 'purchase_order.update'):
+            return Response({'error': 'You do not have permission to update purchase orders.'}, status=status.HTTP_403_FORBIDDEN)
+        if po.status != 'DRAFT':
+            return Response({'error': f"Only DRAFT purchase orders can be submitted for approval (current: {po.status})."}, status=status.HTTP_400_BAD_REQUEST)
+        po.status = 'PENDING_APPROVAL'
+        po.save(update_fields=['status'])
+        return Response(self.get_serializer(po).data)
+
+    @action(detail=True, methods=['post'], url_path='approve')
     def approve(self, request, pk=None):
         po = self.get_object()
-        serializer = ApprovePOSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
         staff = get_request_staff(request)
         check_facility_permission(po.facility, staff, request.user)
 
+        is_admin = (
+            request.user.is_superuser or
+            getattr(request.user, 'role', '') in ['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'] or
+            (staff and staff.role_assignments.filter(role__code__in=['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'], is_active=True).exists())
+        )
+        if not is_admin:
+            return Response({'error': 'Only Hospital Administrators or District Officers can approve purchase orders.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if po.status not in ['PENDING_APPROVAL', 'DRAFT']:
+            return Response({'error': f"Cannot approve purchase order in status '{po.status}'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = ApprovePOSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         approval = approve_purchase_order(
             purchase_order=po,
             approver_staff=staff,
@@ -410,6 +526,20 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             remarks=serializer.validated_data.get('remarks', '')
         )
         po.refresh_from_db()
+        return Response(self.get_serializer(po).data)
+
+    @action(detail=True, methods=['post'], url_path='place-order')
+    def place_order(self, request, pk=None):
+        from apps.accounts.permissions import has_role_permission
+        po = self.get_object()
+        staff = get_request_staff(request)
+        check_facility_permission(po.facility, staff, request.user)
+        if not has_role_permission(request.user, 'purchase_order.update'):
+            return Response({'error': 'You do not have permission to place purchase orders.'}, status=status.HTTP_403_FORBIDDEN)
+        if po.status != 'APPROVED':
+            return Response({'error': f"Only APPROVED purchase orders can be placed with vendor (current: {po.status})."}, status=status.HTTP_400_BAD_REQUEST)
+        po.status = 'ORDERED'
+        po.save(update_fields=['status'])
         return Response(self.get_serializer(po).data)
 
 class GoodsReceiptNoteViewSet(viewsets.ModelViewSet):
@@ -428,7 +558,33 @@ class GoodsReceiptNoteViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         from apps.accounts.permissions import has_role_permission
-        serializer = ReceiveGRNSerializer(data=request.data)
+        if not has_role_permission(request.user, 'goods_receipt.create'):
+            return Response({'error': 'You do not have permission to record goods receipts.'}, status=status.HTTP_403_FORBIDDEN)
+
+        payload = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        if 'purchase_order' in payload and 'purchase_order_id' not in payload:
+            payload['purchase_order_id'] = payload['purchase_order']
+        if 'facility' in payload and 'facility_id' not in payload:
+            payload['facility_id'] = payload['facility']
+        if 'grn_number' not in payload or not payload['grn_number']:
+            import uuid, datetime
+            payload['grn_number'] = f"GRN-{datetime.date.today().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+        if 'items' in payload and 'items_received' not in payload:
+            items_norm = []
+            for itm in payload['items']:
+                items_norm.append({
+                    'medicine_id': itm.get('medicine_id') or itm.get('medicine'),
+                    'batch_number': itm.get('batch_number'),
+                    'expiry_date': itm.get('expiry_date'),
+                    'unit_cost': itm.get('unit_cost', 1.50),
+                    'quantity_received': itm.get('quantity_received') or itm.get('received_quantity', 1),
+                    'quantity_accepted': itm.get('quantity_accepted') or itm.get('accepted_quantity', 1),
+                    'quantity_rejected': itm.get('quantity_rejected', 0) or itm.get('rejected_quantity', 0),
+                    'rejection_reason': itm.get('rejection_reason', '')
+                })
+            payload['items_received'] = items_norm
+
+        serializer = ReceiveGRNSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
         staff = get_request_staff(request)
 
@@ -436,8 +592,6 @@ class GoodsReceiptNoteViewSet(viewsets.ModelViewSet):
         po = PurchaseOrder.objects.get(pk=serializer.validated_data['purchase_order_id'])
         fac = Facility.objects.get(pk=serializer.validated_data['facility_id'])
         check_facility_permission(fac, staff, request.user)
-        if not has_role_permission(request.user, 'goods_receipt.create'):
-            return Response({'error': 'You do not have permission to record goods receipts.'}, status=status.HTTP_403_FORBIDDEN)
 
         items = []
         for itm in serializer.validated_data['items_received']:

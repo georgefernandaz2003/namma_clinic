@@ -30,6 +30,7 @@ export const ROLE_DASHBOARD_ROUTES: Record<Role, string> = {
   COMPOUNDER: '/dashboard/compounder',
   LAB_TECHNICIAN: '/dashboard/lab',
   PHARMACIST: '/dashboard/pharmacy',
+  INVENTORY: '/inventory',
 };
 
 export const ROLE_DASHBOARD_METADATA: Record<Role, RoleDashboardMeta> = {
@@ -89,6 +90,14 @@ export const ROLE_DASHBOARD_METADATA: Record<Role, RoleDashboardMeta> = {
     iconName: 'Users',
     scopeTypeRequired: 'FACILITY',
   },
+  INVENTORY: {
+    role: 'INVENTORY',
+    title: 'Inventory & Procurement Workstation',
+    subtitle: 'Procurement orders, Goods Receipt Notes (GRN), batch tracking, and physical stock reconciliation.',
+    landingRoute: '/inventory',
+    iconName: 'Package',
+    scopeTypeRequired: 'FACILITY',
+  },
 };
 
 export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
@@ -143,6 +152,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
         { name: 'Patients Registry', path: '/patients', iconName: 'Users', description: 'Facility patient master and demographic records' },
         { name: 'OPD Queue Status', path: '/queue', iconName: 'Clock', description: 'Daily outpatient appointment and token flow' },
         { name: 'Pharmacy & Stock', path: '/pharmacy', iconName: 'Pill', description: 'Dispensing records and medicine inventory batches' },
+        { name: 'Inventory & Procurement', path: '/inventory', iconName: 'Package', description: 'Procurement orders, goods receipt, and stock ledger' },
         { name: 'Referral Transfers', path: '/referrals', iconName: 'Share2', description: 'Inbound and outbound clinical referral records' },
         { name: 'Follow-up Tracking', path: '/followups', iconName: 'CalendarCheck', description: 'Post-consultation follow-up scheduling' },
         { name: 'Infra & Maintenance', path: '/infrastructure', iconName: 'Wrench', description: 'Facility maintenance tickets and consumable stock' },
@@ -261,6 +271,21 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
       title: 'SYSTEM',
       items: [
         { name: 'Operational Alerts', path: '/alerts', iconName: 'Bell', description: 'Patient queue and intake alerts' },
+      ],
+    },
+  ],
+
+  INVENTORY: [
+    {
+      title: 'INVENTORY & PROCUREMENT',
+      items: [
+        { name: 'Inventory Console', path: '/inventory', iconName: 'Package', description: 'Stock levels, batch expiry, and movement ledger' },
+      ],
+    },
+    {
+      title: 'SYSTEM',
+      items: [
+        { name: 'Stock Alerts', path: '/alerts', iconName: 'Bell', description: 'Near-expiry batches and minimum stock warning alerts' },
       ],
     },
   ],

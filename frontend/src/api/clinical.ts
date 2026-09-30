@@ -322,3 +322,11 @@ export const getFollowUpTasks = async (params?: Record<string, string | number>)
   if (Array.isArray(res.data)) return res.data;
   return res.data.results || [];
 };
+
+export const adjustMedicineBatch = async (
+  batchId: number,
+  payload: { physical_count?: number; quantity_delta?: number; remarks?: string }
+): Promise<MedicineBatch> => {
+  const res = await apiClient.post<MedicineBatch>(`v1/pharmacy/batches/${batchId}/adjust/`, payload);
+  return res.data;
+};
