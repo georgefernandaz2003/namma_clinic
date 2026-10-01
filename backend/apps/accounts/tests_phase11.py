@@ -89,13 +89,13 @@ class Phase11ComprehensiveModelTests(TestCase):
             designation="Medical Officer",
             department=self.dept_opd
         )
-        self.role_doctor = RoleMaster.objects.create(
+        self.role_doctor, _ = RoleMaster.objects.get_or_create(
             code="DOCTOR",
-            name="Medical Officer / General Practitioner"
+            defaults={"name": "Medical Officer / General Practitioner"}
         )
-        self.role_admin = RoleMaster.objects.create(
+        self.role_admin, _ = RoleMaster.objects.get_or_create(
             code="FACILITY_ADMIN",
-            name="Facility Administrator"
+            defaults={"name": "Facility Administrator"}
         )
 
         # 4. Patient & Encounter Anchor

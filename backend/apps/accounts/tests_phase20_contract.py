@@ -37,9 +37,9 @@ class Phase20APIContractTests(TestCase):
         )
         self.dept = Department.objects.create(facility=self.facility, code="GEN", name="General")
 
-        self.role_admin = RoleMaster.objects.create(code="ADMIN", name="Facility Administrator")
-        self.role_doc = RoleMaster.objects.create(code="DOCTOR", name="Medical Officer")
-        self.role_pharm = RoleMaster.objects.create(code="PHARMACIST", name="Pharmacist")
+        self.role_admin, _ = RoleMaster.objects.get_or_create(code="ADMIN", defaults={"name": "Facility Administrator"})
+        self.role_doc, _ = RoleMaster.objects.get_or_create(code="DOCTOR", defaults={"name": "Medical Officer"})
+        self.role_pharm, _ = RoleMaster.objects.get_or_create(code="PHARMACIST", defaults={"name": "Pharmacist"})
 
         # Admin Staff & User
         self.person_admin = Person.objects.create(first_name="Admin", last_name="User", gender="MALE", date_of_birth="1980-01-01")

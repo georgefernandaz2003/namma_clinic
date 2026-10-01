@@ -35,9 +35,9 @@ class DomainServiceBaseTestCase(TestCase):
         self.dept_lab = Department.objects.create(facility=self.clinic_a, code="LAB", name="Laboratory")
 
         # 3. Roles
-        self.role_admin = RoleMaster.objects.create(code="ADMIN", name="Facility Administrator")
-        self.role_doc = RoleMaster.objects.create(code="DOCTOR", name="Medical Officer")
-        self.role_nurse = RoleMaster.objects.create(code="NURSE", name="Staff Nurse")
+        self.role_admin, _ = RoleMaster.objects.get_or_create(code="ADMIN", defaults={"name": "Facility Administrator"})
+        self.role_doc, _ = RoleMaster.objects.get_or_create(code="DOCTOR", defaults={"name": "Medical Officer"})
+        self.role_nurse, _ = RoleMaster.objects.get_or_create(code="NURSE", defaults={"name": "Staff Nurse"})
 
         # 4. Staff Profiles
         self.person_admin = Person.objects.create(

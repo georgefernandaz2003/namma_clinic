@@ -55,9 +55,9 @@ class Phase13RestAPITests(TestCase):
         self.dept_opd = Department.objects.create(facility=self.clinic_a, code="OPD", name="Outpatient")
 
         # 2. Roles
-        self.role_admin = RoleMaster.objects.create(code="ADMIN", name="Facility Administrator")
-        self.role_doc = RoleMaster.objects.create(code="DOCTOR", name="Medical Officer")
-        self.role_nurse = RoleMaster.objects.create(code="NURSE", name="Staff Nurse")
+        self.role_admin, _ = RoleMaster.objects.get_or_create(code="HOSPITAL_ADMIN", defaults={"name": "Hospital Administrator"})
+        self.role_doc, _ = RoleMaster.objects.get_or_create(code="DOCTOR", defaults={"name": "Medical Officer"})
+        self.role_nurse, _ = RoleMaster.objects.get_or_create(code="NURSE", defaults={"name": "Staff Nurse"})
 
         # 3. Users and Staff Profiles
         # Admin Staff & User
@@ -70,7 +70,7 @@ class Phase13RestAPITests(TestCase):
         StaffFacilityAssignment.objects.create(staff=self.admin_staff, facility=self.clinic_a, is_primary=True, is_active=True)
         self.admin_user = User.objects.create_user(
             username="admin_api", password="password123", email="admin@clinic.org",
-            role="ADMIN", assigned_facility=self.clinic_a, staff_profile=self.admin_staff
+            role="HOSPITAL_ADMIN", assigned_facility=self.clinic_a, staff_profile=self.admin_staff
         )
 
         # Doctor Staff & User (Assigned to Clinic A)
@@ -284,6 +284,10 @@ class Phase13RestAPITests(TestCase):
     # -------------------------------------------------------------------------
     def test_09_procurement_po_approval_and_grn_posting_api(self):
         """Procurement REST endpoints: create PO -> approve -> receive GRN."""
+        from apps.accounts.services import seed_roles_and_permissions
+        seed_roles_and_permissions()
+        role_inv = RoleMaster.objects.get(code="INVENTORY")
+        StaffRoleAssignment.objects.get_or_create(staff=self.admin_staff, role=role_inv, defaults={"is_active": True, "effective_from": "2026-01-01"})
         self.client.force_authenticate(user=self.admin_user)
         vendor = Vendor.objects.create(vendor_name="Pharma Dist KA", facility=self.clinic_a)
         med = MedicineMaster.objects.create(generic_name="Ciprofloxacin", strength="500 mg", dosage_form="Tablet")

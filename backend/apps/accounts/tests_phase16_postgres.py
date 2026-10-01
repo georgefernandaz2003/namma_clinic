@@ -1,3 +1,4 @@
+import uuid
 """
 Phase 16 - PostgreSQL Staging and Production Database Validation Test Suite.
 Validates:
@@ -55,17 +56,25 @@ class Phase16PostgresValidationTests(TransactionTestCase):
     Phase 16 Database Validation Test Case.
     Uses TransactionTestCase to allow real commit, rollback, and multi-connection concurrency.
     """
+    serialized_rollback = True
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        from apps.accounts.services import seed_roles_and_permissions
+        seed_roles_and_permissions()
 
     def setUp(self):
         super().setUp()
-        self.state = State.objects.create(name='Karnataka', code='KA')
-        self.district = District.objects.create(name='Bengaluru Urban', code='BLR', state=self.state)
-        self.taluk = Taluk.objects.create(name='Bengaluru South', district=self.district)
-        self.zone = Zone.objects.create(name='South Zone', district=self.district)
-        self.ward = Ward.objects.create(name='Ward 150', ward_number=150, zone=self.zone)
+        _uid = uuid.uuid4().hex[:6]
+        self.state = State.objects.create(name=f'Karnataka-{_uid}', code=f'K{_uid[:4]}')
+        self.district = District.objects.create(name=f'Bengaluru Urban-{_uid}', code=f'BLR-{_uid[:4]}', state=self.state)
+        self.taluk = Taluk.objects.create(name=f'Bengaluru South-{_uid}', district=self.district)
+        self.zone = Zone.objects.create(name=f'South Zone-{_uid}', district=self.district)
+        self.ward = Ward.objects.create(name=f'Ward 150-{_uid}', ward_number=150, zone=self.zone)
 
         self.facility = Facility.objects.create(
-            facility_code='PHC-PG-001',
+            facility_code=f'PHC-PG-{_uid}',
             facility_name='Jayanagar UPHC Staging',
             facility_type='PRIMARY_HEALTH_CENTRE',
             district=self.district,
@@ -74,24 +83,25 @@ class Phase16PostgresValidationTests(TransactionTestCase):
             ward=self.ward
         )
 
+        phone_suf = f"{int(_uid, 16) % 10000000:07d}"
         self.person = Person.objects.create(
             first_name='Dr. Ramesh',
             last_name='Kumar',
             date_of_birth=datetime.date(1980, 5, 12),
             gender='M',
-            phone_number='9876500001'
+            phone_number=f'98{phone_suf}'
         )
 
         self.staff = StaffProfile.objects.create(
             person=self.person,
-            employee_id='STF-PG-001',
+            employee_id=f'STF-PG-{_uid}',
             designation='DOCTOR',
             status='ACTIVE'
         )
 
         self.user = User.objects.create_user(
-            username='dr.ramesh.pg',
-            email='dr.ramesh.pg@nammaclinic.gov.in',
+            username=f'dr.ramesh.pg.{_uid}',
+            email=f'dr.ramesh.pg.{_uid}@nammaclinic.gov.in',
             password='TestPassword123!',
             staff_profile=self.staff,
             role='DOCTOR',
@@ -104,11 +114,11 @@ class Phase16PostgresValidationTests(TransactionTestCase):
             last_name='Patil',
             date_of_birth=datetime.date(1990, 8, 15),
             gender='M',
-            phone_number='9876540001'
+            phone_number=f'97{phone_suf}'
         )
 
         self.patient = Patient.objects.create(
-            patient_id='PAT-PG-001',
+            patient_id=f'PAT-PG-{_uid}',
             registered_at_facility=self.facility,
             person=self.patient_person,
             name='Suresh Patil',
@@ -117,16 +127,16 @@ class Phase16PostgresValidationTests(TransactionTestCase):
         )
 
         self.med = MedicineMaster.objects.create(
-            generic_name='Paracetamol',
+            generic_name=f'Paracetamol-{_uid}',
             strength='500 mg',
             dosage_form='Tablet'
         )
 
         self.vendor = Vendor.objects.create(
-            vendor_name='Karnataka Antibiotics Staging Ltd',
+            vendor_name=f'Karnataka Antibiotics Staging Ltd {_uid}',
             contact_person='Ravi Kumar',
             phone='9988776655',
-            email='ravi@karnataka.gov.in'
+            email=f'ravi-{_uid}@karnataka.gov.in'
         )
 
     def test_concurrent_opd_token_allocation(self):
@@ -146,7 +156,8 @@ class Phase16PostgresValidationTests(TransactionTestCase):
                 return tok
             except Exception as e:
                 errors.append(e)
-                return None
+            finally:
+                connection.close()
 
         # Execute concurrent worker threads
         if connection.vendor == 'postgresql':
@@ -292,6 +303,8 @@ class Phase16PostgresValidationTests(TransactionTestCase):
                 results.append(disp)
             except InsufficientStockError as e:
                 errors.append(e)
+            finally:
+                connection.close()
 
         if connection.vendor == 'postgresql':
             with ThreadPoolExecutor(max_workers=2) as executor:
@@ -336,10 +349,11 @@ class Phase16PostgresValidationTests(TransactionTestCase):
         Test 4: Concurrent GRN receipt operations against procurement.
         Verifies authoritative ledger recording and consistent batch inventory balances.
         """
+        _grn_uid = uuid.uuid4().hex[:6]
         po = PurchaseOrder.objects.create(
             facility=self.facility,
             vendor=self.vendor,
-            po_number='PO-CONC-001',
+            po_number=f'PO-CONC-{_grn_uid}',
             status='APPROVED',
             total_amount=Decimal('500.00')
         )
@@ -351,12 +365,15 @@ class Phase16PostgresValidationTests(TransactionTestCase):
             total_price=Decimal('250.00')
         )
 
+        b1_num = f'BATCH-GRN-{_grn_uid}A'
+        b2_num = f'BATCH-GRN-{_grn_uid}B'
+
         grn1 = receive_goods_receipt(
             purchase_order=po,
-            grn_number='GRN-CONC-01A',
+            grn_number=f'GRN-CONC-{_grn_uid}A',
             items_received=[{
                 'medicine': self.med,
-                'batch_number': 'BATCH-GRN-01',
+                'batch_number': b1_num,
                 'expiry_date': datetime.date.today() + datetime.timedelta(days=365),
                 'unit_cost': Decimal('2.50'),
                 'quantity_received': 50,
@@ -369,10 +386,10 @@ class Phase16PostgresValidationTests(TransactionTestCase):
 
         grn2 = receive_goods_receipt(
             purchase_order=po,
-            grn_number='GRN-CONC-01B',
+            grn_number=f'GRN-CONC-{_grn_uid}B',
             items_received=[{
                 'medicine': self.med,
-                'batch_number': 'BATCH-GRN-02',
+                'batch_number': b2_num,
                 'expiry_date': datetime.date.today() + datetime.timedelta(days=365),
                 'unit_cost': Decimal('2.50'),
                 'quantity_received': 50,
@@ -385,8 +402,8 @@ class Phase16PostgresValidationTests(TransactionTestCase):
 
         self.assertIsNotNone(grn1)
         self.assertIsNotNone(grn2)
-        batch1 = MedicineBatch.objects.get(facility=self.facility, batch_number='BATCH-GRN-01')
-        batch2 = MedicineBatch.objects.get(facility=self.facility, batch_number='BATCH-GRN-02')
+        batch1 = MedicineBatch.objects.get(facility=self.facility, batch_number=b1_num)
+        batch2 = MedicineBatch.objects.get(facility=self.facility, batch_number=b2_num)
         self.assertEqual(batch1.quantity, 50)
         self.assertEqual(batch2.quantity, 50)
 
@@ -395,28 +412,32 @@ class Phase16PostgresValidationTests(TransactionTestCase):
         Test 5: Duplicate GRN number submission concurrency.
         Verifies unique constraint on grn_number rejects second submission and prevents double stock receipt.
         """
+        _dup_uid = uuid.uuid4().hex[:6]
         po = PurchaseOrder.objects.create(
             facility=self.facility,
             vendor=self.vendor,
-            po_number='PO-DUP-001',
+            po_number=f'PO-DUP-{_dup_uid}',
             status='APPROVED',
-            total_amount=Decimal('250.00')
+            total_amount=Decimal('500.00')
         )
         PurchaseOrderItem.objects.create(
             purchase_order=po,
             medicine=self.med,
-            ordered_quantity=50,
+            ordered_quantity=100,
             unit_price=Decimal('2.50'),
-            total_price=Decimal('125.00')
+            total_price=Decimal('250.00')
         )
+
+        dup_grn_num = f'GRN-DUP-{_dup_uid}'
+        dup_batch_num = f'BATCH-DUP-{_dup_uid}'
 
         # First GRN submission succeeds
         grn1 = receive_goods_receipt(
             purchase_order=po,
-            grn_number='GRN-DUP-TEST-01',
+            grn_number=dup_grn_num,
             items_received=[{
                 'medicine': self.med,
-                'batch_number': 'BATCH-DUP-01',
+                'batch_number': dup_batch_num,
                 'expiry_date': datetime.date.today() + datetime.timedelta(days=365),
                 'unit_cost': Decimal('2.50'),
                 'quantity_received': 50,
@@ -432,10 +453,10 @@ class Phase16PostgresValidationTests(TransactionTestCase):
         with self.assertRaises(DomainValidationError):
             receive_goods_receipt(
                 purchase_order=po,
-                grn_number='GRN-DUP-TEST-01',
+                grn_number=dup_grn_num,
                 items_received=[{
                     'medicine': self.med,
-                    'batch_number': 'BATCH-DUP-01',
+                    'batch_number': dup_batch_num,
                     'expiry_date': datetime.date.today() + datetime.timedelta(days=365),
                     'unit_cost': Decimal('2.50'),
                     'quantity_received': 50,
@@ -446,7 +467,7 @@ class Phase16PostgresValidationTests(TransactionTestCase):
                 facility=self.facility
             )
 
-        batch = MedicineBatch.objects.get(facility=self.facility, batch_number='BATCH-DUP-01')
+        batch = MedicineBatch.objects.get(facility=self.facility, batch_number=dup_batch_num)
         self.assertEqual(batch.quantity, 50, 'Stock must not be double-posted')
         ledger_count = InventoryLedger.objects.filter(batch=batch).count()
         self.assertEqual(ledger_count, 1)

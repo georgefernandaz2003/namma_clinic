@@ -62,12 +62,12 @@ class Phase14BackendIntegrationTests(TestCase):
         self.dept_opd_b = Department.objects.create(facility=self.clinic_b, code="OPD", name="Outpatient")
 
         # 2. Roles
-        self.role_admin = RoleMaster.objects.create(code="ADMIN", name="Facility Administrator")
-        self.role_doc = RoleMaster.objects.create(code="DOCTOR", name="Medical Officer")
-        self.role_nurse = RoleMaster.objects.create(code="NURSE", name="Staff Nurse")
-        self.role_pharm = RoleMaster.objects.create(code="PHARMACIST", name="Pharmacist")
-        self.role_lab = RoleMaster.objects.create(code="LAB_TECHNICIAN", name="Laboratory Technician")
-        self.role_dho = RoleMaster.objects.create(code="DHO", name="District Health Officer")
+        self.role_admin, _ = RoleMaster.objects.get_or_create(code="HOSPITAL_ADMIN", defaults={"name": "Hospital Administrator"})
+        self.role_doc, _ = RoleMaster.objects.get_or_create(code="DOCTOR", defaults={"name": "Medical Officer"})
+        self.role_nurse, _ = RoleMaster.objects.get_or_create(code="NURSE", defaults={"name": "Staff Nurse"})
+        self.role_pharm, _ = RoleMaster.objects.get_or_create(code="PHARMACIST", defaults={"name": "Pharmacist"})
+        self.role_lab, _ = RoleMaster.objects.get_or_create(code="LAB_TECHNICIAN", defaults={"name": "Laboratory Technician"})
+        self.role_dho, _ = RoleMaster.objects.get_or_create(code="DHO", defaults={"name": "District Health Officer"})
 
         # 3. Users and Staff Profiles
         # Admin Staff (Clinic A)
@@ -383,6 +383,10 @@ class Phase14BackendIntegrationTests(TestCase):
         Vendor -> PO -> Approval -> GRN -> Ledger Receipt -> Batch Cache ->
         Prescription -> Dispensing -> Stock Depletion -> Rollback on Insufficient Stock.
         """
+        from apps.accounts.services import seed_roles_and_permissions
+        seed_roles_and_permissions()
+        role_inv = RoleMaster.objects.get(code="INVENTORY")
+        StaffRoleAssignment.objects.get_or_create(staff=self.admin_staff, role=role_inv, defaults={"is_active": True, "effective_from": "2026-01-01"})
         self.client.force_authenticate(user=self.admin_user)
         vendor = Vendor.objects.create(vendor_name="Karnataka Antibiotics Ltd", facility=self.clinic_a)
         med = MedicineMaster.objects.create(

@@ -75,11 +75,11 @@ class Phase15BackendReliabilityTests(TestCase):
         self.dept_opd_b = Department.objects.create(facility=self.clinic_b, code="OPD", name="Outpatient")
 
         # Roles
-        self.role_doc = RoleMaster.objects.create(code="DOCTOR", name="Medical Officer")
-        self.role_nurse = RoleMaster.objects.create(code="NURSE", name="Staff Nurse")
-        self.role_lab = RoleMaster.objects.create(code="LAB_TECHNICIAN", name="Lab Technician")
-        self.role_pharm = RoleMaster.objects.create(code="PHARMACIST", name="Pharmacist")
-        self.role_admin = RoleMaster.objects.create(code="HOSPITAL_ADMIN", name="Hospital Admin")
+        self.role_doc, _ = RoleMaster.objects.get_or_create(code="DOCTOR", defaults={"name": "Medical Officer"})
+        self.role_nurse, _ = RoleMaster.objects.get_or_create(code="NURSE", defaults={"name": "Staff Nurse"})
+        self.role_lab, _ = RoleMaster.objects.get_or_create(code="LAB_TECHNICIAN", defaults={"name": "Lab Technician"})
+        self.role_pharm, _ = RoleMaster.objects.get_or_create(code="PHARMACIST", defaults={"name": "Pharmacist"})
+        self.role_admin, _ = RoleMaster.objects.get_or_create(code="HOSPITAL_ADMIN", defaults={"name": "Hospital Admin"})
 
         # Persons & Staff Profiles
         self.person_doc = Person.objects.create(first_name="Ananya", last_name="Bhat", date_of_birth=datetime.date(1985, 3, 15), gender="FEMALE")

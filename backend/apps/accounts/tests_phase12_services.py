@@ -101,8 +101,8 @@ class Phase12DomainServiceTests(TestCase):
             department=self.dept_opd
         )
 
-        self.role_doc = RoleMaster.objects.create(code="DOCTOR", name="Medical Officer")
-        self.role_admin = RoleMaster.objects.create(code="ADMIN", name="Facility Administrator")
+        self.role_doc, _ = RoleMaster.objects.get_or_create(code="DOCTOR", defaults={"name": "Medical Officer"})
+        self.role_admin, _ = RoleMaster.objects.get_or_create(code="ADMIN", defaults={"name": "Facility Administrator"})
 
         self.person_admin = Person.objects.create(
             first_name="Admin", last_name="User", gender="MALE",
