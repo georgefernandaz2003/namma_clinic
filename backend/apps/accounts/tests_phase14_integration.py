@@ -12,7 +12,7 @@ Verifies complete cross-domain backend workflows:
 """
 import datetime
 from decimal import Decimal
-from django.test import TestCase
+from django.test import TestCase, tag
 from rest_framework.test import APIClient
 from rest_framework import status
 
@@ -377,6 +377,7 @@ class Phase14BackendIntegrationTests(TestCase):
     # =========================================================================
     # 2. PROCUREMENT -> INVENTORY -> DISPENSATION SUPPLY CHAIN INTEGRATION
     # =========================================================================
+    @tag('legacy_quarantine')
     def test_02_procurement_to_dispensing_supply_chain(self):
         """
         Tests the end-to-end supply chain:

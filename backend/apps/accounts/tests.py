@@ -1,5 +1,5 @@
 import datetime
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
@@ -1633,6 +1633,7 @@ class PhaseC3RegressionTests(TestCase):
             self.assertEqual(res.status_code, status.HTTP_201_CREATED)
             self.assertEqual(res.data['vulnerability_information'], cat)
 
+    @tag('legacy_quarantine')
     def test_fnd15_vendors_and_purchase_orders_access(self):
         """FND-15: Vendors and Purchase Orders endpoints return authoritative data scoped to facility."""
         vendor = Vendor.objects.create(

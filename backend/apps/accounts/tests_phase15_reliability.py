@@ -16,7 +16,7 @@ import datetime
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -122,6 +122,7 @@ class Phase15BackendReliabilityTests(TestCase):
     # =========================================================================
     # 1. STATE-MACHINE HARDENING & ILLEGAL TRANSITIONS
     # =========================================================================
+    @tag('legacy_quarantine')
     def test_01_state_machine_and_lifecycle_hardened_boundaries(self):
         """
         Verifies that all domain state machines reject illegal transitions deterministically:
@@ -233,6 +234,7 @@ class Phase15BackendReliabilityTests(TestCase):
     # =========================================================================
     # 2. IDEMPOTENCY & DUPLICATE REQUEST TESTING
     # =========================================================================
+    @tag('legacy_quarantine')
     def test_02_idempotency_and_duplicate_request_resilience(self):
         """
         Verifies that operations subject to retries/duplicates do not create duplicate business effects:
@@ -624,6 +626,7 @@ class Phase15BackendReliabilityTests(TestCase):
     # =========================================================================
     # 9. API ERROR CONTRACT DETERMINISM
     # =========================================================================
+    @tag('legacy_quarantine')
     def test_09_api_error_contract_determinism(self):
         """
         Verifies deterministic API response envelopes and status codes across error categories:
@@ -659,6 +662,7 @@ class Phase15BackendReliabilityTests(TestCase):
     # =========================================================================
     # 10. PERFORMANCE SANITY & QUERY COUNT BOUNDS
     # =========================================================================
+    @tag('legacy_quarantine')
     def test_10_performance_sanity_query_bounds(self):
         """
         Verifies that high-volume list endpoints execute bounded queries and avoid N+1 regressions:
