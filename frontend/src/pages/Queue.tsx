@@ -8,6 +8,7 @@ import {
   FileText, TestTube, Pill, Lock, History, Eye, Play
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { isPathAllowedForRole, hasPermission } from '../utils/permissions';
 
 export const Queue: React.FC = () => {
   const { activeFacility, user } = useAuth();
@@ -42,7 +43,7 @@ export const Queue: React.FC = () => {
     if (!activeFacility) return;
     try {
       const queueParam = activeTab !== 'ALL' ? `&queue=${activeTab}` : '';
-      const res = await api.get(`visits/?facility=${activeFacility.id}&date=${selectedDate}${queueParam}`);
+      const res = await api.get(`v1/visits/?facility=${activeFacility.id}&date=${selectedDate}${queueParam}`);
       setVisits(res.data.results || res.data || []);
     } catch (e) {
       console.error('Failed to load date-based OPD queue', e);
@@ -52,7 +53,7 @@ export const Queue: React.FC = () => {
   const loadPatients = async () => {
     try {
       const facQuery = activeFacility?.id ? `?facility=${activeFacility.id}` : '';
-      const res = await api.get(`patients/${facQuery}`);
+      const res = await api.get(`v1/patients/${facQuery}`);
       const patList = res.data.results || res.data || [];
       setPatients(patList);
       if (patList.length > 0) {
@@ -66,7 +67,7 @@ export const Queue: React.FC = () => {
   const loadHistorySummary = async () => {
     if (!activeFacility) return;
     try {
-      const res = await api.get(`visits/history-summary/?facility=${activeFacility.id}`);
+      const res = await api.get(`v1/visits/history-summary/?facility=${activeFacility.id}`);
       setHistorySummary(res.data || []);
     } catch (e) {
       console.error('Failed to load OPD history summary', e);
@@ -103,22 +104,23 @@ export const Queue: React.FC = () => {
       alert('OPD tokens can only be issued for the current operational day (Today).');
       return;
     }
-    if (!selectedPatientId || !activeFacility) {
+    const effectiveFacility = activeFacility || (user?.facility_details ? (user.facility_details as any) : (user?.assigned_facility ? { id: user.assigned_facility, facility_name: user.facility_name || 'Assigned Facility', facility_code: '' } : null));
+    if (!selectedPatientId || !effectiveFacility) {
       alert('Please select a patient and facility');
       return;
     }
     setSubmitting(true);
     try {
-      const res = await api.post('visits/', {
+      const res = await api.post('v1/visits/', {
         patient: selectedPatientId,
-        facility: activeFacility.id,
+        facility: effectiveFacility.id,
         visit_type: visitType,
         priority,
         chief_complaint: chiefComplaint
       });
       const newVisit = res.data;
       const tokNum = newVisit.token_details?.token_number || newVisit.id;
-      alert(`OPD Token #${tokNum} Issued Successfully!\nUnique Scope: ${activeFacility.facility_name} • Date: ${selectedDate} • Token #${tokNum}`);
+      alert(`OPD Token #${tokNum} Issued Successfully!\nUnique Scope: ${effectiveFacility.facility_name} • Date: ${selectedDate} • Token #${tokNum}`);
       setShowTokenModal(false);
       setChiefComplaint('');
       loadQueue();
@@ -146,7 +148,7 @@ export const Queue: React.FC = () => {
     setCallingNext(true);
     try {
       const targetQueue = activeTab !== 'ALL' ? activeTab : (user?.role === 'NURSE' ? 'TRIAGE' : 'DOCTOR');
-      const res = await api.post('visits/call-next/', {
+      const res = await api.post('v1/visits/call-next/', {
         facility: activeFacility.id,
         queue: targetQueue
       });
@@ -166,12 +168,30 @@ export const Queue: React.FC = () => {
     }
   };
 
+  // Void Token Handler
+  const handleVoidToken = async (visitId: number) => {
+    if (!window.confirm('Are you sure you want to void this duplicate / untriaged OPD token?')) {
+      return;
+    }
+    try {
+      const res = await api.post('v1/visits/void-token/', {
+        visit_id: visitId,
+        reason: 'Duplicate registration / untriaged token void'
+      });
+      alert(res.data.message || 'Token voided successfully.');
+      loadQueue();
+      loadHistorySummary();
+    } catch (e: any) {
+      alert(e.response?.data?.error || e.response?.data?.detail || 'Failed to void token.');
+    }
+  };
+
   // Dynamic KPI Calculations based on selectedDate
   const totalOpdCount = visits.length;
   const waitingTriageCount = visits.filter(v => v.status === 'WAITING_FOR_TRIAGE' || (v.current_queue === 'TRIAGE' && v.status !== 'COMPLETED')).length;
-  const waitingDoctorCount = visits.filter(v => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED').length;
+  const waitingDoctorCount = visits.filter(v => v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'DOCTOR_REVIEW' || (v.current_queue === 'DOCTOR' && v.status !== 'COMPLETED' && v.status !== 'IN_CONSULTATION')).length;
   const inConsultationCount = visits.filter(v => v.status === 'IN_CONSULTATION').length;
-  const labPendingCount = visits.filter(v => v.current_queue === 'LAB' || v.status.includes('LAB')).length;
+  const labPendingCount = visits.filter(v => v.current_queue === 'LAB' || v.status.includes('LAB') || v.status === 'WAITING_FOR_LAB').length;
   const waitingPharmacyCount = visits.filter(v => v.current_queue === 'PHARMACY' || v.status.includes('PHARMACY')).length;
   const completedCount = visits.filter(v => v.status === 'COMPLETED').length;
 
@@ -234,26 +254,28 @@ export const Queue: React.FC = () => {
             Today
           </button>
 
-          {/* Issue Token Button (Enabled ONLY on Today) */}
-          <button
-            onClick={() => {
-              if (!isToday) {
-                alert('OPD tokens can only be issued for the current operational day (Today).');
-                return;
-              }
-              loadPatients();
-              setShowTokenModal(true);
-            }}
-            disabled={!isToday}
-            className={`flex items-center gap-2 px-4 py-2 font-bold text-xs rounded-xl shadow-sm transition ${
-              isToday
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
-            }`}
-          >
-            <Plus className="w-4 h-4" />
-            <span>Issue New OPD Token</span>
-          </button>
+          {/* Issue Token Button (Enabled ONLY on Today and authorized roles) */}
+          {hasPermission(user?.role, 'queue.create') && (
+            <button
+              onClick={() => {
+                if (!isToday) {
+                  alert('OPD tokens can only be issued for the current operational day (Today).');
+                  return;
+                }
+                loadPatients();
+                setShowTokenModal(true);
+              }}
+              disabled={!isToday}
+              className={`flex items-center gap-2 px-4 py-2 font-bold text-xs rounded-xl shadow-sm transition ${
+                isToday
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>Issue New OPD Token</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -406,7 +428,7 @@ export const Queue: React.FC = () => {
         </div>
 
         {/* Call Next Patient Button */}
-        {isToday && (
+        {isToday && hasPermission(user?.role, 'queue.call_next') && (
           <button
             onClick={handleCallNext}
             disabled={callingNext}
@@ -514,45 +536,78 @@ export const Queue: React.FC = () => {
                         {isToday ? (
                           <div className="flex items-center gap-1.5">
                             {(v.status === 'WAITING_FOR_TRIAGE' || v.status === 'WAITING') && (
-                              <button
-                                onClick={() => navigate('/triage', { state: { visitId: v.id } })}
-                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
-                              >
-                                <span>Triage</span> <ArrowRight className="w-3 h-3" />
-                              </button>
+                              isPathAllowedForRole(user?.role, '/triage') ? (
+                                <button
+                                  onClick={() => navigate('/triage', { state: { visitId: v.id } })}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                >
+                                  <span>Triage</span> <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 font-medium italic">Awaiting Triage</span>
+                              )
                             )}
 
-                            {(v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'IN_CONSULTATION') && (
-                              <button
-                                onClick={() => navigate('/consultation', { state: { visitId: v.id } })}
-                                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
-                              >
-                                <span>Consult</span> <ArrowRight className="w-3 h-3" />
-                              </button>
+                            {(v.status === 'WAITING_FOR_DOCTOR' || v.status === 'TRIAGED' || v.status === 'IN_CONSULTATION' || v.status === 'DOCTOR_REVIEW' || v.status === 'LAB_COMPLETED') && (
+                              isPathAllowedForRole(user?.role, '/consultation') ? (
+                                <button
+                                  onClick={() => navigate('/consultation', { state: { visitId: v.id } })}
+                                  className={`px-3 py-1 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs ${
+                                    v.status === 'DOCTOR_REVIEW' || v.status === 'LAB_COMPLETED'
+                                      ? 'bg-purple-600 hover:bg-purple-500'
+                                      : 'bg-blue-600 hover:bg-blue-500'
+                                  }`}
+                                >
+                                  <span>{v.status === 'DOCTOR_REVIEW' || v.status === 'LAB_COMPLETED' ? 'Review' : 'Consult'}</span> <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 font-medium italic">
+                                  {v.status === 'DOCTOR_REVIEW' || v.status === 'LAB_COMPLETED' ? 'Awaiting Doctor Review' : 'Awaiting Doctor'}
+                                </span>
+                              )
                             )}
 
                             {v.status.includes('LAB') && (
-                              <button
-                                onClick={() => navigate('/lab')}
-                                className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
-                              >
-                                <span>Lab</span> <ArrowRight className="w-3 h-3" />
-                              </button>
+                              isPathAllowedForRole(user?.role, '/lab') ? (
+                                <button
+                                  onClick={() => navigate('/lab')}
+                                  className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                >
+                                  <span>Lab</span> <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 font-medium italic">In Lab</span>
+                              )
                             )}
 
                             {v.status.includes('PHARMACY') && (
-                              <button
-                                onClick={() => navigate('/pharmacy')}
-                                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
-                              >
-                                <span>Dispense</span> <ArrowRight className="w-3 h-3" />
-                              </button>
+                              isPathAllowedForRole(user?.role, '/pharmacy') ? (
+                                <button
+                                  onClick={() => navigate('/pharmacy')}
+                                  className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                >
+                                  <span>Dispense</span> <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 font-medium italic">In Pharmacy</span>
+                              )
                             )}
 
                             {v.status === 'COMPLETED' && (
                               <span className="text-teal-700 font-bold flex items-center gap-1">
                                 <CheckCircle className="w-3.5 h-3.5 text-teal-600" /> Done
                               </span>
+                            )}
+
+                            {hasPermission(user?.role, 'queue.void') && (v.status === 'WAITING_FOR_TRIAGE' || v.status === 'WAITING') && (
+                              <button
+                                onClick={() => handleVoidToken(v.id)}
+                                title="Void duplicate / untriaged token"
+                                className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-lg border border-rose-200 flex items-center gap-1 shadow-2xs transition"
+                              >
+                                <X className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Void</span>
+                              </button>
                             )}
                           </div>
                         ) : (
@@ -630,7 +685,7 @@ export const Queue: React.FC = () => {
       )}
 
       {/* Issue Token Modal (Today Only) */}
-      {showTokenModal && (
+      {hasPermission(user?.role, 'queue.create') && showTokenModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
@@ -674,8 +729,6 @@ export const Queue: React.FC = () => {
                   >
                     <option value="GENERAL_OPD">General OPD</option>
                     <option value="NCD_SCREENING">NCD Screening</option>
-                    <option value="MATERNAL_ANC">Maternal ANC</option>
-                    <option value="CHILD_IMMUNIZATION">Child Immunization</option>
                     <option value="TELECONSULTATION">Teleconsultation</option>
                   </select>
                 </div>

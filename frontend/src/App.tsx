@@ -1,10 +1,18 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { isPathAllowedForRole } from './utils/permissions';
-import { DashboardLayout } from './layouts/DashboardLayout';
+﻿import React from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/common/ProtectedRoute';
 import { Login } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
+import DashboardIndex from './pages/dashboards/DashboardIndex';
+import DistrictDashboard from './pages/dashboards/DistrictDashboard';
+import AdminDashboard from './pages/dashboards/AdminDashboard';
+import DoctorDashboard from './pages/dashboards/DoctorDashboard';
+import NurseDashboard from './pages/dashboards/NurseDashboard';
+import LabDashboard from './pages/dashboards/LabDashboard';
+import PharmacyDashboard from './pages/dashboards/PharmacyDashboard';
+import CompounderDashboard from './pages/dashboards/CompounderDashboard';
+import NotFound from './pages/NotFound';
+
 import { HealthcareNetwork } from './pages/HealthcareNetwork';
 import { Facilities } from './pages/Facilities';
 import { Patients } from './pages/Patients';
@@ -17,9 +25,7 @@ import { Pharmacy } from './pages/Pharmacy';
 import { Referrals } from './pages/Referrals';
 import { FollowUps } from './pages/FollowUps';
 import { NCD } from './pages/NCD';
-import { MaternalChild } from './pages/MaternalChild';
 import { Surveillance } from './pages/Surveillance';
-import { Teleconsultation } from './pages/Teleconsultation';
 import { Outreach } from './pages/Outreach';
 import { Wellness } from './pages/Wellness';
 import { ARS } from './pages/ARS';
@@ -30,66 +36,120 @@ import { Alerts } from './pages/Alerts';
 import { Integrations } from './pages/Integrations';
 import { Compliance } from './pages/Compliance';
 import { Audit } from './pages/Audit';
-import { ShieldAlert } from 'lucide-react';
-
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { token, user, loading } = useAuth();
-  const location = useLocation();
-
-  if (loading) return <div className="h-screen bg-slate-950 flex items-center justify-center text-xs text-slate-400">Loading Namma Clinic Console...</div>;
-  if (!token) return <Navigate to="/login" replace />;
-
-  const isAllowed = isPathAllowedForRole(user?.role, location.pathname);
-
-  return (
-    <DashboardLayout>
-      {isAllowed ? (
-        children
-      ) : (
-        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-8 max-w-xl mx-auto my-12 text-center shadow-lg">
-          <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4 border border-rose-300 shadow-sm">
-            <ShieldAlert className="w-7 h-7 text-rose-600" />
-          </div>
-          <h2 className="text-xl font-black text-rose-950 mb-2">Access Denied (HTTP 403)</h2>
-          <p className="text-sm font-semibold text-rose-700 mb-6">
-            You do not have permission to perform this action.
-          </p>
-          <div className="bg-white rounded-xl p-4 border border-rose-200 text-left text-xs space-y-2 mb-6 font-mono text-slate-700">
-            <p><span className="font-bold text-slate-900">Assigned Role:</span> {user?.role_display || user?.role}</p>
-            <p><span className="font-bold text-slate-900">Requested Path:</span> {location.pathname}</p>
-            <p><span className="font-bold text-slate-900">Authorization Status:</span> Rejected by Route Guard</p>
-          </div>
-          <Link to="/" className="inline-block px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md transition">
-            Return to Authorized Dashboard
-          </Link>
-        </div>
-      )}
-    </DashboardLayout>
-  );
-};
+import { StaffAdministration } from './pages/StaffAdministration';
+import { InventoryConsole } from './pages/InventoryConsole';
 
 export const App: React.FC = () => {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          {/* Public Authentication Route */}
           <Route path="/login" element={<Login />} />
-          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+
+          {/* Root and Dashboard Index Redirectors */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <DashboardIndex />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardIndex />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Role-Specific Dashboard Landing Routes */}
+          <Route
+            path="/dashboard/district"
+            element={
+              <ProtectedRoute allowedRoles={['DISTRICT_OFFICER']}>
+                <DistrictDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin"
+            element={
+              <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/doctor"
+            element={
+              <ProtectedRoute allowedRoles={['DOCTOR']}>
+                <DoctorDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/nurse"
+            element={
+              <ProtectedRoute allowedRoles={['NURSE']}>
+                <NurseDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/lab"
+            element={
+              <ProtectedRoute allowedRoles={['LAB_TECHNICIAN']}>
+                <LabDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/pharmacy"
+            element={
+              <ProtectedRoute allowedRoles={['PHARMACIST']}>
+                <PharmacyDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/compounder"
+            element={
+              <ProtectedRoute allowedRoles={['COMPOUNDER']}>
+                <CompounderDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Staff & Clinic Administration */}
+          <Route
+            path="/admin/staff"
+            element={
+              <ProtectedRoute allowedRoles={['DISTRICT_OFFICER', 'HOSPITAL_ADMIN']}>
+                <StaffAdministration />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Operational & Clinical Module Routes */}
           <Route path="/network" element={<ProtectedRoute><HealthcareNetwork /></ProtectedRoute>} />
           <Route path="/facilities" element={<ProtectedRoute><Facilities /></ProtectedRoute>} />
           <Route path="/patients" element={<ProtectedRoute><Patients /></ProtectedRoute>} />
           <Route path="/patients/:id" element={<ProtectedRoute><PatientDetail /></ProtectedRoute>} />
           <Route path="/queue" element={<ProtectedRoute><Queue /></ProtectedRoute>} />
-          <Route path="/triage" element={<ProtectedRoute><Triage /></ProtectedRoute>} />
-          <Route path="/consultation" element={<ProtectedRoute><Consultation /></ProtectedRoute>} />
+          <Route path="/triage" element={<ProtectedRoute allowedRoles={['NURSE']}><Triage /></ProtectedRoute>} />
+          <Route path="/consultation" element={<ProtectedRoute allowedRoles={['DOCTOR']}><Consultation /></ProtectedRoute>} />
           <Route path="/lab" element={<ProtectedRoute><Laboratory /></ProtectedRoute>} />
           <Route path="/pharmacy" element={<ProtectedRoute><Pharmacy /></ProtectedRoute>} />
+          <Route path="/inventory" element={<ProtectedRoute allowedRoles={['INVENTORY', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER']}><InventoryConsole /></ProtectedRoute>} />
+          <Route path="/inventory/*" element={<ProtectedRoute allowedRoles={['INVENTORY', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER']}><InventoryConsole /></ProtectedRoute>} />
+          <Route path="/dashboard/inventory" element={<ProtectedRoute allowedRoles={['INVENTORY', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER']}><InventoryConsole /></ProtectedRoute>} />
           <Route path="/referrals" element={<ProtectedRoute><Referrals /></ProtectedRoute>} />
           <Route path="/followups" element={<ProtectedRoute><FollowUps /></ProtectedRoute>} />
           <Route path="/ncd" element={<ProtectedRoute><NCD /></ProtectedRoute>} />
-          <Route path="/maternal-child" element={<ProtectedRoute><MaternalChild /></ProtectedRoute>} />
           <Route path="/surveillance" element={<ProtectedRoute><Surveillance /></ProtectedRoute>} />
-          <Route path="/teleconsultation" element={<ProtectedRoute><Teleconsultation /></ProtectedRoute>} />
           <Route path="/outreach" element={<ProtectedRoute><Outreach /></ProtectedRoute>} />
           <Route path="/wellness" element={<ProtectedRoute><Wellness /></ProtectedRoute>} />
           <Route path="/ars" element={<ProtectedRoute><ARS /></ProtectedRoute>} />
@@ -100,7 +160,9 @@ export const App: React.FC = () => {
           <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
           <Route path="/compliance" element={<ProtectedRoute><Compliance /></ProtectedRoute>} />
           <Route path="/audit" element={<ProtectedRoute><Audit /></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+
+          {/* Fallback & Not Found Handling */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

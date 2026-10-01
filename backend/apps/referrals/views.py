@@ -31,6 +31,31 @@ class FollowUpSerializer(serializers.ModelSerializer):
         model = FollowUp
         fields = '__all__'
 
+    def validate(self, attrs):
+        referral = attrs.get('referral') or (self.instance.referral if self.instance else None)
+        patient = attrs.get('patient') or (self.instance.patient if self.instance else None)
+        visit = attrs.get('visit') or (self.instance.visit if self.instance else None)
+        facility = attrs.get('facility') or (self.instance.facility if self.instance else None)
+
+        if referral:
+            if patient and referral.patient_id != patient.id:
+                raise serializers.ValidationError({
+                    'patient': f"FollowUp patient '{patient.name}' must match Referral patient '{referral.patient.name}'."
+                })
+            if visit and referral.visit_id and referral.visit_id != visit.id:
+                raise serializers.ValidationError({
+                    'visit': f"FollowUp visit #{visit.id} must match Referral encounter visit #{referral.visit_id}."
+                })
+            if not visit and referral.visit:
+                attrs['visit'] = referral.visit
+            if not patient and referral.patient:
+                attrs['patient'] = referral.patient
+            if facility and referral.source_facility_id and facility.id != referral.source_facility_id:
+                raise serializers.ValidationError({
+                    'facility': f"FollowUp return facility '{facility.facility_name}' must match Referral source facility '{referral.source_facility.facility_name}'."
+                })
+        return attrs
+
 from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
 
 class ReferralViewSet(viewsets.ModelViewSet):
@@ -56,27 +81,40 @@ class ReferralViewSet(viewsets.ModelViewSet):
             ).distinct()
         facility_param = self.request.query_params.get('facility')
         if facility_param:
+            if accessible_ids is not None and int(facility_param) not in accessible_ids:
+                return queryset.none()
             queryset = queryset.filter(
                 Q(source_facility_id=facility_param) | Q(destination_facility_id=facility_param)
             ).distinct()
-        return queryset
+        return queryset.order_by('-id')
 
     def create(self, request, *args, **kwargs):
+        urgency = request.data.get('urgency', 'ROUTINE')
+        valid_urgencies = [c[0] for c in Referral.URGENCY_CHOICES]
+        if urgency not in valid_urgencies:
+            return Response(
+                {'urgency': [f"'{urgency}' is not a valid choice. Must be one of: {', '.join(valid_urgencies)}"]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         count = Referral.objects.count() + 1
         ref_id = f"REF-{datetime.date.today().strftime('%Y%m%d')}-{count:04d}"
         
         referral = Referral.objects.create(
             referral_id=ref_id,
             patient_id=request.data.get('patient'),
+            visit_id=request.data.get('visit'),
+            consultation_id=request.data.get('consultation'),
             source_facility_id=request.data.get('source_facility'),
             destination_facility_id=request.data.get('destination_facility'),
             referring_doctor=request.user,
             reason=request.data.get('reason', 'Specialist Consultation'),
             clinical_summary=request.data.get('clinical_summary', ''),
             required_service=request.data.get('required_service', 'Specialist Evaluation'),
-            urgency=request.data.get('urgency', 'ROUTINE'),
+            urgency=urgency,
             status='CREATED'
         )
+
         return Response(ReferralSerializer(referral).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
@@ -103,6 +141,7 @@ class ReferralViewSet(viewsets.ModelViewSet):
         FollowUp.objects.create(
             patient=referral.patient,
             referral=referral,
+            visit=referral.visit,
             facility=referral.source_facility,
             category='REFERRAL',
             due_date=datetime.date.today() + datetime.timedelta(days=7),

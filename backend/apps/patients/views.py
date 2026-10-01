@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, parsers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from apps.patients.models import Patient, Household
@@ -28,16 +28,27 @@ class PatientViewSet(viewsets.ModelViewSet):
         facility_param = self.request.query_params.get('facility')
         
         if accessible_ids is not None:
-            # Patients registered at user facility OR with active visits/referrals to user facility
             from django.db.models import Q
-            user_fac_id = facility_param or self.request.user.assigned_facility_id
-            queryset = queryset.filter(
-                Q(registered_at_facility_id__in=accessible_ids) |
-                Q(visits__facility_id=user_fac_id) |
-                Q(referrals__destination_facility_id=user_fac_id)
-            ).distinct()
+            if self.request.user.role == 'DISTRICT_OFFICER':
+                dho_dist_id = self.request.user.assigned_district_id
+                queryset = queryset.filter(
+                    Q(district_id=dho_dist_id) |
+                    Q(registered_at_facility_id__in=accessible_ids) |
+                    Q(visits__facility_id__in=accessible_ids) |
+                    Q(referrals__destination_facility_id__in=accessible_ids)
+                ).distinct()
+            else:
+                user_fac_id = facility_param or self.request.user.assigned_facility_id
+                queryset = queryset.filter(
+                    Q(registered_at_facility_id__in=accessible_ids) |
+                    Q(visits__facility_id=user_fac_id) |
+                    Q(referrals__destination_facility_id=user_fac_id)
+                ).distinct()
 
         if facility_param:
+            # If user has scoped facilities and requested facility is outside their scope, return none
+            if accessible_ids is not None and int(facility_param) not in accessible_ids:
+                return queryset.none()
             from django.db.models import Q
             queryset = queryset.filter(
                 Q(registered_at_facility_id=facility_param) |
@@ -45,7 +56,8 @@ class PatientViewSet(viewsets.ModelViewSet):
                 Q(referrals__destination_facility_id=facility_param)
             ).distinct()
 
-        return queryset
+        return queryset.order_by('-id')
+
 
     def create(self, request, *args, **kwargs):
         # Duplicate check by name & mobile
@@ -87,12 +99,11 @@ class PatientTimelineView(APIView):
         except Patient.DoesNotExist:
             return Response({'error': 'Patient not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Facility Scope Check for Patient Timeline
+        # Scoping check
         if request.user.role != 'DISTRICT_OFFICER':
             user_fac_id = request.user.assigned_facility_id
             accessible_ids = get_accessible_facility_ids_for_user(request.user)
             if accessible_ids and patient.registered_at_facility_id not in accessible_ids:
-                # Check for explicit referral path authorization
                 has_referral = Referral.objects.filter(
                     patient=patient,
                     destination_facility_id=user_fac_id
@@ -100,10 +111,12 @@ class PatientTimelineView(APIView):
                 if not has_referral:
                     return Response({'error': 'You do not have permission to access patient records outside your facility scope.'}, status=status.HTTP_403_FORBIDDEN)
 
+        user_role = getattr(request.user, 'role', '')
+        is_superuser = request.user.is_superuser
 
         timeline = []
 
-        # 1. Registration event
+        # 1. Registration event (Permitted for all)
         timeline.append({
             'date': patient.registration_date.strftime('%Y-%m-%d'),
             'type': 'REGISTRATION',
@@ -116,35 +129,50 @@ class PatientTimelineView(APIView):
         visits = Visit.objects.filter(patient=patient).order_by('visit_date')
         for v in visits:
             v_date = v.visit_date.strftime('%Y-%m-%d %H:%M')
+            if user_role in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST'] and not is_superuser:
+                v_details = f"Visit Type: {v.visit_type}, Token: #{v.token.token_number if hasattr(v, 'token') else v.id}"
+            else:
+                v_details = f"Visit Type: {v.visit_type}, Chief Complaint: {v.chief_complaint or 'General Checkup'}"
+
             timeline.append({
                 'date': v_date,
                 'type': 'VISIT',
                 'title': f"Clinic Visit (#{v.token.token_number if hasattr(v, 'token') else v.id})",
                 'facility': v.facility.facility_name,
-                'details': f"Visit Type: {v.visit_type}, Chief Complaint: {v.chief_complaint or 'General Checkup'}"
+                'details': v_details
             })
 
-            if hasattr(v, 'triage'):
+            # Triage vitals: denied to Compounder, Lab Tech, Pharmacist
+            if hasattr(v, 'triage') and (user_role not in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST'] or is_superuser):
                 tr = v.triage
+                if user_role in ['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'] and not is_superuser:
+                    tr_details = "Nurse Triage Vitals Captured [POLICY_PENDING]"
+                else:
+                    tr_details = f"BP: {tr.blood_pressure_systolic}/{tr.blood_pressure_diastolic} mmHg, Pulse: {tr.pulse_bpm} bpm, Temp: {tr.temperature_f}F, SpO2: {tr.spo2_percent}%, Glucose: {tr.blood_glucose_mgdl} mg/dL"
                 timeline.append({
                     'date': tr.created_at.strftime('%Y-%m-%d %H:%M'),
                     'type': 'TRIAGE',
                     'title': 'Nurse Triage Vitals Captured',
                     'facility': v.facility.facility_name,
-                    'details': f"BP: {tr.blood_pressure_systolic}/{tr.blood_pressure_diastolic} mmHg, Pulse: {tr.pulse_bpm} bpm, Temp: {tr.temperature_f}°F, SpO2: {tr.spo2_percent}%, Glucose: {tr.blood_glucose_mgdl} mg/dL"
+                    'details': tr_details
                 })
 
-            if hasattr(v, 'consultation'):
+            # Consultation: denied to Compounder, Lab Tech, Pharmacist
+            if hasattr(v, 'consultation') and (user_role not in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST'] or is_superuser):
                 c = v.consultation
+                if user_role in ['HOSPITAL_ADMIN', 'DISTRICT_OFFICER', 'NURSE'] and not is_superuser:
+                    c_details = f"Doctor: {c.doctor.full_name if c.doctor else 'Medical Officer'}. Diagnosis: [{c.diagnosis_code}] {c.diagnosis_name}. Notes: [POLICY_PENDING]"
+                else:
+                    c_details = f"Doctor: {c.doctor.full_name if c.doctor else 'Medical Officer'}. Diagnosis: [{c.diagnosis_code}] {c.diagnosis_name}. Notes: {c.clinical_notes}"
                 timeline.append({
                     'date': c.created_at.strftime('%Y-%m-%d %H:%M'),
                     'type': 'CONSULTATION',
                     'title': f"Doctor Consultation - {c.diagnosis_name}",
                     'facility': v.facility.facility_name,
-                    'details': f"Doctor: {c.doctor.full_name if c.doctor else 'Medical Officer'}. Diagnosis: [{c.diagnosis_code}] {c.diagnosis_name}. Notes: {c.clinical_notes}"
+                    'details': c_details
                 })
 
-                if hasattr(c, 'prescription'):
+                if hasattr(c, 'prescription') and (user_role not in ['COMPOUNDER', 'LAB_TECHNICIAN'] or is_superuser):
                     p = c.prescription
                     meds = ", ".join([f"{item.medicine_name} ({item.dosage})" for item in p.items.all()])
                     timeline.append({
@@ -155,66 +183,74 @@ class PatientTimelineView(APIView):
                         'details': f"Prescribed Medicines: {meds or 'Standard EDL Medication'}"
                     })
 
-        # 3. Lab Orders
-        lab_orders = LabOrder.objects.filter(patient=patient).select_related('test_master', 'facility')
-        for lo in lab_orders:
-            res_str = f"Result: {lo.result.result_value} ({lo.result.interpretation_flag})" if hasattr(lo, 'result') else "Status: Pending Verification"
-            timeline.append({
-                'date': lo.order_date.strftime('%Y-%m-%d %H:%M'),
-                'type': 'LAB',
-                'title': f"Lab Investigation: {lo.test_master.name}",
-                'facility': lo.facility.facility_name,
-                'details': f"Test: {lo.test_master.name}. {res_str}"
-            })
-
-        # 4. Referrals
-        referrals = Referral.objects.filter(patient=patient).select_related('source_facility', 'destination_facility')
-        for r in referrals:
-            timeline.append({
-                'date': r.referral_date.strftime('%Y-%m-%d %H:%M'),
-                'type': 'REFERRAL',
-                'title': f"Referral to {r.destination_facility.facility_name}",
-                'facility': r.source_facility.facility_name,
-                'details': f"Urgency: {r.urgency}. Reason: {r.reason}. Status: {r.get_status_display()}"
-            })
-
-            if hasattr(r, 'response'):
-                resp = r.response
+        # 3. Lab Orders: denied to Compounder, Pharmacist
+        if user_role not in ['COMPOUNDER', 'PHARMACIST'] or is_superuser:
+            lab_orders = LabOrder.objects.filter(patient=patient).select_related('test_master', 'facility')
+            for lo in lab_orders:
+                if user_role in ['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'] and not is_superuser:
+                    res_str = "Status: Result Verified [POLICY_PENDING]" if hasattr(lo, 'result') else "Status: Pending Verification"
+                else:
+                    res_str = f"Result: {lo.result.result_value} ({lo.result.interpretation_flag})" if hasattr(lo, 'result') else "Status: Pending Verification"
                 timeline.append({
-                    'date': resp.responded_at.strftime('%Y-%m-%d %H:%M'),
-                    'type': 'HOSPITAL_RESPONSE',
-                    'title': f"Specialist Response from {r.destination_facility.facility_name}",
-                    'facility': r.destination_facility.facility_name,
-                    'details': f"Findings: {resp.specialist_findings}. Return Advice: {resp.return_advice}"
+                    'date': lo.order_date.strftime('%Y-%m-%d %H:%M'),
+                    'type': 'LAB',
+                    'title': f"Lab Investigation: {lo.test_master.name}",
+                    'facility': lo.facility.facility_name,
+                    'details': f"Test: {lo.test_master.name}. {res_str}"
                 })
 
-        # 5. Follow-ups
-        followups = FollowUp.objects.filter(patient=patient)
-        for fu in followups:
-            timeline.append({
-                'date': fu.due_date.strftime('%Y-%m-%d'),
-                'type': 'FOLLOWUP',
-                'title': f"Follow-up Scheduled [{fu.category}]",
-                'facility': fu.facility.facility_name,
-                'details': f"Category: {fu.category}, Status: {fu.get_status_display()}, Notes: {fu.notes}"
-            })
+        # 4. Referrals: denied to Compounder, Lab Tech, Pharmacist
+        if user_role not in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST'] or is_superuser:
+            referrals = Referral.objects.filter(patient=patient).select_related('source_facility', 'destination_facility')
+            for r in referrals:
+                timeline.append({
+                    'date': r.referral_date.strftime('%Y-%m-%d %H:%M'),
+                    'type': 'REFERRAL',
+                    'title': f"Referral to {r.destination_facility.facility_name}",
+                    'facility': r.source_facility.facility_name,
+                    'details': f"Urgency: {r.urgency}. Reason: {r.reason}. Status: {r.get_status_display()}"
+                })
 
-        # 6. Uploaded Medical Documents
-        documents = PatientDocument.objects.filter(patient=patient).select_related('facility', 'uploaded_by')
-        for doc in documents:
-            timeline.append({
-                'date': doc.uploaded_at.strftime('%Y-%m-%d %H:%M'),
-                'type': 'DOCUMENT',
-                'title': f"Medical Document: {doc.title}",
-                'facility': doc.facility.facility_name if doc.facility else 'Namma Clinic',
-                'details': f"Type: {doc.get_document_type_display()}, Uploaded By: {doc.uploaded_by.full_name if doc.uploaded_by else 'Staff'}, File: {doc.file_name} ({int(doc.file_size/1024) if doc.file_size else 0} KB)",
-                'document_id': doc.id,
-                'file_name': doc.file_name,
-                'download_url': f"/api/patients/{patient.id}/documents/{doc.id}/download/"
-            })
+                if hasattr(r, 'response'):
+                    resp = r.response
+                    timeline.append({
+                        'date': resp.responded_at.strftime('%Y-%m-%d %H:%M'),
+                        'type': 'HOSPITAL_RESPONSE',
+                        'title': f"Specialist Response from {r.destination_facility.facility_name}",
+                        'facility': r.destination_facility.facility_name,
+                        'details': f"Findings: {resp.specialist_findings}. Return Advice: {resp.return_advice}"
+                    })
+
+        # 5. Follow-ups: denied to Compounder, Lab Tech, Pharmacist
+        if user_role not in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST'] or is_superuser:
+            followups = FollowUp.objects.filter(patient=patient)
+            for fu in followups:
+                timeline.append({
+                    'date': fu.due_date.strftime('%Y-%m-%d'),
+                    'type': 'FOLLOWUP',
+                    'title': f"Follow-up Scheduled [{fu.category}]",
+                    'facility': fu.facility.facility_name,
+                    'details': f"Category: {fu.category}, Status: {fu.get_status_display()}, Notes: {fu.notes}"
+                })
+
+        # 6. Uploaded Medical Documents: denied to Compounder
+        if user_role != 'COMPOUNDER' or is_superuser:
+            documents = PatientDocument.objects.filter(patient=patient).select_related('facility', 'uploaded_by')
+            for doc in documents:
+                timeline.append({
+                    'date': doc.uploaded_at.strftime('%Y-%m-%d %H:%M'),
+                    'type': 'DOCUMENT',
+                    'title': f"Medical Document: {doc.title}",
+                    'facility': doc.facility.facility_name if doc.facility else 'Namma Clinic',
+                    'details': f"Type: {doc.get_document_type_display()}, Uploaded By: {doc.uploaded_by.full_name if doc.uploaded_by else 'Staff'}, File: {doc.file_name} ({int(doc.file_size/1024) if doc.file_size else 0} KB)",
+                    'document_id': doc.id,
+                    'file_name': doc.file_name,
+                    'download_url': f"/api/patients/{patient.id}/documents/{doc.id}/download/"
+                })
 
         timeline.sort(key=lambda x: x['date'])
         return Response({'patient': PatientSerializer(patient).data, 'timeline': timeline})
+
 
 import os
 import mimetypes
@@ -245,10 +281,14 @@ class PatientRecordsView(APIView):
                 if not has_access:
                     return Response({'error': 'You do not have permission to access patient records outside your facility scope.'}, status=status.HTTP_403_FORBIDDEN)
 
+        user_role = getattr(request.user, 'role', '')
+        is_superuser = request.user.is_superuser
+
         # 1. Visits History
         visits = Visit.objects.filter(patient=patient).select_related('facility', 'assigned_doctor', 'token').order_by('-visit_date')
         visits_data = []
         for v in visits:
+            chief_complaint = "" if (user_role in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST'] and not is_superuser) else v.chief_complaint
             visits_data.append({
                 'id': v.id,
                 'visit_id': v.visit_id,
@@ -256,81 +296,111 @@ class PatientRecordsView(APIView):
                 'facility_name': v.facility.facility_name,
                 'token_number': v.token.token_number if hasattr(v, 'token') else None,
                 'visit_type': v.visit_type,
-                'chief_complaint': v.chief_complaint,
+                'chief_complaint': chief_complaint,
                 'priority': v.priority,
                 'status': v.status,
                 'queue': v.current_queue
             })
 
         # 2. Consultations (Medical Records)
-        consultations = Consultation.objects.filter(patient=patient).select_related('facility', 'doctor', 'visit').order_by('-created_at')
         consultations_data = []
-        for c in consultations:
-            consultations_data.append({
-                'id': c.id,
-                'visit_id': c.visit.visit_id if c.visit else None,
-                'created_at': c.created_at.strftime('%Y-%m-%d %H:%M'),
-                'facility_name': c.facility.facility_name if c.facility else 'Namma Clinic',
-                'doctor_name': c.doctor.full_name if c.doctor else 'Medical Officer',
-                'chief_complaint': c.chief_complaint,
-                'clinical_history': c.clinical_history,
-                'clinical_assessment': c.clinical_assessment,
-                'diagnosis_code': c.diagnosis_code,
-                'diagnosis_name': c.diagnosis_name,
-                'treatment_plan': c.treatment_plan,
-                'clinical_notes': c.clinical_notes,
-                'follow_up_date': c.follow_up_date.strftime('%Y-%m-%d') if c.follow_up_date else None
-            })
+        if user_role not in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST'] or is_superuser:
+            consultations = Consultation.objects.filter(patient=patient).select_related('facility', 'doctor', 'visit').order_by('-created_at')
+            for c in consultations:
+                if user_role in ['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'] and not is_superuser:
+                    c_notes = "POLICY_PENDING"
+                    c_hist = "POLICY_PENDING"
+                    c_assess = "POLICY_PENDING"
+                    c_plan = "POLICY_PENDING"
+                elif user_role == 'NURSE' and not is_superuser:
+                    c_notes = "POLICY_PENDING"
+                    c_hist = "POLICY_PENDING"
+                    c_assess = c.clinical_assessment
+                    c_plan = "POLICY_PENDING"
+                else:
+                    c_notes = c.clinical_notes
+                    c_hist = c.clinical_history
+                    c_assess = c.clinical_assessment
+                    c_plan = c.treatment_plan
+
+                consultations_data.append({
+                    'id': c.id,
+                    'visit_id': c.visit.visit_id if c.visit else None,
+                    'created_at': c.created_at.strftime('%Y-%m-%d %H:%M'),
+                    'facility_name': c.facility.facility_name if c.facility else 'Namma Clinic',
+                    'doctor_name': c.doctor.full_name if c.doctor else 'Medical Officer',
+                    'chief_complaint': c.chief_complaint,
+                    'clinical_history': c_hist,
+                    'clinical_assessment': c_assess,
+                    'diagnosis_code': c.diagnosis_code,
+                    'diagnosis_name': c.diagnosis_name,
+                    'treatment_plan': c_plan,
+                    'clinical_notes': c_notes,
+                    'follow_up_date': c.follow_up_date.strftime('%Y-%m-%d') if c.follow_up_date else None
+                })
 
         # 3. Lab Reports
-        lab_orders = LabOrder.objects.filter(patient=patient).select_related('test_master', 'facility', 'doctor').order_by('-order_date')
         lab_data = []
-        for lo in lab_orders:
-            has_res = hasattr(lo, 'result')
-            lab_data.append({
-                'id': lo.id,
-                'order_id': f"LAB-{lo.id:04d}",
-                'order_date': lo.order_date.strftime('%Y-%m-%d %H:%M'),
-                'test_name': lo.test_master.name,
-                'test_code': lo.test_master.code,
-                'facility_name': lo.facility.facility_name,
-                'doctor_name': lo.doctor.full_name if lo.doctor else 'Clinician',
-                'status': lo.status,
-                'sample_code': lo.sample.sample_code if hasattr(lo, 'sample') else None,
-                'result_value': lo.result.result_value if has_res else None,
-                'unit': lo.result.unit if has_res else None,
-                'interpretation_flag': lo.result.interpretation_flag if has_res else None,
-                'verified_by': lo.result.verified_by.full_name if (has_res and lo.result.verified_by) else None,
-                'verified_at': lo.result.verified_at.strftime('%Y-%m-%d %H:%M') if (has_res and lo.result.verified_at) else None
-            })
+        if user_role not in ['COMPOUNDER', 'PHARMACIST'] or is_superuser:
+            lab_orders = LabOrder.objects.filter(patient=patient).select_related('test_master', 'facility', 'doctor').order_by('-order_date')
+            for lo in lab_orders:
+                has_res = hasattr(lo, 'result')
+                if user_role in ['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'] and not is_superuser:
+                    res_val = "POLICY_PENDING" if has_res else None
+                    unit_val = lo.result.unit if has_res else None
+                    flag_val = "POLICY_PENDING" if has_res else None
+                else:
+                    res_val = lo.result.result_value if has_res else None
+                    unit_val = lo.result.unit if has_res else None
+                    flag_val = lo.result.interpretation_flag if has_res else None
+
+                lab_data.append({
+                    'id': lo.id,
+                    'order_id': f"LAB-{lo.id:04d}",
+                    'order_date': lo.order_date.strftime('%Y-%m-%d %H:%M'),
+                    'test_name': lo.test_master.name,
+                    'test_code': lo.test_master.code,
+                    'facility_name': lo.facility.facility_name,
+                    'doctor_name': lo.doctor.full_name if lo.doctor else 'Clinician',
+                    'status': lo.status,
+                    'sample_code': lo.sample.sample_code if hasattr(lo, 'sample') else None,
+                    'result_value': res_val,
+                    'unit': unit_val,
+                    'interpretation_flag': flag_val,
+                    'verified_by': lo.result.verified_by.full_name if (has_res and lo.result.verified_by) else None,
+                    'verified_at': lo.result.verified_at.strftime('%Y-%m-%d %H:%M') if (has_res and lo.result.verified_at) else None
+                })
 
         # 4. Prescriptions
-        prescriptions = Prescription.objects.filter(patient=patient).select_related('facility', 'doctor', 'consultation').prefetch_related('items').order_by('-date')
         rx_data = []
-        for p in prescriptions:
-            items = []
-            for item in p.items.all():
-                items.append({
-                    'id': item.id,
-                    'medicine_name': item.medicine_name,
-                    'dosage': item.dosage,
-                    'frequency': item.frequency,
-                    'duration_days': item.duration_days,
-                    'quantity': item.quantity,
-                    'status': item.status
+        if user_role not in ['COMPOUNDER', 'LAB_TECHNICIAN'] or is_superuser:
+            prescriptions = Prescription.objects.filter(patient=patient).select_related('facility', 'doctor', 'consultation').prefetch_related('items').order_by('-date')
+            for p in prescriptions:
+                items = []
+                for item in p.items.all():
+                    items.append({
+                        'id': item.id,
+                        'medicine_name': item.medicine_name,
+                        'dosage': item.dosage,
+                        'frequency': item.frequency,
+                        'duration_days': item.duration_days,
+                        'quantity': item.quantity,
+                        'status': item.status
+                    })
+                rx_data.append({
+                    'id': p.id,
+                    'date': p.date.strftime('%Y-%m-%d'),
+                    'facility_name': p.facility.facility_name if p.facility else 'Namma Clinic',
+                    'doctor_name': p.doctor.full_name if p.doctor else 'Medical Officer',
+                    'status': p.status,
+                    'items': items
                 })
-            rx_data.append({
-                'id': p.id,
-                'date': p.date.strftime('%Y-%m-%d'),
-                'facility_name': p.facility.facility_name if p.facility else 'Namma Clinic',
-                'doctor_name': p.doctor.full_name if p.doctor else 'Medical Officer',
-                'status': p.status,
-                'items': items
-            })
 
         # 5. Documents
-        documents = PatientDocument.objects.filter(patient=patient).select_related('facility', 'uploaded_by')
-        documents_serializer = PatientDocumentSerializer(documents, many=True)
+        doc_data = []
+        if user_role != 'COMPOUNDER' or is_superuser:
+            documents = PatientDocument.objects.filter(patient=patient).select_related('facility', 'uploaded_by')
+            doc_data = PatientDocumentSerializer(documents, many=True).data
 
         return Response({
             'patient': PatientSerializer(patient).data,
@@ -338,10 +408,9 @@ class PatientRecordsView(APIView):
             'medical_records': consultations_data,
             'lab_reports': lab_data,
             'prescriptions': rx_data,
-            'documents': documents_serializer.data
+            'documents': doc_data
         })
 
-from rest_framework import parsers
 
 class PatientDocumentViewSet(viewsets.ModelViewSet):
     serializer_class = PatientDocumentSerializer
@@ -349,10 +418,10 @@ class PatientDocumentViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
     required_permissions = {
         'GET': 'patients.view',
-        'POST': 'patients.view',
-        'PUT': 'patients.view',
-        'PATCH': 'patients.view',
-        'DELETE': 'patients.view'
+        'POST': 'patients.update',
+        'PUT': 'patients.update',
+        'PATCH': 'patients.update',
+        'DELETE': 'patients.update'
     }
 
     def get_queryset(self):

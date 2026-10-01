@@ -1,9 +1,12 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 
 class Consultation(models.Model):
-    visit = models.OneToOneField('visits.Visit', on_delete=models.CASCADE, related_name='consultation')
+    visit = models.ForeignKey('visits.Visit', on_delete=models.CASCADE, related_name='consultations')
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='consultations')
     doctor = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)
+    doctor_staff = models.ForeignKey('accounts.StaffProfile', on_delete=models.RESTRICT, null=True, blank=True, related_name='conducted_consultations')
+    consultation_sequence = models.IntegerField(default=1)
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE)
     
     chief_complaint = models.TextField()
@@ -25,22 +28,106 @@ class Prescription(models.Model):
     consultation = models.OneToOneField(Consultation, on_delete=models.CASCADE, related_name='prescription')
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE)
     doctor = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)
+    doctor_staff = models.ForeignKey('accounts.StaffProfile', on_delete=models.RESTRICT, null=True, blank=True, related_name='authored_prescriptions')
+    consultation_sequence = models.IntegerField(default=1)
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE)
     date = models.DateField(auto_now_add=True)
-    status = models.CharField(max_length=20, default='ACTIVE')
+    
+    STATUS_CHOICES = [
+        ('PENDING_VERIFICATION', 'Pending Pharmacist Verification'),
+        ('VERIFIED', 'Verified by Pharmacist'),
+        ('ON_HOLD', 'Clinical Hold (Query Pending)'),
+        ('REJECTED', 'Rejected by Pharmacist'),
+        ('PARTIALLY_DISPENSED', 'Partially Dispensed'),
+        ('DISPENSED', 'Fully Dispensed'),
+        ('CANCELLED', 'Cancelled by Prescriber / Admin'),
+        ('EXPIRED', 'Prescription Validity Expired'),
+        ('ACTIVE', 'Active (Legacy Dispensable Status)'),
+    ]
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='PENDING_VERIFICATION')
     notes = models.TextField(blank=True)
+    
+    verified_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_prescriptions')
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verification_notes = models.TextField(blank=True)
+    rejection_reason = models.TextField(blank=True)
+
+    def clean(self):
+        super().clean()
+        if self.status == 'DISPENSED' and self.pk:
+            if self.items.filter(status__in=['PENDING', 'PARTIALLY_DISPENSED']).exists():
+                raise ValidationError({
+                    'status': 'Prescription status cannot be set to DISPENSED while one or more items remain PENDING or PARTIALLY_DISPENSED.'
+                })
+
+    def save(self, *args, **kwargs):
+        if self.status == 'DISPENSED' and self.pk:
+            if self.items.filter(status__in=['PENDING', 'PARTIALLY_DISPENSED']).exists():
+                raise ValidationError({
+                    'status': 'Prescription status cannot be set to DISPENSED while one or more items remain PENDING or PARTIALLY_DISPENSED.'
+                })
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Prescription #{self.id} for {self.patient.name}"
+        return f"Prescription #{self.id} for {self.patient.name} ({self.status})"
 
 class PrescriptionItem(models.Model):
     prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='items')
+    medicine = models.ForeignKey('pharmacy.MedicineMaster', on_delete=models.SET_NULL, null=True, blank=True, related_name='prescription_items')
     medicine_name = models.CharField(max_length=150)
     dosage = models.CharField(max_length=50, default='1-0-1 After Food')
     frequency = models.CharField(max_length=50, default='Twice Daily')
     duration_days = models.IntegerField(default=7)
     quantity = models.IntegerField(default=14)
-    status = models.CharField(max_length=20, default='PENDING') # PENDING or DISPENSED
+    dispensed_quantity = models.IntegerField(default=0)
+    
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending Dispensation'),
+        ('PARTIALLY_DISPENSED', 'Partially Dispensed'),
+        ('DISPENSED', 'Fully Dispensed'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+
+    @property
+    def remaining_quantity(self):
+        return max(0, self.quantity - self.dispensed_quantity)
 
     def __str__(self):
-        return f"{self.medicine_name} ({self.quantity} units) - {self.status}"
+        return f"{self.medicine_name} ({self.dispensed_quantity}/{self.quantity} dispensed) - {self.status}"
+
+class DiagnosisMaster(models.Model):
+    icd10_code = models.CharField(max_length=20, unique=True)
+    description = models.TextField()
+    category = models.CharField(max_length=100, blank=True, default='')
+    is_notifiable = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'diagnosis_masters'
+
+    def __str__(self):
+        return f"{self.icd10_code} - {self.description}"
+
+class Diagnosis(models.Model):
+    consultation = models.ForeignKey(Consultation, on_delete=models.CASCADE, related_name='diagnoses')
+    diagnosis_master = models.ForeignKey(DiagnosisMaster, on_delete=models.RESTRICT, related_name='diagnoses')
+    diagnosis_type = models.CharField(max_length=20, default='WORKING', choices=[
+        ('ADMISSION', 'Admission'),
+        ('WORKING', 'Working'),
+        ('DISCHARGE', 'Discharge')
+    ])
+    certainty = models.CharField(max_length=20, default='PROVISIONAL', choices=[
+        ('PROVISIONAL', 'Provisional'),
+        ('CONFIRMED', 'Confirmed')
+    ])
+    is_primary = models.BooleanField(default=False)
+    notes = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'diagnoses'
+
+    def __str__(self):
+        return f"{self.diagnosis_master.icd10_code} [{self.certainty}] for Consultation #{self.consultation_id}"

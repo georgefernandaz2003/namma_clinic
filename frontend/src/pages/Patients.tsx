@@ -4,9 +4,10 @@ import type { Patient } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { Users, Search, UserPlus, Clock, History, X, Activity, FileText, Pill, Share2, Stethoscope } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { hasPermission } from '../utils/permissions';
 
 export const Patients: React.FC = () => {
-  const { activeFacility } = useAuth();
+  const { activeFacility, user } = useAuth();
   const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState('');
@@ -19,7 +20,7 @@ export const Patients: React.FC = () => {
   const [mobile, setMobile] = useState('');
   const [address, setAddress] = useState('');
   const [abhaId, setAbhaId] = useState('');
-  const [vulnerability] = useState('Slum Resident BPL');
+  const [vulnerability, setVulnerability] = useState('Slum Resident / Low Income Group');
 
   // Token Modal State
   const [showTokenModal, setShowTokenModal] = useState(false);
@@ -35,10 +36,12 @@ export const Patients: React.FC = () => {
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
+  const currentFacility = activeFacility || (user?.facility_details ? (user.facility_details as any) : (user?.assigned_facility ? { id: user.assigned_facility, facility_name: user.facility_name || 'Assigned Facility', facility_code: '' } : null));
+
   const loadPatients = async () => {
     try {
-      const facQuery = activeFacility?.id ? `?facility=${activeFacility.id}` : '';
-      const res = await api.get(`patients/${facQuery}`);
+      const facQuery = currentFacility?.id ? `?facility=${currentFacility.id}` : '';
+      const res = await api.get(`v1/patients/${facQuery}`);
       setPatients(res.data.results || res.data || []);
     } catch (e) {
       console.error('Failed to load patients', e);
@@ -47,18 +50,18 @@ export const Patients: React.FC = () => {
 
   useEffect(() => {
     loadPatients();
-  }, [activeFacility]);
+  }, [activeFacility, user]);
 
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await api.post('patients/', {
+      const res = await api.post('v1/patients/', {
         name,
         age: parseInt(age) || 30,
         gender,
         mobile,
         address,
-        ABHA_ID_DEMO: abhaId || `ABHA-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        ABHA_ID_DEMO: abhaId ? abhaId.trim() : '',
         vulnerability_information: vulnerability,
         registered_at_facility: activeFacility?.id
       });
@@ -70,6 +73,7 @@ export const Patients: React.FC = () => {
       setMobile('');
       setAddress('');
       setAbhaId('');
+      setVulnerability('Slum Resident / Low Income Group');
       loadPatients();
     } catch (e: any) {
       let msg = 'Failed to register patient.';
@@ -88,12 +92,20 @@ export const Patients: React.FC = () => {
 
   const handleIssueTokenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!targetPatient || !activeFacility) return;
+    if (!targetPatient) {
+      alert('Please select a valid registered patient.');
+      return;
+    }
+    const effectiveFacility = currentFacility || activeFacility;
+    if (!effectiveFacility) {
+      alert('Facility context is required. Please ensure an active facility is assigned.');
+      return;
+    }
     setSubmittingToken(true);
     try {
-      const res = await api.post('visits/', {
+      const res = await api.post('v1/visits/', {
         patient: targetPatient.id,
-        facility: activeFacility.id,
+        facility: effectiveFacility.id,
         visit_type: visitType,
         priority,
         chief_complaint: chiefComplaint
@@ -104,7 +116,7 @@ export const Patients: React.FC = () => {
       setChiefComplaint('');
       navigate('/queue');
     } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to issue OPD token');
+      alert(e.response?.data?.error || e.response?.data?.detail || 'Failed to issue OPD token');
     } finally {
       setSubmittingToken(false);
     }
@@ -146,13 +158,15 @@ export const Patients: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowRegisterModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm transition"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Register New Patient</span>
-        </button>
+        {hasPermission(user?.role, 'patients.create') && (
+          <button
+            onClick={() => setShowRegisterModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm transition"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Register New Patient</span>
+          </button>
+        )}
       </div>
 
       {/* Search Bar */}
@@ -205,17 +219,21 @@ export const Patients: React.FC = () => {
                     </span>
                   </td>
                   <td className="p-4 text-right">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setTargetPatient(p);
-                        setShowTokenModal(true);
-                      }}
-                      className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1 shadow-xs transition"
-                    >
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>Issue Token</span>
-                    </button>
+                    {hasPermission(user?.role, 'queue.create') ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTargetPatient(p);
+                          setShowTokenModal(true);
+                        }}
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1 shadow-xs transition"
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Issue Token</span>
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 font-medium italic">Read-Only</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -285,7 +303,7 @@ export const Patients: React.FC = () => {
                   <label className="block text-slate-700 font-bold mb-1">ABHA ID (Optional)</label>
                   <input
                     type="text"
-                    placeholder="ABHA-2026-XXXX"
+                    placeholder="14-digit ABHA (optional)"
                     value={abhaId}
                     onChange={(e) => setAbhaId(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
@@ -302,6 +320,22 @@ export const Patients: React.FC = () => {
                   onChange={(e) => setAddress(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
                 />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Vulnerability Category (Application Classification) *</label>
+                <select
+                  value={vulnerability}
+                  onChange={(e) => setVulnerability(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
+                >
+                  <option value="General Population">General Population</option>
+                  <option value="Slum Resident / Low Income Group">Slum Resident / Low Income Group</option>
+                  <option value="Urban Slum Resident BPL">Urban Slum Resident BPL</option>
+                  <option value="Senior Citizen / Diabetic">Senior Citizen / Diabetic</option>
+                  <option value="Senior Citizen / Cardiac History">Senior Citizen / Cardiac History</option>
+                  <option value="Slum Household BPL">Slum Household BPL</option>
+                </select>
               </div>
 
               <div className="pt-2 flex justify-end gap-2">
@@ -325,7 +359,7 @@ export const Patients: React.FC = () => {
       )}
 
       {/* Issue Token Modal */}
-      {showTokenModal && targetPatient && (
+      {hasPermission(user?.role, 'queue.create') && showTokenModal && targetPatient && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
@@ -357,8 +391,6 @@ export const Patients: React.FC = () => {
                   >
                     <option value="GENERAL_OPD">General OPD</option>
                     <option value="NCD_SCREENING">NCD Screening</option>
-                    <option value="MATERNAL_ANC">Maternal ANC</option>
-                    <option value="CHILD_IMMUNIZATION">Child Immunization</option>
                     <option value="TELECONSULTATION">Teleconsultation</option>
                   </select>
                 </div>
@@ -373,7 +405,6 @@ export const Patients: React.FC = () => {
                     <option value="NORMAL">Normal / Routine</option>
                     <option value="HIGH">High Priority</option>
                     <option value="EMERGENCY">Emergency 🚨</option>
-                    <option value="MATERNAL">Maternal ANC Care</option>
                   </select>
                 </div>
               </div>

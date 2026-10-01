@@ -1,7 +1,26 @@
 from django.db import models
 
+def normalize_patient_name(name):
+    if not name:
+        return ""
+    return " ".join(name.lower().strip().split())
+
+def normalize_patient_mobile(mobile):
+    if not mobile:
+        return ""
+    m = mobile.strip().replace(" ", "").replace("-", "")
+    if m.startswith("+91"):
+        m = m[3:]
+    elif m.startswith("91") and len(m) == 12:
+        m = m[2:]
+    elif m.startswith("0") and len(m) == 11:
+        m = m[1:]
+    return m
+
+
 class Patient(models.Model):
     patient_id = models.CharField(max_length=50, unique=True)
+    person = models.ForeignKey('accounts.Person', on_delete=models.RESTRICT, null=True, blank=True, related_name='registered_patients')
     name = models.CharField(max_length=150)
     date_of_birth = models.DateField(null=True, blank=True)
     age = models.IntegerField(default=30)
@@ -15,6 +34,45 @@ class Patient(models.Model):
     vulnerability_information = models.CharField(max_length=100, default='Slum Resident / Low Income Group')
     registration_date = models.DateField(auto_now_add=True)
     registered_at_facility = models.ForeignKey('facilities.Facility', on_delete=models.SET_NULL, null=True, blank=True, related_name='registered_patients')
+    normalized_name = models.CharField(max_length=150, blank=True, default='', db_index=True)
+    normalized_mobile = models.CharField(max_length=20, blank=True, default='', db_index=True)
+
+    def clean(self):
+        super().clean()
+        if self.registered_at_facility:
+            facility_dist = getattr(self.registered_at_facility, 'district', None)
+            if facility_dist:
+                if not self.district:
+                    self.district = facility_dist
+                elif self.district_id != facility_dist.id:
+                    from django.core.exceptions import ValidationError
+                    raise ValidationError({
+                        'district': f"Patient district ({self.district.name}) must match registration facility district ({facility_dist.name})."
+                    })
+        if self.ward and self.district:
+            ward_dist = getattr(self.ward, 'district', None)
+            if ward_dist and ward_dist.id != self.district_id:
+                from django.core.exceptions import ValidationError
+                raise ValidationError({
+                    'ward': f"Patient ward ({self.ward.name}) does not belong to district ({self.district.name})."
+                })
+
+    def save(self, *args, **kwargs):
+        if self.registered_at_facility and not self.district:
+            self.district = getattr(self.registered_at_facility, 'district', None)
+        self.normalized_name = normalize_patient_name(self.name)
+        self.normalized_mobile = normalize_patient_mobile(self.mobile)
+        self.clean()
+        super().save(*args, **kwargs)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['registered_at_facility', 'normalized_name', 'normalized_mobile'],
+                condition=models.Q(registered_at_facility__isnull=False),
+                name='unique_patient_facility_normalized_identity'
+            )
+        ]
 
     def __str__(self):
         return f"{self.name} [{self.patient_id}] - {self.mobile}"

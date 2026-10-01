@@ -164,7 +164,7 @@ export const HospitalAdminDashboard: React.FC<HospitalAdminDashboardProps> = ({ 
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
               <span className="text-[10px] font-bold text-slate-500 uppercase">Total Medicines</span>
-              <p className="text-lg font-black text-slate-900 mt-1">{inventory.total_medicines || 14}</p>
+              <p className="text-lg font-black text-slate-900 mt-1">{inventory.total_medicines ?? 0}</p>
             </div>
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
               <span className="text-[10px] font-bold text-amber-800 uppercase">Low Stock</span>

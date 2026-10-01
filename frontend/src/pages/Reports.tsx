@@ -11,26 +11,25 @@ const reportTypes = [
 ];
 
 import { useAuth } from '../context/AuthContext';
+import api from '../services/api';
 
 export const Reports: React.FC = () => {
   const { activeFacility } = useAuth();
 
-  const handleExportCSV = (type: string) => {
-    const token = localStorage.getItem('access_token');
-    const facParam = activeFacility?.id ? `&facility=${activeFacility.id}` : '';
-    const url = `http://localhost:8000/api/reports/export/?type=${type}${facParam}`;
-    
-    fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then((res) => res.blob())
-      .then((blob) => {
-        const a = document.createElement('a');
-        a.href = window.URL.createObjectURL(blob);
-        a.download = `namma_clinic_${type}_report_${new Date().toISOString().slice(0, 10)}.csv`;
-        a.click();
-      })
-      .catch(() => alert('Failed to download CSV report.'));
+  const handleExportCSV = async (type: string) => {
+    try {
+      const facParam = activeFacility?.id ? `&facility=${activeFacility.id}` : '';
+      const response = await api.get(`reports/export/?type=${type}${facParam}`, {
+        responseType: 'blob'
+      });
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = window.URL.createObjectURL(blob);
+      a.download = `namma_clinic_${type}_report_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+    } catch (e) {
+      alert('Failed to download CSV report.');
+    }
   };
 
   return (

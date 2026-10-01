@@ -10,13 +10,13 @@ from apps.facilities.models import Facility
 from apps.patients.models import Patient
 from apps.visits.models import Visit
 from apps.consultations.models import Consultation, Prescription
-from apps.laboratory.models import LabOrder
+from apps.laboratory.models import LabOrder, DiagnosticOrder
 from apps.pharmacy.models import MedicineBatch, InventoryTransaction
 from apps.referrals.models import Referral, FollowUp
 from apps.ncd.models import NCDRecord
 from apps.surveillance.models import DiseaseCase
 from apps.alerts.models import Alert
-from apps.accounts.permissions import get_accessible_facility_ids_for_user
+from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission
 
 class DashboardSummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -46,10 +46,13 @@ class DashboardSummaryView(APIView):
         active_fac_name = "All District Facilities"
         active_fac_type = "District Network"
         if facility_param:
-            selected_fac = Facility.objects.filter(id=facility_param).first()
+            selected_fac = fac_qs.first()
             if selected_fac:
                 active_fac_name = selected_fac.facility_name
                 active_fac_type = selected_fac.get_facility_type_display()
+            else:
+                active_fac_name = "Restricted Facility"
+                active_fac_type = "Out of Scope"
         elif request.user.assigned_facility:
             active_fac_name = request.user.assigned_facility.facility_name
             active_fac_type = request.user.assigned_facility.get_facility_type_display()
@@ -66,26 +69,82 @@ class DashboardSummaryView(APIView):
         in_triage = opd_visits_qs.filter(current_queue='TRIAGE', status='IN_TRIAGE').count()
         doctor_waiting = opd_visits_qs.filter(current_queue='DOCTOR', status__in=['WAITING_FOR_DOCTOR', 'TRIAGED']).count()
         in_consultation = opd_visits_qs.filter(current_queue='DOCTOR', status='IN_CONSULTATION').count()
-        lab_pending = LabOrder.objects.filter(facility_id__in=target_fac_ids, order_date__date=target_date, status__in=['ORDERED', 'SAMPLE_COLLECTED']).count()
-        pharmacy_waiting = Prescription.objects.filter(facility_id__in=target_fac_ids, date=target_date, status='PENDING').count()
+        # Authoritative Diagnostic Orders (Phase 25) with fallback to legacy LabOrder
+        diag_orders_target_qs = DiagnosticOrder.objects.filter(facility_id__in=target_fac_ids, order_date=target_date)
+        if diag_orders_target_qs.exists():
+            lab_pending = diag_orders_target_qs.exclude(status__in=['VERIFIED', 'CANCELLED']).count()
+        else:
+            lab_pending = LabOrder.objects.filter(facility_id__in=target_fac_ids, order_date__date=target_date, status__in=['ORDERED', 'SAMPLE_COLLECTED']).count()
+
+        # Authoritative Prescription lifecycle waiting in pharmacy
+        pharmacy_waiting = Prescription.objects.filter(
+            facility_id__in=target_fac_ids, date=target_date,
+            status__in=['PENDING_VERIFICATION', 'VERIFIED', 'PARTIALLY_DISPENSED', 'ACTIVE', 'PENDING']
+        ).count()
         completed_count = opd_visits_qs.filter(status='COMPLETED').count()
 
         # Overall Totals
-        total_patients = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids).count()
-        registered_today = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids, registration_date=target_date).count()
+        if accessible_ids is None and not facility_param:
+            total_patients = Patient.objects.count()
+            registered_today = Patient.objects.filter(registration_date=target_date).count()
+        else:
+            total_patients = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids).count()
+            registered_today = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids, registration_date=target_date).count()
+
 
         # Inventory Counts
+        from apps.pharmacy.models import MedicineMaster
+        from django.db.models import Sum, Q
+        today_date = datetime.date.today()
         inventory_batches = MedicineBatch.objects.filter(facility_id__in=target_fac_ids)
-        total_medicines = inventory_batches.values('medicine').distinct().count() or 14
-        low_stock_count = inventory_batches.filter(quantity__gt=0, quantity__lte=100).count()
-        out_of_stock_count = inventory_batches.filter(quantity=0).count()
-        near_expiry_count = inventory_batches.filter(expiry_date__gt=datetime.date.today(), expiry_date__lte=datetime.date.today() + datetime.timedelta(days=90)).count()
-        expired_count = inventory_batches.filter(expiry_date__lte=datetime.date.today()).count()
+        active_batches = inventory_batches.filter(quantity__gt=0, expiry_date__gt=today_date).exclude(status='EXPIRED')
+        total_medicines = active_batches.values('medicine').distinct().count()
+
+        expiring_threshold = today_date + datetime.timedelta(days=60)
+        near_expiry_count = inventory_batches.filter(quantity__gt=0, expiry_date__gt=today_date, expiry_date__lte=expiring_threshold).exclude(status='EXPIRED').count()
+        expired_count = inventory_batches.filter(Q(expiry_date__lte=today_date) | Q(status='EXPIRED')).count()
+
+        low_stock_count = 0
+        out_of_stock_count = 0
+        for m in MedicineMaster.objects.all():
+            tot_qty = active_batches.filter(medicine=m).aggregate(t=Sum('quantity'))['t'] or 0
+            if tot_qty == 0:
+                out_of_stock_count += 1
+            elif tot_qty <= m.minimum_stock or tot_qty <= m.reorder_level:
+                low_stock_count += 1
 
         # Referral Counts
         pending_referrals = Referral.objects.filter(source_facility_id__in=target_fac_ids, status__in=['CREATED', 'ACCEPTED', 'IN_TRANSIT', 'UNDER_TREATMENT']).count()
         accepted_referrals = Referral.objects.filter(destination_facility_id__in=target_fac_ids, status='ACCEPTED').count()
         completed_referrals = Referral.objects.filter(source_facility_id__in=target_fac_ids, status='COMPLETED').count()
+
+        # FollowUp Counts
+        followups_qs = FollowUp.objects.filter(facility_id__in=target_fac_ids)
+        followups_due_today = followups_qs.filter(due_date=target_date, status__in=['PENDING', 'DUE_TODAY']).count()
+        followups_pending = followups_qs.filter(status__in=['PENDING', 'DUE_TODAY', 'OVERDUE']).count()
+        followups_completed = followups_qs.filter(status='COMPLETED').count()
+
+        # Global Pharmacy Counts (authoritative prescription lifecycle)
+        rx_facility_qs = Prescription.objects.filter(facility_id__in=target_fac_ids)
+        rx_total_count = rx_facility_qs.count()
+        rx_pending_count = rx_facility_qs.filter(
+            status__in=['PENDING_VERIFICATION', 'VERIFIED', 'PARTIALLY_DISPENSED', 'ACTIVE', 'PENDING']
+        ).count()
+        rx_dispensed_today_count = rx_facility_qs.filter(status='DISPENSED', date=target_date).count()
+
+        # Global Lab Counts (authoritative Phase 25 DiagnosticOrder with fallback to legacy LabOrder)
+        diag_facility_qs = DiagnosticOrder.objects.filter(facility_id__in=target_fac_ids)
+        if diag_facility_qs.exists():
+            lab_ordered_count = diag_facility_qs.filter(status='ORDERED').count()
+            lab_sample_collected_count = diag_facility_qs.filter(status__in=['SAMPLE_COLLECTED', 'RECEIVED_IN_LAB', 'IN_TESTING', 'RESULT_ENTERED']).count()
+            lab_verified_count = diag_facility_qs.filter(status='VERIFIED').count()
+            lab_total_count = diag_facility_qs.count()
+        else:
+            lab_facility_qs = LabOrder.objects.filter(facility_id__in=target_fac_ids)
+            lab_ordered_count = lab_facility_qs.filter(status='ORDERED').count()
+            lab_sample_collected_count = lab_facility_qs.filter(status='SAMPLE_COLLECTED').count()
+            lab_verified_count = lab_facility_qs.filter(status='VERIFIED').count()
+            lab_total_count = lab_facility_qs.count()
 
         # Staff Counts
         from apps.accounts.models import User
@@ -93,6 +152,7 @@ class DashboardSummaryView(APIView):
         doctors_count = staff_qs.filter(role='DOCTOR').count()
         nurses_count = staff_qs.filter(role='NURSE').count()
         labs_count = staff_qs.filter(role='LAB_TECHNICIAN').count()
+
         pharmacists_count = staff_qs.filter(role='PHARMACIST').count()
 
         # Facility Overview List for District Officer / Admin
@@ -158,7 +218,7 @@ class DashboardSummaryView(APIView):
             'registered_today': registered_today,
             'todays_opd': todays_opd,
             'opd_stage_flow': {
-                'registration': registered_today or todays_opd,
+                'registration': registered_today,
                 'triage': triage_waiting + in_triage,
                 'doctor': doctor_waiting + in_consultation,
                 'lab': lab_pending,
@@ -183,6 +243,25 @@ class DashboardSummaryView(APIView):
                 'accepted': accepted_referrals,
                 'completed': completed_referrals
             },
+            'followups_summary': {
+                'due_today': followups_due_today,
+                'pending': followups_pending,
+                'completed': followups_completed
+            },
+            'pharmacy_summary': {
+                'total_prescriptions': rx_total_count,
+                'pending': rx_pending_count,
+                'dispensed_today': rx_dispensed_today_count,
+                'low_stock': low_stock_count,
+                'expiring_soon': near_expiry_count
+            },
+            'lab_summary': {
+                'ordered': lab_ordered_count,
+                'sample_collected': lab_sample_collected_count,
+                'processing': lab_sample_collected_count,
+                'verified': lab_verified_count,
+                'total': lab_total_count
+            },
             'kpis': {
                 'triage_waiting': triage_waiting,
                 'in_triage': in_triage,
@@ -193,26 +272,36 @@ class DashboardSummaryView(APIView):
                 'pharmacy_waiting': pharmacy_waiting,
                 'completed': completed_count,
                 'low_stock': low_stock_count,
-                'expiring_soon': near_expiry_count
+                'expiring_soon': near_expiry_count,
+                'followups_due': followups_due_today,
+                'followups_completed': followups_completed,
+                'pharmacy_total': rx_total_count,
+                'pharmacy_dispensed_today': rx_dispensed_today_count
             },
             'facility_overview': facility_overview,
             'action_required': action_required
         })
 
+
 class CSVExportView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    required_permission = 'reports.export'
 
     def get(self, request):
-        report_type = request.query_params.get('type', 'opd')
+        report_type = request.query_params.get('type', 'opd').lower()
         facility_param = request.query_params.get('facility')
         accessible_ids = get_accessible_facility_ids_for_user(request.user)
 
         target_fac_ids = accessible_ids
         if facility_param:
-            if target_fac_ids is not None:
-                target_fac_ids = [int(facility_param)] if int(facility_param) in target_fac_ids else []
-            else:
-                target_fac_ids = [int(facility_param)]
+            try:
+                fac_id = int(facility_param)
+                if target_fac_ids is not None:
+                    target_fac_ids = [fac_id] if fac_id in target_fac_ids else []
+                else:
+                    target_fac_ids = [fac_id]
+            except (ValueError, TypeError):
+                target_fac_ids = []
 
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="namma_clinic_{report_type}_report.csv"'
@@ -244,6 +333,43 @@ class CSVExportView(APIView):
             for r in refs:
                 writer.writerow([r.referral_id, r.patient.name, r.source_facility.facility_name, r.destination_facility.facility_name, r.urgency, r.status, r.referral_date])
 
+        elif report_type == 'ncd':
+            writer.writerow(['Patient ID', 'Patient Name', 'Facility', 'Screening Date', 'Hypertension Diagnosed', 'Diabetes Diagnosed', 'Risk Level', 'Control Status', 'Last BP', 'Last Glucose', 'Next Followup Due'])
+            ncd_records = NCDRecord.objects.all().select_related('patient', 'facility')
+            if target_fac_ids is not None:
+                ncd_records = ncd_records.filter(facility_id__in=target_fac_ids)
+            for nr in ncd_records:
+                writer.writerow([
+                    nr.patient.patient_id,
+                    nr.patient.name,
+                    nr.facility.facility_name,
+                    nr.screening_date,
+                    'YES' if nr.hypertension_diagnosed else 'NO',
+                    'YES' if nr.diabetes_diagnosed else 'NO',
+                    nr.risk_level,
+                    nr.control_status,
+                    nr.last_bp,
+                    nr.last_glucose,
+                    nr.next_followup_due or ''
+                ])
+
+        elif report_type == 'surveillance':
+            writer.writerow(['Disease Name', 'Patient Name', 'Facility', 'Ward', 'Report Date', 'Severity', 'Status', 'Notes'])
+            cases = DiseaseCase.objects.all().select_related('patient', 'facility', 'ward')
+            if target_fac_ids is not None:
+                cases = cases.filter(facility_id__in=target_fac_ids)
+            for c in cases:
+                writer.writerow([
+                    c.disease_name,
+                    c.patient.name,
+                    c.facility.facility_name,
+                    c.ward.name if c.ward else '',
+                    c.report_date,
+                    c.severity,
+                    c.status,
+                    c.notes
+                ])
+
         else:
             writer.writerow(['Patient ID', 'Name', 'Age', 'Gender', 'Mobile', 'District', 'Registration Date'])
             patients = Patient.objects.all().select_related('district')
@@ -263,8 +389,13 @@ class ResetDemoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        if not request.user or not request.user.is_superuser:
+            return Response(
+                {'error': 'Only system superusers are authorized to reset demonstration data.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         try:
-            call_command('seed_demo')
+            call_command('reset_demo_data', confirm_demo_reset=True)
             return Response({'status': 'SUCCESS', 'message': 'Demo dataset reset to pristine demonstration state!'})
         except Exception as e:
             return Response({'status': 'ERROR', 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

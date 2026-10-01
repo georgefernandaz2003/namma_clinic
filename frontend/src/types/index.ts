@@ -1,25 +1,6 @@
-export type Role =
-  | 'DISTRICT_OFFICER'
-  | 'HOSPITAL_ADMIN'
-  | 'DOCTOR'
-  | 'NURSE'
-  | 'LAB_TECHNICIAN'
-  | 'PHARMACIST';
+﻿export * from './api';
+export * from './auth';
 
-export interface User {
-  id: number;
-  username: string;
-  full_name: string;
-  email: string;
-  phone: string;
-  role: Role;
-  role_display: string;
-  assigned_facility: number | null;
-  facility_name?: string;
-  facility_type?: string;
-  assigned_district: number | null;
-  district_name?: string;
-}
 
 export type FacilityType =
   | 'MAIN_HOSPITAL'
@@ -110,27 +91,50 @@ export interface Patient {
   id: number;
   patient_id: string;
   name: string;
-  date_of_birth: string | null;
+  first_name?: string;
+  last_name?: string;
+  date_of_birth?: string | null;
   age: number;
-  gender: 'MALE' | 'FEMALE' | 'OTHER';
+  gender: 'MALE' | 'FEMALE' | 'OTHER' | string;
   mobile: string;
+  contact_number?: string;
   address: string;
   ward?: number | null;
   ward_name?: string;
   district?: number | null;
   district_name?: string;
-  ABHA_ID_DEMO: string;
-  emergency_contact: string;
-  vulnerability_information: string;
-  registration_date: string;
+  ABHA_ID_DEMO?: string;
+  abha_address?: string;
+  uhid?: string;
+  blood_group?: string;
+  emergency_contact?: string;
+  vulnerability_information?: string;
+  registration_date?: string;
   registered_at_facility?: number | null;
   facility_name?: string;
+}
+
+export interface CreateTriagePayload {
+  visit: number;
+  patient: number;
+  blood_pressure_systolic?: number;
+  blood_pressure_diastolic?: number;
+  pulse_bpm?: number;
+  temperature_f?: number | string;
+  spo2_percent?: number;
+  respiratory_rate?: number;
+  height_cm?: number | string;
+  weight_kg?: number | string;
+  blood_glucose_mgdl?: number;
+  emergency_flag?: boolean;
+  ncd_risk_flag?: boolean;
+  nurse_notes?: string;
 }
 
 export interface Token {
   id: number;
   token_number: number;
-  priority: 'NORMAL' | 'EMERGENCY' | 'MATERNAL' | 'SENIOR_CITIZEN';
+  priority: 'NORMAL' | 'HIGH' | 'EMERGENCY' | 'SENIOR_CITIZEN';
   status: string;
 }
 
@@ -142,33 +146,44 @@ export interface Visit {
   facility: number;
   facility_name?: string;
   visit_date: string;
+  opd_date?: string;
   visit_type: string;
-  status: 'WAITING' | 'TRIAGED' | 'IN_CONSULTATION' | 'COMPLETED' | 'CANCELLED';
+  status: string;
+  current_queue?: string;
   chief_complaint: string;
   assigned_doctor?: number | null;
+  assigned_doctor_name?: string;
+  priority?: string;
+  arrival_time?: string;
+  waiting_time_minutes?: number;
+  status_history_list?: unknown[];
   token_details?: Token;
+  token_number?: string | number | null;
 }
+
 
 export interface TriageVitals {
   id: number;
   visit: number;
   patient: number;
   patient_name?: string;
+  nurse?: number | null;
+  nurse_name?: string;
   blood_pressure_systolic: number;
   blood_pressure_diastolic: number;
   pulse_bpm: number;
-  temperature_f: number;
+  temperature_f: number | string;
   spo2_percent: number;
   respiratory_rate: number;
-  height_cm: number;
-  weight_kg: number;
-  bmi: number;
+  height_cm: number | string;
+  weight_kg: number | string;
+  bmi: number | string;
   blood_glucose_mgdl: number;
   high_bp_flag: boolean;
   high_glucose_flag: boolean;
   fever_flag: boolean;
   low_spo2_flag: boolean;
-  pregnancy_high_risk_flag: boolean;
+  pregnancy_high_risk_flag?: boolean;
   emergency_flag: boolean;
   ncd_risk_flag: boolean;
   nurse_notes: string;
@@ -177,12 +192,16 @@ export interface TriageVitals {
 
 export interface PrescriptionItem {
   id?: number;
+  medicine?: number;
   medicine_name: string;
   dosage: string;
   frequency: string;
   duration_days: number;
   quantity: number;
-  status: 'PENDING' | 'DISPENSED';
+  dispensed_quantity?: number;
+  remaining_quantity?: number;
+  status: 'PENDING' | 'PARTIALLY_DISPENSED' | 'DISPENSED' | 'CANCELLED' | string;
+  prescription?: number;
 }
 
 export interface Prescription {
@@ -194,9 +213,84 @@ export interface Prescription {
   doctor_name?: string;
   facility: number;
   date: string;
-  status: string;
+  status:
+    | 'PENDING_VERIFICATION'
+    | 'VERIFIED'
+    | 'ON_HOLD'
+    | 'REJECTED'
+    | 'PARTIALLY_DISPENSED'
+    | 'DISPENSED'
+    | 'CANCELLED'
+    | 'EXPIRED'
+    | 'ACTIVE'
+    | string;
+  verified_by?: number | null;
+  verified_by_name?: string | null;
+  verified_at?: string | null;
+  verification_notes?: string;
+  rejection_reason?: string;
+  doctor_staff?: number | null;
+  consultation_sequence?: number;
+  notes?: string;
   items: PrescriptionItem[];
 }
+export interface DispensationItem {
+  id: number;
+  dispensation: number;
+  prescription_item: number;
+  batch: number;
+  quantity_dispensed: number;
+}
+
+export interface Dispensation {
+  id: number;
+  dispensation_number: string;
+  dispensed_at: string;
+  remarks: string;
+  prescription: number;
+  facility: number;
+  dispensed_by_staff: number;
+  items?: DispensationItem[];
+}
+
+export interface DispenseItemInput {
+  prescription_item_id: number;
+  batch_id: number;
+  quantity: number;
+}
+
+export interface CreateDispensationPayload {
+  prescription_id: number;
+  facility_id: number;
+  items: DispenseItemInput[];
+}
+
+export interface InventoryLedger {
+  id: number;
+  transaction_type:
+    | 'PURCHASE_RECEIPT'
+    | 'DISPENSE'
+    | 'DISPENSE_REVERSAL'
+    | 'TRANSFER_OUT'
+    | 'TRANSFER_IN'
+    | 'DAMAGE_WRITEOFF'
+    | 'EXPIRED_WRITEOFF'
+    | 'AUDIT_CORRECTION'
+    | string;
+  quantity_delta: number;
+  balance_after: number;
+  reference_entity_type?: string;
+  reference_entity_id?: number;
+  remarks?: string;
+  transaction_timestamp: string;
+  batch: number;
+  batch_number?: string;
+  medicine_name?: string;
+  facility: number;
+  performed_by_staff: number;
+  performed_by_name?: string;
+}
+
 
 export interface Consultation {
   id: number;
@@ -246,8 +340,25 @@ export interface LabResult {
   notes: string;
 }
 
+export interface LabToken {
+  id: number;
+  token_number: number;
+  token_code: string;
+  visit: number;
+  visit_id_str?: string;
+  facility: number;
+  facility_name?: string;
+  date: string;
+  status: 'ORDERED' | 'IN_PROGRESS' | 'COMPLETED';
+  created_at: string;
+}
+
 export interface LabOrder {
   id: number;
+  lab_token?: number | null;
+  lab_token_code?: string;
+  lab_token_status?: string;
+  visit?: number | null;
   consultation?: number | null;
   patient: number;
   patient_name?: string;
@@ -289,7 +400,7 @@ export interface Vendor {
 
 export interface MedicineMaster {
   id: number;
-  code: string;
+  code?: string;
   generic_name: string;
   brand_name: string;
   strength: string;
@@ -298,6 +409,7 @@ export interface MedicineMaster {
   category: string;
   minimum_stock: number;
   reorder_level: number;
+  regulatory_schedule?: 'SCHEDULE_H' | 'SCHEDULE_H1' | 'SCHEDULE_X' | 'SCHEDULE_G' | 'OTC' | 'GENERAL' | 'UNKNOWN' | string;
   total_available_stock?: number;
   stock_status?: 'NORMAL' | 'LOW_STOCK' | 'OUT_OF_STOCK';
 }
@@ -308,8 +420,10 @@ export interface MedicineBatch {
   facility_name?: string;
   medicine: number;
   medicine_name?: string;
+  generic_name?: string;
   medicine_brand?: string;
   medicine_unit?: string;
+
   batch_number: string;
   vendor?: number | null;
   vendor_name?: string;
@@ -318,10 +432,121 @@ export interface MedicineBatch {
   mfg_date?: string | null;
   expiry_date: string;
   quantity: number;
+  available_quantity?: number;
+  quarantined_quantity?: number;
+  recalled_quantity?: number;
+  damaged_quantity?: number;
+  disposed_quantity?: number;
+  is_dispensable?: boolean;
+  expiry_bucket?: 'EXPIRED' | 'CRITICAL' | 'EXPIRING_SOON' | 'VALID' | string;
   unit_cost: number;
-  status: 'ACTIVE' | 'EXPIRING_SOON' | 'EXPIRED' | 'EXHAUSTED' | 'LOW_STOCK' | 'NEAR_EXPIRY';
+  status:
+    | 'AVAILABLE'
+    | 'QUARANTINED'
+    | 'RECALLED'
+    | 'DAMAGED'
+    | 'DISPOSED'
+    | 'EXHAUSTED'
+    | 'ACTIVE'
+    | 'EXPIRING_SOON'
+    | 'EXPIRED'
+    | 'LOW_STOCK'
+    | 'NEAR_EXPIRY'
+    | string;
   is_expired?: boolean;
   days_to_expiry?: number;
+}
+
+export interface DispensationReturn {
+  id: number;
+  facility: number;
+  return_number: string;
+  prescription_item: number;
+  batch: number;
+  returned_quantity: number;
+  return_reason: string;
+  patient_reported_issue?: string;
+  status: 'PENDING_ASSESSMENT' | 'APPROVED_FOR_STOCK' | 'QUARANTINE' | 'DISPOSAL';
+  assessment_notes?: string;
+  initiated_by: number;
+  assessed_by?: number;
+  created_at: string;
+  assessed_at?: string;
+}
+
+export interface BatchRecall {
+  id: number;
+  facility: number;
+  recall_number: string;
+  batch: number;
+  batch_number?: string;
+  recalled_quantity: number;
+  recall_reason: string;
+  regulatory_reference?: string;
+  recall_class?: 'CLASS_I' | 'CLASS_II' | 'CLASS_III' | 'VOLUNTARY' | string;
+  initiated_by: number;
+  is_active: boolean;
+  notes?: string;
+  created_at: string;
+}
+
+export interface ColdChainLog {
+  id: number;
+  facility: number;
+  equipment_identifier: string;
+  recorded_temperature_celsius: number;
+  min_acceptable_celsius?: number | null;
+  max_acceptable_celsius?: number | null;
+  reading_timestamp: string;
+  status: 'IN_RANGE' | 'OUT_OF_RANGE' | 'UNCONFIGURED_RANGE';
+  excursion_action_taken?: string;
+  recorded_by: number;
+  recorded_by_name?: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface PatientCounselling {
+  id: number;
+  facility: number;
+  prescription: number;
+  patient: number;
+  dosage_instructions_given?: boolean | null;
+  side_effects_explained?: boolean | null;
+  storage_conditions_explained?: boolean | null;
+  dietary_precautions_explained?: boolean | null;
+  special_warnings_given?: boolean | null;
+  patient_comprehension_confirmed?: boolean | null;
+  counselled_by: number;
+  counselled_at: string;
+  notes?: string;
+}
+
+export interface GoodsReceiptNote {
+  id: number;
+  facility: number;
+  grn_number: string;
+  purchase_order: number;
+  received_date: string;
+  invoice_number?: string;
+  received_by: number;
+  received_by_name?: string;
+  status: 'DRAFT' | 'ACCEPTED' | 'PARTIAL_ACCEPTANCE' | 'REJECTED' | 'VERIFIED' | 'CANCELLED';
+  notes?: string;
+  created_at: string;
+  items?: Array<{
+    id?: number;
+    medicine: number;
+    medicine_name?: string;
+    batch_number: string;
+    expiry_date: string;
+    ordered_quantity?: number;
+    received_quantity: number;
+    accepted_quantity: number;
+    rejected_quantity: number;
+    rejection_reason?: string;
+    unit_cost?: number;
+  }>;
 }
 
 export interface PurchaseOrderItem {
@@ -334,6 +559,9 @@ export interface PurchaseOrderItem {
   ordered_quantity?: number;
   requested_quantity?: number;
   received_quantity: number;
+  accepted_quantity?: number;
+  rejected_quantity?: number;
+  resolved_quantity?: number;
   remaining_quantity?: number;
   unit_price?: number;
   unit_cost?: number;
@@ -363,6 +591,12 @@ export interface PurchaseOrder {
   rejected_by_name?: string;
   rejected_at?: string | null;
   rejection_reason?: string;
+  total_ordered_quantity?: number;
+  total_received_quantity?: number;
+  total_accepted_quantity?: number;
+  total_rejected_quantity?: number;
+  total_remaining_quantity?: number;
+  goods_receipts?: GoodsReceiptNote[];
   created_at: string;
   updated_at?: string;
   items: PurchaseOrderItem[];
@@ -373,10 +607,14 @@ export interface ProcurementSummaryKPIs {
   pending_approval: number;
   approved: number;
   ordered: number;
+  in_transit?: number;
   partially_received: number;
   received: number;
   cancelled: number;
   total_orders: number;
+  committed_value?: number;
+  received_value?: number;
+  paid_value?: number;
   total_spend: number;
 }
 
@@ -602,3 +840,119 @@ export interface PatientRecordsSummary {
   documents: PatientDocument[];
 }
 
+
+
+export interface DiagnosticTestMaster {
+  id: number;
+  test_code: string;
+  test_name: string;
+  category: string;
+  specimen_type: string;
+  default_unit?: string;
+  reference_range_male?: string;
+  reference_range_female?: string;
+  unit_of_measure?: string;
+  is_active: boolean;
+}
+
+export interface DiagnosticOrder {
+  id: number;
+  order_number: string;
+  visit: number;
+  facility: number;
+  ordering_doctor_staff?: number | null;
+  order_date: string;
+  priority: 'ROUTINE' | 'URGENT' | 'STAT' | string;
+  status: 'ORDERED' | 'SAMPLE_COLLECTED' | 'RECEIVED_IN_LAB' | 'IN_TESTING' | 'RESULT_ENTERED' | 'VERIFIED' | 'AMENDED' | 'CANCELLED' | string;
+  clinical_indication: string;
+  lab_token_number?: number | string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface Specimen {
+  id: number;
+  diagnostic_order: number;
+  barcode_identifier: string;
+  specimen_type: string;
+  collected_by_staff?: number | null;
+  collected_at: string;
+  status: 'PENDING' | 'COLLECTED' | 'RECEIVED' | 'REJECTED' | string;
+  rejection_reason?: string;
+  test_request_ids?: number[];
+}
+
+export interface TestRequest {
+  id: number;
+  diagnostic_order: number;
+  test_master: number;
+  test_master_name?: string;
+  specimen?: number | null;
+  status: 'PENDING' | 'IN_TESTING' | 'COMPLETED' | 'CANCELLED' | string;
+  created_at: string;
+}
+
+export interface DiagnosticResult {
+  id: number;
+  test_request: number;
+  result_value_text: string;
+  result_value_numeric?: number | string | null;
+  reference_range_applied?: string;
+  is_abnormal: boolean;
+  is_critical_panic: boolean;
+  status: 'ENTERED' | 'VERIFIED' | 'AMENDED' | string;
+  entered_by_staff?: number | null;
+  entered_at?: string;
+  verified_by_staff?: number | null;
+  verified_at?: string | null;
+}
+
+export interface DiagnosticResultAmendment {
+  id: number;
+  diagnostic_result: number;
+  previous_value_text?: string;
+  previous_value_numeric?: number | null;
+  amended_value_text?: string;
+  amended_value_numeric?: number | null;
+  amendment_reason: string;
+  amended_by_staff?: number | null;
+  amended_at: string;
+}
+
+export interface ReferralOrder {
+  id: number;
+  referral_number: string;
+  patient: number;
+  patient_name?: string;
+  visit: number;
+  source_facility: number;
+  source_facility_name?: string;
+  destination_facility: number;
+  destination_facility_name?: string;
+  referring_doctor?: number | null;
+  urgency: 'ROUTINE' | 'URGENT' | 'EMERGENCY';
+  reason: string;
+  clinical_summary: string;
+  status: 'INITIATED' | 'ACCEPTED' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED' | string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface FollowUpTask {
+  id: number;
+  patient: number;
+  patient_name?: string;
+  facility: number;
+  facility_name?: string;
+  category: 'GENERAL' | 'NCD_ROUTINE' | 'POST_REFERRAL' | 'LAB_REVIEW' | string;
+  due_date: string;
+  clinical_instructions: string;
+  status: 'PENDING' | 'COMPLETED' | 'OVERDUE' | 'CANCELLED' | string;
+  originating_visit?: number | null;
+  referral?: number | null;
+  completed_in_visit?: number | null;
+  completed_by_staff?: number | null;
+  completed_at?: string | null;
+  created_at?: string;
+}
+export * from './staff';

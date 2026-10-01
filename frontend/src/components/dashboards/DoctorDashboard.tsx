@@ -14,13 +14,30 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
   const kpis = summary?.kpis || {};
   const [opdQueue, setOpdQueue] = useState<any[]>([]);
   const [activeVisit, setActiveVisit] = useState<any>(null);
+  const [activeTriage, setActiveTriage] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const actionRequired = summary?.action_required || [];
+
+  useEffect(() => {
+    if (activeVisit?.triage_details) {
+      setActiveTriage(activeVisit.triage_details);
+    } else if (activeVisit?.id) {
+      api.get(`v1/clinical/triage/?visit=${activeVisit.id}`)
+        .then(res => {
+          const list = res.data?.results || res.data || [];
+          const record = Array.isArray(list) ? list[0] : list;
+          setActiveTriage(record || null);
+        })
+        .catch(() => setActiveTriage(null));
+    } else {
+      setActiveTriage(null);
+    }
+  }, [activeVisit?.id, activeVisit?.triage_details]);
 
   const fetchDoctorQueue = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`visits/?queue=DOCTOR&date=${date}`);
+      const res = await api.get(`v1/visits/?queue=DOCTOR&date=${date}`);
       const list = res.data.results || res.data || [];
       setOpdQueue(list);
       
@@ -44,7 +61,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
       return;
     }
     try {
-      const res = await api.post('visits/call-next/', { queue: 'DOCTOR' });
+      const res = await api.post('v1/visits/call-next/', { queue: 'DOCTOR' });
       if (res.data && res.data.id) {
         setActiveVisit(res.data);
         fetchDoctorQueue();
@@ -131,8 +148,9 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
           <div className="flex justify-between items-start">
             <div>
               <p className="text-xs font-bold text-slate-500 uppercase">Follow-ups</p>
-              <h3 className="text-2xl font-black text-emerald-900 mt-1">{summary?.referrals_summary?.completed || 0}</h3>
+              <h3 className="text-2xl font-black text-emerald-900 mt-1">{summary?.followups_summary?.due_today ?? summary?.kpis?.followups_due ?? 0}</h3>
               <p className="text-[10px] text-emerald-700 font-medium mt-1">Scheduled Reviews</p>
+
             </div>
             <div className="p-3 bg-emerald-50 rounded-xl text-emerald-700 border border-emerald-100">
               <CalendarCheck className="w-5 h-5" />
@@ -154,10 +172,10 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
                   ACTIVE PATIENT IN CONSULTATION
                 </span>
                 <h2 className="text-lg font-black text-white mt-0.5">
-                  {activeVisit.patient_details?.name || 'Ramesh Kumar'}
+                  {activeVisit.patient_details?.name || 'Patient'}
                 </h2>
                 <p className="text-xs text-blue-200 font-medium">
-                  {activeVisit.patient_details?.age || 52} Yrs • {activeVisit.patient_details?.gender || 'MALE'} • UHID: {activeVisit.patient_details?.patient_id || 'NC-001'}
+                  {activeVisit.patient_details?.age ? `${activeVisit.patient_details.age} Yrs • ` : ''}{activeVisit.patient_details?.gender || 'N/A'} • UHID: {activeVisit.patient_details?.patient_id || 'N/A'}
                 </p>
               </div>
             </div>
@@ -181,19 +199,35 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Blood Pressure</span>
-              <span className="font-bold text-white block">150/96 mmHg</span>
+              <span className={`block font-bold ${activeTriage?.high_bp_flag ? 'text-rose-300' : 'text-white'}`}>
+                {activeTriage && (activeTriage.blood_pressure_systolic || activeTriage.blood_pressure_diastolic)
+                  ? `${activeTriage.blood_pressure_systolic}/${activeTriage.blood_pressure_diastolic} mmHg`
+                  : 'Vitals not recorded'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Pulse / SpO2</span>
-              <span className="font-bold text-white block">88 bpm / 97%</span>
+              <span className="font-bold text-white block">
+                {activeTriage && (activeTriage.pulse_bpm || activeTriage.spo2_percent)
+                  ? `${activeTriage.pulse_bpm ? `${activeTriage.pulse_bpm} bpm` : ''}${activeTriage.pulse_bpm && activeTriage.spo2_percent ? ' / ' : ''}${activeTriage.spo2_percent ? `${activeTriage.spo2_percent}%` : ''}`
+                  : 'Vitals not recorded'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Blood Glucose</span>
-              <span className="font-bold text-rose-300 block">190 mg/dL (HIGH)</span>
+              <span className={`block font-bold ${activeTriage?.high_glucose_flag ? 'text-rose-300' : 'text-white'}`}>
+                {activeTriage && activeTriage.blood_glucose_mgdl
+                  ? `${activeTriage.blood_glucose_mgdl} mg/dL${activeTriage.high_glucose_flag ? ' (HIGH)' : ''}`
+                  : 'Vitals not recorded'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Temperature</span>
-              <span className="font-bold text-white block">101.2 °F</span>
+              <span className={`block font-bold ${activeTriage?.fever_flag ? 'text-amber-300' : 'text-white'}`}>
+                {activeTriage && activeTriage.temperature_f
+                  ? `${activeTriage.temperature_f} °F`
+                  : 'Vitals not recorded'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Priority</span>
@@ -258,8 +292,8 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
                         #{v.token_details?.token_number || v.id}
                       </td>
                       <td className="py-3 px-4 font-bold text-slate-900">{v.patient_details?.name || 'Patient'}</td>
-                      <td className="py-3 px-4 text-center text-slate-600">{v.patient_details?.age || 45}</td>
-                      <td className="py-3 px-4 text-center font-mono text-slate-500">{v.waiting_time_minutes || 12} mins</td>
+                      <td className="py-3 px-4 text-center text-slate-600">{v.patient_details?.age ?? '-'}</td>
+                      <td className="py-3 px-4 text-center font-mono text-slate-500">{v.waiting_time_minutes ? `${v.waiting_time_minutes} mins` : '-'}</td>
                       <td className="py-3 px-4 text-slate-600">{v.visit_type}</td>
                       <td className="py-3 px-4 text-center">
                         <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold text-[10px] border border-blue-200">

@@ -1,561 +1,474 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import api from '../services/api';
-import type { Visit, TriageVitals } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { FileText, Pill, Share2, Plus, Trash2 } from 'lucide-react';
+import {
+  getVisits,
+  getVisit,
+  getPatient,
+  getTriageVitals,
+  getConsultations,
+  createConsultation,
+  getDiagnosticTestMasters,
+  createDiagnosticOrder,
+  createTestRequest,
+  getDiagnosticOrders,
+  getDiagnosticResults,
+  getMedicines,
+  createPrescription,
+  getPrescriptions,
+  getFacilities,
+  createReferralOrder,
+  createFollowUpTask,
+  updateVisit
+} from '../api/clinical';
+import type {
+  Visit,
+  Patient,
+  TriageVitals,
+  Consultation as ConsultationType,
+  DiagnosticTestMaster,
+  DiagnosticOrder,
+  DiagnosticResult,
+  MedicineMaster,
+  Prescription,
+  Facility
+} from '../types';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import ErrorAlert from '../components/common/ErrorAlert';
+import EmptyState from '../components/common/EmptyState';
+import ConsultationBanner from '../components/clinical/ConsultationBanner';
+import TriageReviewCard from '../components/clinical/TriageReviewCard';
+import ConsultationHistoryCard from '../components/clinical/ConsultationHistoryCard';
+import ConsultationFormCard from '../components/clinical/ConsultationFormCard';
+import DiagnosticOrderCard from '../components/clinical/DiagnosticOrderCard';
+import PrescriptionCard from '../components/clinical/PrescriptionCard';
+import ReferralFollowUpCard from '../components/clinical/ReferralFollowUpCard';
+import { Stethoscope, ArrowLeft, CheckCircle2, Save } from 'lucide-react';
 
 export const Consultation: React.FC = () => {
-  const { activeFacility, allFacilities } = useAuth();
+  const { user, activeFacility } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const stateVisitId = location.state?.visitId;
 
-  const [triagedVisits, setTriagedVisits] = useState<Visit[]>([]);
-  const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
-  const [vitals, setVitals] = useState<TriageVitals | null>(null);
+  const queryVisitId = new URLSearchParams(location.search).get('visit');
+  const initialVisitId = queryVisitId ? parseInt(queryVisitId, 10) : location.state?.visitId;
 
-  // Form states
-  const [chiefComplaint, setChiefComplaint] = useState('');
-  const [history] = useState('Known history of hypertension, poor compliance.');
-  const [assessment, setAssessment] = useState('High BP 148/96 mmHg with elevated blood glucose.');
-  const [diagCode] = useState('E11.9 / I10');
-  const [diagName, setDiagName] = useState('Type 2 Diabetes Mellitus with Essential Hypertension');
-  const [notes] = useState('Advised low salt diet, lifestyle modifications, and regular monitoring.');
+  const [availableVisits, setAvailableVisits] = useState<Visit[]>([]);
+  const [selectedVisitId, setSelectedVisitId] = useState<number | null>(initialVisitId || null);
+  const [visit, setVisit] = useState<Visit | null>(null);
+  const [patient, setPatient] = useState<Patient | null>(null);
+  const [triage, setTriage] = useState<TriageVitals | null>(null);
+  const [previousConsultations, setPreviousConsultations] = useState<ConsultationType[]>([]);
+  const [existingOrders, setExistingOrders] = useState<DiagnosticOrder[]>([]);
+  const [existingResults, setExistingResults] = useState<DiagnosticResult[]>([]);
+  const [existingPrescriptions, setExistingPrescriptions] = useState<Prescription[]>([]);
 
-  // Prescription items
-  const [prescriptions, setPrescriptions] = useState<Array<{ medicine_name: string; dosage: string; quantity: number }>>([
-    { medicine_name: 'Metformin HCl 500 mg Tablet', dosage: '1-0-1 After Food', quantity: 28 },
-    { medicine_name: 'Amlodipine Besylate 5 mg Tablet', dosage: '1-0-0 Morning', quantity: 14 }
-  ]);
+  const [testMasters, setTestMasters] = useState<DiagnosticTestMaster[]>([]);
+  const [medicines, setMedicines] = useState<MedicineMaster[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
 
-  // Referral creation state
-  const [createReferral, setCreateReferral] = useState(true);
+  const [loadingContext, setLoadingContext] = useState<boolean>(true);
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const [chiefComplaint, setChiefComplaint] = useState<string>('');
+  const [clinicalHistory, setClinicalHistory] = useState<string>('');
+  const [clinicalAssessment, setClinicalAssessment] = useState<string>('');
+  const [diagnosisCode, setDiagnosisCode] = useState<string>('');
+  const [diagnosisName, setDiagnosisName] = useState<string>('');
+  const [treatmentPlan, setTreatmentPlan] = useState<string>('');
+  const [clinicalNotes, setClinicalNotes] = useState<string>('');
+
+  const [orderDiagnostics, setOrderDiagnostics] = useState<boolean>(false);
+  const [selectedTestMasterId, setSelectedTestMasterId] = useState<number | ''>('');
+  const [diagPriority, setDiagPriority] = useState<'ROUTINE' | 'URGENT' | 'STAT'>('ROUTINE');
+  const [diagIndication, setDiagIndication] = useState<string>('');
+
+  const [orderPrescription, setOrderPrescription] = useState<boolean>(false);
+  const [prescriptionNotes, setPrescriptionNotes] = useState<string>('');
+  const [selectedMedicineId, setSelectedMedicineId] = useState<number | ''>('');
+  const [dosageInstructions, setDosageInstructions] = useState<string>('1-0-1 After Food for 5 days');
+
+  const [orderReferral, setOrderReferral] = useState<boolean>(false);
   const [destFacilityId, setDestFacilityId] = useState<number | ''>('');
-  const [refReason, setRefReason] = useState('Specialist evaluation for uncontrolled hypertension');
-  const [refUrgency, setRefUrgency] = useState<'ROUTINE' | 'URGENT' | 'EMERGENCY'>('HIGH' as any);
+  const [referralUrgency, setReferralUrgency] = useState<'ROUTINE' | 'URGENT' | 'EMERGENCY'>('ROUTINE');
+  const [referralReason, setReferralReason] = useState<string>('');
 
-  // Diagnostic Tests (14 Essential Tests) State
-  const [availableTests, setAvailableTests] = useState<any[]>([]);
-  const [selectedTestIds, setSelectedTestIds] = useState<number[]>([]);
-
-  // Follow-up State
+  const [scheduleFollowUp, setScheduleFollowUp] = useState<boolean>(false);
   const [followUpDate, setFollowUpDate] = useState<string>('');
-  const [followUpCategory, setFollowUpCategory] = useState<string>('ROUTINE_MONITORING');
-  const [followUpNotes, setFollowUpNotes] = useState<string>('Review BP & blood sugar in 14 days');
-
-  const [saving, setSaving] = useState(false);
+  const [followUpCategory, setFollowUpCategory] = useState<'GENERAL' | 'NCD_ROUTINE' | 'POST_REFERRAL' | 'LAB_REVIEW'>('GENERAL');
+  const [followUpInstructions, setFollowUpInstructions] = useState<string>('');
 
   useEffect(() => {
-    const fetchLabTests = async () => {
+    const loadMasters = async () => {
       try {
-        const res = await api.get('lab/tests/');
-        const tests = res.data.results || res.data || [];
-        setAvailableTests(tests);
-      } catch (e) {
-        console.error('Failed to load lab test master', e);
+        const [tests, meds, facs] = await Promise.all([
+          getDiagnosticTestMasters(),
+          getMedicines(),
+          getFacilities()
+        ]);
+        setTestMasters(tests);
+        setMedicines(meds);
+        setFacilities(facs);
+      } catch (err: unknown) {
+        console.error('Failed to load clinical masters:', err);
       }
     };
-    fetchLabTests();
+    loadMasters();
   }, []);
 
-  const loadQueue = async () => {
-    if (!activeFacility) return;
-    try {
-      const res = await api.get(`visits/?facility=${activeFacility.id}&queue=DOCTOR`);
-      const rawList: Visit[] = res.data.results || res.data || [];
-      const activeDoctorList = rawList.filter((v) => v.current_queue === 'DOCTOR' && v.status !== 'COMPLETED');
-      setTriagedVisits(activeDoctorList);
-
-      if (stateVisitId) {
-        const found = activeDoctorList.find((v) => v.id === stateVisitId);
-        if (found) selectVisit(found);
-        else if (activeDoctorList.length > 0) selectVisit(activeDoctorList[0]);
-        else {
-          setSelectedVisit(null);
-          setVitals(null);
+  useEffect(() => {
+    const loadQueue = async () => {
+      try {
+        const params: Record<string, string | number> = {};
+        if (activeFacility?.id) {
+          params.facility = activeFacility.id;
         }
-      } else if (activeDoctorList.length > 0) {
-        selectVisit(activeDoctorList[0]);
-      } else {
-        setSelectedVisit(null);
-        setVitals(null);
-      }
-    } catch (e) {
-      console.error('Failed to load doctor queue', e);
-    }
-  };
-
-
-  const selectVisit = async (v: Visit) => {
-    setSelectedVisit(v);
-    setChiefComplaint(v.chief_complaint || 'Dizziness and fatigue');
-    try {
-      const trRes = await api.get(`triage/?visit=${v.id}`);
-      const trList = trRes.data.results || trRes.data || [];
-      if (trList.length > 0) setVitals(trList[0]);
-      else setVitals(null);
-    } catch (e) {
-      setVitals(null);
-    }
-  };
-
-  useEffect(() => {
-    loadQueue();
-  }, [activeFacility]);
-
-  const [networkFacilities, setNetworkFacilities] = useState<any[]>([]);
-
-  useEffect(() => {
-    const fetchNetworkFacilities = async () => {
-      try {
-        const res = await api.get('facilities/?all=true');
-        const facs = res.data.results || res.data || [];
-        setNetworkFacilities(facs);
-      } catch (e) {
-        console.error('Failed to load network facilities', e);
+        const data = await getVisits(params);
+        setAvailableVisits(data);
+        if (!selectedVisitId && data.length > 0) {
+          const firstEligible = data.find((v) => v.status !== 'COMPLETED') || data[0];
+          setSelectedVisitId(firstEligible.id);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Failed to load encounter queue.';
+        setError(msg);
       }
     };
-    fetchNetworkFacilities();
+    loadQueue();
+  }, [activeFacility?.id, selectedVisitId]);
+
+  const loadClinicalContext = useCallback(async (vId: number) => {
+    setLoadingContext(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const visitData = await getVisit(vId);
+      setVisit(visitData);
+      setChiefComplaint(visitData.chief_complaint || '');
+
+      const patientData = await getPatient(visitData.patient);
+      setPatient(patientData);
+
+      const triageData = await getTriageVitals(vId);
+      setTriage(triageData);
+
+      const [consults, diagOrders, diagRes, rxList] = await Promise.all([
+        getConsultations({ patient: visitData.patient }),
+        getDiagnosticOrders({ visit: vId }),
+        getDiagnosticResults(),
+        getPrescriptions({ patient: visitData.patient })
+      ]);
+
+      setPreviousConsultations(consults);
+      setExistingOrders(diagOrders);
+      setExistingResults(diagRes);
+      setExistingPrescriptions(rxList);
+
+      const thisVisitConsult = consults.find((c) => c.visit === vId);
+      if (thisVisitConsult) {
+        setChiefComplaint(thisVisitConsult.chief_complaint);
+        setClinicalHistory(thisVisitConsult.clinical_history || '');
+        setClinicalAssessment(thisVisitConsult.clinical_assessment || '');
+        setDiagnosisCode(thisVisitConsult.diagnosis_code || '');
+        setDiagnosisName(thisVisitConsult.diagnosis_name || '');
+        setTreatmentPlan(thisVisitConsult.treatment_plan || '');
+        setClinicalNotes(thisVisitConsult.clinical_notes || '');
+      } else {
+        setClinicalHistory('');
+        setClinicalAssessment('');
+        setDiagnosisCode('');
+        setDiagnosisName('');
+        setTreatmentPlan('');
+        setClinicalNotes('');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to retrieve patient clinical context.';
+      setError(msg);
+    } finally {
+      setLoadingContext(false);
+    }
   }, []);
 
-  // Filter local referral destination options
-  const referralDestinations = (networkFacilities.length > 0 ? networkFacilities : allFacilities).filter(
-    (f) => f.id !== activeFacility?.id
-  );
-
   useEffect(() => {
-    if (referralDestinations.length > 0 && !destFacilityId) {
-      setDestFacilityId(referralDestinations[0].id);
-    }
-  }, [referralDestinations]);
-
-  const handleAddMed = () => {
-    setPrescriptions([...prescriptions, { medicine_name: 'Paracetamol 650 mg Tablet', dosage: '1-0-1', quantity: 10 }]);
-  };
-
-  const handleRemoveMed = (idx: number) => {
-    setPrescriptions(prescriptions.filter((_, i) => i !== idx));
-  };
-
-  const toggleTestSelection = (testId: number) => {
-    if (selectedTestIds.includes(testId)) {
-      setSelectedTestIds(selectedTestIds.filter((id) => id !== testId));
+    if (selectedVisitId) {
+      loadClinicalContext(selectedVisitId);
     } else {
-      setSelectedTestIds([...selectedTestIds, testId]);
+      setLoadingContext(false);
     }
-  };
+  }, [selectedVisitId, loadClinicalContext]);
 
   const handleSaveConsultation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedVisit || !activeFacility) return;
-    setSaving(true);
+    if (!visit || !patient) return;
+
+    if (!chiefComplaint.trim()) {
+      setError('Chief Complaint is required for clinical encounter documentation.');
+      return;
+    }
+    if (!diagnosisCode.trim() || !diagnosisName.trim()) {
+      setError('Diagnosis Code and Diagnosis Name are mandatory clinical records.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    setSuccessMessage(null);
 
     try {
-      // 1. Save Consultation & Prescription
-      await api.post('consultations/', {
-        visit: selectedVisit.id,
-        patient: selectedVisit.patient,
-        facility: activeFacility.id,
-        chief_complaint: chiefComplaint,
-        clinical_history: history,
-        clinical_assessment: assessment,
-        diagnosis_code: diagCode,
-        diagnosis_name: diagName,
-        clinical_notes: notes,
-        prescription_items: prescriptions
+      const facilityId = visit.facility;
+      const consultation = await createConsultation({
+        visit: visit.id,
+        patient: patient.id,
+        facility: facilityId,
+        chief_complaint: chiefComplaint.trim(),
+        clinical_history: clinicalHistory.trim(),
+        clinical_assessment: clinicalAssessment.trim(),
+        diagnosis_code: diagnosisCode.trim(),
+        diagnosis_name: diagnosisName.trim(),
+        treatment_plan: treatmentPlan.trim(),
+        clinical_notes: clinicalNotes.trim(),
+        follow_up_date: scheduleFollowUp && followUpDate ? followUpDate : null
       });
 
-      // 2. Save Referral if checked
-      if (createReferral && destFacilityId) {
-        await api.post('referrals/', {
-          patient: selectedVisit.patient,
-          source_facility: activeFacility.id,
-          destination_facility: destFacilityId,
-          reason: refReason,
-          clinical_summary: `${diagName} - BP ${vitals?.blood_pressure_systolic || 140}/${vitals?.blood_pressure_diastolic || 90} mmHg`,
-          required_service: 'Specialist Consultation',
-          urgency: refUrgency
+      let diagOrderCreated = false;
+      if (orderDiagnostics && selectedTestMasterId) {
+        const order = await createDiagnosticOrder({
+          visit: visit.id,
+          facility: facilityId,
+          priority: diagPriority,
+          clinical_indication: diagIndication.trim() || `Assessment for ${diagnosisName.trim()}`,
+          order_date: new Date().toISOString().split('T')[0]
+        });
+
+        await createTestRequest({
+          diagnostic_order: order.id,
+          test_master: Number(selectedTestMasterId)
+        });
+        diagOrderCreated = true;
+      }
+
+      let rxCreated = false;
+      if (orderPrescription && prescriptionNotes.trim()) {
+        await createPrescription({
+          consultation: consultation.id,
+          patient: patient.id,
+          facility: facilityId,
+          notes: prescriptionNotes.trim()
+        });
+        rxCreated = true;
+      }
+
+      if (orderReferral && destFacilityId) {
+        await createReferralOrder({
+          patient: patient.id,
+          visit: visit.id,
+          source_facility: facilityId,
+          destination_facility: Number(destFacilityId),
+          urgency: referralUrgency,
+          reason: referralReason.trim() || `Specialist care for ${diagnosisName.trim()}`,
+          clinical_summary: treatmentPlan.trim() || chiefComplaint.trim()
         });
       }
 
-      // 3. Save Diagnostic Lab Orders
-      for (const testId of selectedTestIds) {
-        try {
-          await api.post('lab/orders/', {
-            patient: selectedVisit.patient,
-            facility: activeFacility.id,
-            test_master: testId
-          });
-        } catch (err) {
-          console.error('Failed to order lab test', err);
-        }
+      if (scheduleFollowUp && followUpDate) {
+        await createFollowUpTask({
+          patient: patient.id,
+          facility: facilityId,
+          due_date: followUpDate,
+          category: followUpCategory,
+          originating_visit: visit.id,
+          clinical_instructions: followUpInstructions.trim() || `Follow-up evaluation for ${diagnosisName.trim()}`
+        });
       }
 
-      // 4. Save Scheduled Follow-up
-      if (followUpDate) {
-        try {
-          await api.post('followups/', {
-            patient: selectedVisit.patient,
-            facility: activeFacility.id,
-            due_date: followUpDate,
-            category: followUpCategory,
-            notes: followUpNotes
-          });
-        } catch (err) {
-          console.error('Failed to schedule follow-up', err);
-        }
+      let nextStatus = 'COMPLETED';
+      let nextQueue = 'COMPLETED';
+      if (diagOrderCreated) {
+        nextStatus = 'WAITING_FOR_LAB';
+        nextQueue = 'LAB';
+      } else if (rxCreated) {
+        nextStatus = 'WAITING_FOR_PHARMACY';
+        nextQueue = 'PHARMACY';
       }
 
-      alert(`Consultation, Prescriptions, Lab Orders & Referrals saved for ${selectedVisit.patient_details?.name}!`);
-      loadQueue();
-      navigate('/queue');
-    } catch (e) {
-      alert('Failed to save consultation.');
+      await updateVisit(visit.id, {
+        status: nextStatus,
+        current_queue: nextQueue,
+        chief_complaint: chiefComplaint.trim()
+      });
+
+      setSuccessMessage(
+        `Consultation recorded successfully for ${patient.name} (Visit #${visit.visit_id}). Workflow advanced to ${nextStatus}.`
+      );
+
+      await loadClinicalContext(visit.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save clinical consultation record.';
+      setError(msg);
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <FileText className="w-6 h-6 text-blue-600" />
-          Doctor Console & EMR-Lite Workflow
-        </h1>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Primary care EMR documentation, diagnosis, prescriptions, and cross-facility referral creation
-        </p>
-      </div>
-
-      {/* EMR-Lite Value Proposition Banner */}
-      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-4 rounded-2xl text-white space-y-1 shadow-md">
-        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-blue-400">
-          <span>📋 Streamlined Primary Care EMR-Lite</span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard/doctor')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg shadow-2xs transition cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+            <span>Doctor Dashboard</span>
+          </button>
+          <span className="text-slate-400">/</span>
+          <h1 className="text-base font-bold text-slate-900 flex items-center gap-1.5">
+            <Stethoscope className="w-4 h-4 text-emerald-600" aria-hidden="true" />
+            Clinical Encounter & Consultation
+          </h1>
         </div>
-        <p className="text-xs text-blue-100 font-medium leading-relaxed">
-          &ldquo;We are designing this EMR-lite for a busy primary-care doctor, not a heavy hospital ERP.&rdquo;
-        </p>
+
+        <div className="flex items-center gap-2">
+          <label htmlFor="visit-selector" className="text-xs font-bold text-slate-700 whitespace-nowrap">
+            Active Encounter:
+          </label>
+          <select
+            id="visit-selector"
+            value={selectedVisitId || ''}
+            onChange={(e) => setSelectedVisitId(Number(e.target.value))}
+            className="text-xs font-medium bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-slate-900 focus:outline-none focus:border-emerald-600"
+          >
+            {availableVisits.map((v) => (
+              <option key={v.id} value={v.id}>
+                Token #{v.token_number || v.id} - {v.patient_details?.name || `Patient #${v.patient}`} ({v.status})
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Doctor Queue */}
-        <div className="glass-panel p-4 rounded-2xl border border-slate-200 bg-white space-y-3 shadow-xs">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-teal-700 flex items-center justify-between pb-2 border-b border-slate-100">
-            <span>Patients Ready for Doctor</span>
-            <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono">
-              {triagedVisits.length}
-            </span>
-          </h2>
+      {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
+      {successMessage && (
+        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-medium flex items-center gap-2">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" aria-hidden="true" />
+          <span>{successMessage}</span>
+        </div>
+      )}
 
-          {triagedVisits.length === 0 ? (
-            <div className="p-6 text-center text-xs text-slate-400">No patients waiting in doctor queue.</div>
-          ) : (
-            <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {triagedVisits.map((v) => (
-                <div
-                  key={v.id}
-                  onClick={() => selectVisit(v)}
-                  className={`p-3 rounded-xl border transition cursor-pointer ${
-                    selectedVisit?.id === v.id
-                      ? 'bg-blue-50 border-blue-500 text-slate-900 shadow-xs'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-xs">{v.patient_details?.name}</span>
-                    <span className="text-[10px] font-mono text-teal-700 font-bold">Token #{v.token_details?.token_number || v.id}</span>
-                  </div>
-                  <span className="text-[10px] text-slate-500 block">{v.patient_details?.age} yrs • {v.chief_complaint}</span>
-                </div>
-              ))}
+      {loadingContext ? (
+        <div className="p-16 flex justify-center bg-white rounded-2xl border border-slate-200">
+          <LoadingSpinner size="lg" label="Loading patient clinical context & triage data..." />
+        </div>
+      ) : !visit || !patient ? (
+        <EmptyState
+          title="No Patient Encounter Selected"
+          description="Select an outpatient visit from the queue to start recording the clinical examination."
+          actionText="Go to Doctor Queue"
+          onAction={() => navigate('/dashboard/doctor')}
+        />
+      ) : (
+        <form onSubmit={handleSaveConsultation} className="space-y-6">
+          <ConsultationBanner patient={patient} visit={visit} />
+          <TriageReviewCard triage={triage} />
+          <ConsultationHistoryCard consultations={previousConsultations} />
+          <ConsultationFormCard
+            chiefComplaint={chiefComplaint}
+            setChiefComplaint={setChiefComplaint}
+            clinicalHistory={clinicalHistory}
+            setClinicalHistory={setClinicalHistory}
+            clinicalAssessment={clinicalAssessment}
+            setClinicalAssessment={setClinicalAssessment}
+            diagnosisCode={diagnosisCode}
+            setDiagnosisCode={setDiagnosisCode}
+            diagnosisName={diagnosisName}
+            setDiagnosisName={setDiagnosisName}
+            treatmentPlan={treatmentPlan}
+            setTreatmentPlan={setTreatmentPlan}
+            clinicalNotes={clinicalNotes}
+            setClinicalNotes={setClinicalNotes}
+          />
+          <DiagnosticOrderCard
+            orderDiagnostics={orderDiagnostics}
+            setOrderDiagnostics={setOrderDiagnostics}
+            selectedTestMasterId={selectedTestMasterId}
+            setSelectedTestMasterId={setSelectedTestMasterId}
+            diagPriority={diagPriority}
+            setDiagPriority={setDiagPriority}
+            diagIndication={diagIndication}
+            setDiagIndication={setDiagIndication}
+            testMasters={testMasters}
+            existingResults={existingResults}
+          />
+          <PrescriptionCard
+            orderPrescription={orderPrescription}
+            setOrderPrescription={setOrderPrescription}
+            prescriptionNotes={prescriptionNotes}
+            setPrescriptionNotes={setPrescriptionNotes}
+            selectedMedicineId={selectedMedicineId}
+            setSelectedMedicineId={setSelectedMedicineId}
+            dosageInstructions={dosageInstructions}
+            setDosageInstructions={setDosageInstructions}
+            medicines={medicines}
+          />
+          <ReferralFollowUpCard
+            visit={visit}
+            facilities={facilities}
+            orderReferral={orderReferral}
+            setOrderReferral={setOrderReferral}
+            destFacilityId={destFacilityId}
+            setDestFacilityId={setDestFacilityId}
+            referralUrgency={referralUrgency}
+            setReferralUrgency={setReferralUrgency}
+            referralReason={referralReason}
+            setReferralReason={setReferralReason}
+            scheduleFollowUp={scheduleFollowUp}
+            setScheduleFollowUp={setScheduleFollowUp}
+            followUpDate={followUpDate}
+            setFollowUpDate={setFollowUpDate}
+            followUpCategory={followUpCategory}
+            setFollowUpCategory={setFollowUpCategory}
+            followUpInstructions={followUpInstructions}
+            setFollowUpInstructions={setFollowUpInstructions}
+          />
+
+          {/* Form Actions & Save */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-white border border-slate-200 rounded-2xl shadow-xs">
+            <div className="text-xs text-slate-600">
+              Preserving Medical Officer clinical authorship. Prescribing Doctor: <strong>{user?.username}</strong>.
             </div>
-          )}
-        </div>
 
-        {/* EMR Console & Form */}
-        <div className="lg:col-span-2 glass-panel p-6 rounded-2xl border border-slate-200 bg-white space-y-5 shadow-xs">
-          {selectedVisit ? (
-            <form onSubmit={handleSaveConsultation} className="space-y-5 text-xs">
-              {/* Patient, Vitals & History Summary */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900">{selectedVisit.patient_details?.name}</h2>
-                    <p className="text-xs text-slate-500">
-                      ID: {selectedVisit.patient_details?.patient_id} • Age: {selectedVisit.patient_details?.age} • Gender: {selectedVisit.patient_details?.gender}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/patients/${selectedVisit.patient_details?.id || selectedVisit.patient}`)}
-                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white text-blue-700 border border-blue-200 hover:bg-blue-50 transition flex items-center gap-1 shadow-2xs"
-                    >
-                      <FileText className="w-3.5 h-3.5" /> View EMR Timeline History
-                    </button>
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                      Token #{selectedVisit.token_details?.token_number || 1}
-                    </span>
-                  </div>
-                </div>
-
-                {vitals && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-200 text-[11px]">
-                    <div className="bg-white p-2 rounded border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block font-semibold">BP Vitals</span>
-                      <span className={`font-bold font-mono ${vitals.high_bp_flag ? 'text-rose-600' : 'text-slate-800'}`}>
-                        {vitals.blood_pressure_systolic}/{vitals.blood_pressure_diastolic} mmHg
-                      </span>
-                    </div>
-                    <div className="bg-white p-2 rounded border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block font-semibold">Pulse / Temp</span>
-                      <span className="font-bold font-mono text-slate-800">{vitals.pulse_bpm} bpm • {vitals.temperature_f}°F</span>
-                    </div>
-                    <div className="bg-white p-2 rounded border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block font-semibold">Blood Glucose</span>
-                      <span className={`font-bold font-mono ${vitals.high_glucose_flag ? 'text-amber-600' : 'text-slate-800'}`}>
-                        {vitals.blood_glucose_mgdl} mg/dL
-                      </span>
-                    </div>
-                    <div className="bg-white p-2 rounded border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block font-semibold">BMI</span>
-                      <span className="font-bold font-mono text-slate-800">{vitals.bmi}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Chief Complaint & Assessment */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Chief Complaint *</label>
-                  <input
-                    type="text"
-                    value={chiefComplaint}
-                    onChange={(e) => setChiefComplaint(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">ICD-10 Diagnosis Code & Name *</label>
-                  <input
-                    type="text"
-                    value={diagName}
-                    onChange={(e) => setDiagName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Clinical Assessment & Examination</label>
-                <textarea
-                  value={assessment}
-                  onChange={(e) => setAssessment(e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-blue-600"
-                />
-              </div>
-
-              {/* Prescription Section */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
-                    <Pill className="w-4 h-4 text-amber-600" />
-                    Prescribe Medication (EDL List - FEFO Dispensing Ready)
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={handleAddMed}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-amber-800 rounded-lg text-[11px] font-bold"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Medicine
-                  </button>
-                </div>
-
-                <div className="space-y-2">
-                  {prescriptions.map((p, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200">
-                      <input
-                        type="text"
-                        value={p.medicine_name}
-                        onChange={(e) => {
-                          const updated = [...prescriptions];
-                          updated[idx].medicine_name = e.target.value;
-                          setPrescriptions(updated);
-                        }}
-                        className="flex-1 px-2 py-1 bg-slate-50 border border-slate-300 rounded text-slate-900 text-xs font-semibold"
-                      />
-                      <input
-                        type="text"
-                        value={p.dosage}
-                        onChange={(e) => {
-                          const updated = [...prescriptions];
-                          updated[idx].dosage = e.target.value;
-                          setPrescriptions(updated);
-                        }}
-                        className="w-32 px-2 py-1 bg-slate-50 border border-slate-300 rounded text-slate-900 text-xs"
-                      />
-                      <input
-                        type="number"
-                        value={p.quantity}
-                        onChange={(e) => {
-                          const updated = [...prescriptions];
-                          updated[idx].quantity = parseInt(e.target.value) || 0;
-                          setPrescriptions(updated);
-                        }}
-                        className="w-16 px-2 py-1 bg-slate-50 border border-slate-300 rounded text-slate-900 text-xs font-mono font-bold"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveMed(idx)}
-                        className="p-1 text-slate-400 hover:text-rose-600"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Order Diagnostic Investigations (14 Essential Tests) */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <h3 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
-                  <FileText className="w-4 h-4 text-teal-600" />
-                  Order 14 Essential Diagnostic Tests (Point-of-Care & Hub Lab)
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] max-h-48 overflow-y-auto pr-1">
-                  {availableTests.map((t) => {
-                    const isSelected = selectedTestIds.includes(t.id);
-                    return (
-                      <label
-                        key={t.id}
-                        onClick={() => toggleTestSelection(t.id)}
-                        className={`p-2 rounded-lg border flex items-center justify-between cursor-pointer transition select-none ${
-                          isSelected
-                            ? 'bg-teal-50 border-teal-500 text-teal-900 font-bold'
-                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span>{t.name}</span>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {}}
-                          className="w-3.5 h-3.5 text-teal-600 rounded border-slate-300"
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Cross-Facility Referral Creation */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="refCheck"
-                    checked={createReferral}
-                    onChange={(e) => setCreateReferral(e.target.checked)}
-                    className="w-4 h-4 text-emerald-600 rounded bg-white border-slate-300"
-                  />
-                  <label htmlFor="refCheck" className="font-bold text-slate-900 flex items-center gap-1.5 cursor-pointer">
-                    <Share2 className="w-4 h-4 text-rose-600" />
-                    Raise Cross-Facility Referral to Secondary/Specialist Hospital Hub
-                  </label>
-                </div>
-
-                {createReferral && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                    <div>
-                      <label className="block text-slate-700 font-bold mb-1">Select Destination Facility *</label>
-                      <select
-                        value={destFacilityId}
-                        onChange={(e) => setDestFacilityId(parseInt(e.target.value))}
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900"
-                      >
-                        {referralDestinations.map((f) => (
-                          <option key={f.id} value={f.id}>
-                            {f.facility_name} ({f.facility_type.replace('_', ' ')})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-700 font-bold mb-1">Urgency Priority</label>
-                      <select
-                        value={refUrgency}
-                        onChange={(e) => setRefUrgency(e.target.value as any)}
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900"
-                      >
-                        <option value="ROUTINE">Routine Referral</option>
-                        <option value="URGENT">Urgent Evaluation</option>
-                        <option value="EMERGENCY">Emergency Referral</option>
-                      </select>
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <label className="block text-slate-700 font-bold mb-1">Referral Reason</label>
-                      <input
-                        type="text"
-                        value={refReason}
-                        onChange={(e) => setRefReason(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Schedule Follow-up Visit */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <h3 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
-                  <FileText className="w-4 h-4 text-purple-600" />
-                  Schedule Follow-Up Visit
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1">Follow-Up Date</label>
-                    <input
-                      type="date"
-                      value={followUpDate}
-                      onChange={(e) => setFollowUpDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1">Follow-Up Notes</label>
-                    <input
-                      type="text"
-                      value={followUpNotes}
-                      onChange={(e) => setFollowUpNotes(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900"
-                    />
-                  </div>
-                </div>
-              </div>
-
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard/doctor')}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Cancel / Return to Queue
+              </button>
               <button
                 type="submit"
-                disabled={saving}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-md transition"
+                disabled={submitting}
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
-                {saving ? 'Saving Consultation...' : 'Complete Consultation & Issue Orders'}
+                {submitting ? (
+                  <LoadingSpinner size="sm" label="Saving..." />
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" aria-hidden="true" />
+                    <span>Save & Complete Consultation</span>
+                  </>
+                )}
               </button>
-            </form>
-          ) : (
-            <div className="p-12 text-center text-xs text-slate-400">
-              Select a triaged patient from the queue to start doctor consultation.
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </form>
+      )}
     </div>
   );
 };
+
+export default Consultation;

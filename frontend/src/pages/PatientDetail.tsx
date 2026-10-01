@@ -3,13 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Patient, PatientDocument } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/permissions';
 import { 
   ArrowLeft, User, Phone, MapPin, Activity, Clock, 
   FileText, Pill, Share2, Stethoscope, History, Plus,
   ChevronDown, ChevronRight, Filter, RotateCcw, Calendar, UserPlus,
-  Upload, Download, Eye, Trash2, File, FileCheck, Shield,
-  CheckCircle, AlertTriangle, X, Search, Building, FolderOpen,
-  FileSpreadsheet
+  Upload, Download, Eye, Trash2, File,
+  AlertTriangle, X, Search, FolderOpen
 } from 'lucide-react';
 
 export const PatientDetail: React.FC = () => {
@@ -17,6 +17,9 @@ export const PatientDetail: React.FC = () => {
   const navigate = useNavigate();
   const { user, activeFacility } = useAuth();
   const isDistrictOfficer = user?.role === 'DISTRICT_OFFICER';
+  const isCompounder = user?.role === 'COMPOUNDER';
+  const isLabTech = user?.role === 'LAB_TECHNICIAN';
+  const isPharmacist = user?.role === 'PHARMACIST';
 
   // Navigation Tab State
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'VISITS' | 'MEDICAL_RECORDS' | 'LAB_REPORTS' | 'PRESCRIPTIONS' | 'DOCUMENTS'>('OVERVIEW');
@@ -176,7 +179,7 @@ export const PatientDetail: React.FC = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
+    } catch {
       alert('Failed to download document. You may not have required permissions.');
     } finally {
       setDownloadingDocId(null);
@@ -334,12 +337,20 @@ export const PatientDetail: React.FC = () => {
   // Issue Token Submit
   const handleIssueTokenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!patient || !activeFacility) return;
+    if (!patient) {
+      alert('Please select a valid registered patient.');
+      return;
+    }
+    const currentFacility = activeFacility || (user?.facility_details ? (user.facility_details as any) : (user?.assigned_facility ? { id: user.assigned_facility, facility_name: user.facility_name || 'Assigned Facility', facility_code: '' } : null));
+    if (!currentFacility) {
+      alert('Facility context is required. Please ensure an active facility is assigned.');
+      return;
+    }
     setSubmittingToken(true);
     try {
-      const res = await api.post('visits/', {
+      const res = await api.post('v1/visits/', {
         patient: patient.id,
-        facility: activeFacility.id,
+        facility: currentFacility.id,
         visit_type: visitType,
         priority,
         chief_complaint: chiefComplaint
@@ -349,7 +360,7 @@ export const PatientDetail: React.FC = () => {
       setShowTokenModal(false);
       navigate('/queue');
     } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to issue OPD token');
+      alert(e.response?.data?.error || e.response?.data?.detail || 'Failed to issue OPD token');
     } finally {
       setSubmittingToken(false);
     }
@@ -405,7 +416,7 @@ export const PatientDetail: React.FC = () => {
         </button>
 
         <div className="flex flex-wrap items-center gap-2">
-          {!isDistrictOfficer && (
+          {hasPermission(user?.role, 'patients.update') && (
             <button
               onClick={() => setShowUploadModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition"
@@ -415,13 +426,15 @@ export const PatientDetail: React.FC = () => {
             </button>
           )}
 
-          <button
-            onClick={() => setShowTokenModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Issue OPD Queue Token</span>
-          </button>
+          {hasPermission(user?.role, 'queue.create') && (
+            <button
+              onClick={() => setShowTokenModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Issue OPD Queue Token</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -449,7 +462,7 @@ export const PatientDetail: React.FC = () => {
               Vulnerability: {patient.vulnerability_information || 'General BPL'}
             </span>
             <span className="px-3 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-900 border border-blue-200 font-mono">
-              ABHA: {patient.ABHA_ID_DEMO || 'ABHA-2026-PENDING'}
+              ABHA: {patient.ABHA_ID_DEMO || 'Not linked'}
             </span>
           </div>
         </div>
@@ -482,7 +495,7 @@ export const PatientDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* 6 Tabs EMR Navigation Bar */}
+      {/* Role-Appropriate EMR Navigation Bar */}
       <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap gap-1 text-xs font-bold">
         <button
           onClick={() => setActiveTab('OVERVIEW')}
@@ -493,7 +506,7 @@ export const PatientDetail: React.FC = () => {
           }`}
         >
           <History className="w-4 h-4 text-blue-600" />
-          <span>Overview</span>
+          <span>{isCompounder ? 'Demographics & Intake' : 'Overview'}</span>
         </button>
 
         <button
@@ -505,44 +518,50 @@ export const PatientDetail: React.FC = () => {
           }`}
         >
           <Clock className="w-4 h-4 text-emerald-600" />
-          <span>Visits ({recordsData.visits.length})</span>
+          <span>{isCompounder ? 'OPD Encounters' : 'Visits'} ({recordsData.visits.length})</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('MEDICAL_RECORDS')}
-          className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
-            activeTab === 'MEDICAL_RECORDS'
-              ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Stethoscope className="w-4 h-4 text-indigo-600" />
-          <span>Medical Records ({recordsData.medical_records.length})</span>
-        </button>
+        {!isCompounder && !isLabTech && !isPharmacist && (
+          <button
+            onClick={() => setActiveTab('MEDICAL_RECORDS')}
+            className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
+              activeTab === 'MEDICAL_RECORDS'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Stethoscope className="w-4 h-4 text-indigo-600" />
+            <span>Medical Records ({recordsData.medical_records.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('LAB_REPORTS')}
-          className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
-            activeTab === 'LAB_REPORTS'
-              ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Activity className="w-4 h-4 text-teal-600" />
-          <span>Lab Reports ({recordsData.lab_reports.length})</span>
-        </button>
+        {!isCompounder && !isPharmacist && (
+          <button
+            onClick={() => setActiveTab('LAB_REPORTS')}
+            className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
+              activeTab === 'LAB_REPORTS'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Activity className="w-4 h-4 text-teal-600" />
+            <span>Lab Reports ({recordsData.lab_reports.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('PRESCRIPTIONS')}
-          className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
-            activeTab === 'PRESCRIPTIONS'
-              ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Pill className="w-4 h-4 text-amber-600" />
-          <span>Prescriptions ({recordsData.prescriptions.length})</span>
-        </button>
+        {!isCompounder && !isLabTech && (
+          <button
+            onClick={() => setActiveTab('PRESCRIPTIONS')}
+            className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
+              activeTab === 'PRESCRIPTIONS'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Pill className="w-4 h-4 text-amber-600" />
+            <span>Prescriptions ({recordsData.prescriptions.length})</span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab('DOCUMENTS')}
@@ -560,8 +579,9 @@ export const PatientDetail: React.FC = () => {
       {/* TAB 1: OVERVIEW */}
       {activeTab === 'OVERVIEW' && (
         <div className="space-y-6">
-          {/* Clinical Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          {/* Clinical Summary Cards - Restricted to Clinical Staff */}
+          {!isCompounder ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             <div className="glass-panel p-4 rounded-xl border border-slate-200 bg-white space-y-2">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
@@ -607,6 +627,17 @@ export const PatientDetail: React.FC = () => {
               )}
             </div>
           </div>
+          ) : (
+            <div className="p-4 rounded-xl border border-slate-200 bg-white text-xs space-y-2">
+              <div className="flex items-center gap-2 text-slate-800 font-bold border-b border-slate-100 pb-2">
+                <User className="w-4 h-4 text-emerald-600" />
+                <span>Front-Desk Demographic Registration Summary</span>
+              </div>
+              <p className="text-slate-600 text-[11px]">
+                Patient registered under facility front desk scope. Clinical consultations, vitals measurements, and prescriptions are restricted to certified clinical staff.
+              </p>
+            </div>
+          )}
 
           {/* Longitudinal Timeline Log */}
           <div className="glass-panel p-6 rounded-2xl border border-slate-200 bg-white space-y-5 shadow-xs">
@@ -665,14 +696,18 @@ export const PatientDetail: React.FC = () => {
                       className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-medium min-w-[160px]"
                     >
                       <option value="ALL">All Events</option>
-                      <option value="VISIT">Clinic Visits</option>
-                      <option value="TRIAGE">Nurse Triage</option>
-                      <option value="CONSULTATION">Diagnoses</option>
-                      <option value="PRESCRIPTION">Prescriptions</option>
-                      <option value="LAB">Lab Investigations</option>
+                      <option value="VISIT">{isCompounder ? 'OPD Encounters' : 'Clinic Visits'}</option>
                       <option value="DOCUMENT">Uploaded Documents</option>
-                      <option value="REFERRAL">Referrals</option>
-                      <option value="OTHER">Other Events</option>
+                      {!isCompounder && (
+                        <>
+                          <option value="TRIAGE">Nurse Triage</option>
+                          <option value="CONSULTATION">Diagnoses</option>
+                          {!isLabTech && <option value="PRESCRIPTION">Prescriptions</option>}
+                          {!isPharmacist && <option value="LAB">Lab Investigations</option>}
+                          <option value="REFERRAL">Referrals</option>
+                          <option value="OTHER">Other Events</option>
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>
@@ -1160,9 +1195,6 @@ export const PatientDetail: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredDocuments.map((doc) => {
-                const isImage = ['image/jpeg', 'image/png', 'image/jpg'].includes(doc.mime_type?.toLowerCase()) ||
-                  ['.jpg', '.jpeg', '.png'].some(ext => doc.file_name?.toLowerCase().endsWith(ext));
-
                 return (
                   <div
                     key={doc.id}
@@ -1231,7 +1263,7 @@ export const PatientDetail: React.FC = () => {
                         <span>{downloadingDocId === doc.id ? 'Downloading...' : 'Download'}</span>
                       </button>
 
-                      {!isDistrictOfficer && (
+                      {hasPermission(user?.role, 'patients.update') && (
                         <button
                           onClick={() => handleDeleteDocument(doc.id, doc.title)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
@@ -1250,7 +1282,7 @@ export const PatientDetail: React.FC = () => {
       )}
 
       {/* UPLOAD DOCUMENT MODAL */}
-      {showUploadModal && (
+      {hasPermission(user?.role, 'patients.update') && showUploadModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
@@ -1435,8 +1467,8 @@ export const PatientDetail: React.FC = () => {
         </div>
       )}
 
-      {/* Quick Token Modal */}
-      {showTokenModal && (
+      {/* Issue Token Modal */}
+      {hasPermission(user?.role, 'queue.create') && showTokenModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
@@ -1465,8 +1497,6 @@ export const PatientDetail: React.FC = () => {
                   >
                     <option value="GENERAL_OPD">General OPD</option>
                     <option value="NCD_SCREENING">NCD Screening</option>
-                    <option value="MATERNAL_ANC">Maternal ANC</option>
-                    <option value="CHILD_IMMUNIZATION">Child Immunization</option>
                     <option value="TELECONSULTATION">Teleconsultation</option>
                   </select>
                 </div>
@@ -1481,7 +1511,6 @@ export const PatientDetail: React.FC = () => {
                     <option value="NORMAL">Normal / Routine</option>
                     <option value="HIGH">High Priority</option>
                     <option value="EMERGENCY">Emergency 🚨</option>
-                    <option value="MATERNAL">Maternal ANC Care</option>
                   </select>
                 </div>
               </div>

@@ -9,9 +9,11 @@ class Visit(models.Model):
         ('TRIAGED', 'Triaged / Ready for Doctor'),
         ('WAITING_FOR_DOCTOR', 'Waiting for Doctor'),
         ('IN_CONSULTATION', 'In Consultation'),
+        ('WAITING_FOR_LAB', 'Waiting for Lab Results'),
         ('LAB_PENDING', 'Lab Pending'),
         ('LAB_IN_PROGRESS', 'Lab Test In Progress'),
         ('LAB_COMPLETED', 'Lab Test Completed'),
+        ('DOCTOR_REVIEW', 'Doctor Review (Lab Completed)'),
         ('WAITING_FOR_PHARMACY', 'Waiting for Pharmacy'),
         ('IN_PHARMACY', 'In Pharmacy Dispensing'),
         ('COMPLETED', 'Completed'),
@@ -56,6 +58,42 @@ class Visit(models.Model):
     class Meta:
         ordering = ['-opd_date', 'arrival_time']
 
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+
+        # FND-10: Coherent Visit status vs queue state
+        if self.status == 'COMPLETED' and self.current_queue != 'COMPLETED':
+            raise ValidationError({
+                'current_queue': "A completed visit must have its queue state set to COMPLETED."
+            })
+        if self.current_queue == 'COMPLETED' and self.status != 'COMPLETED':
+            raise ValidationError({
+                'status': "A visit with queue state COMPLETED must have its status set to COMPLETED."
+            })
+
+        # FND-09: Triage before Doctor Consultation
+        if self.pk and not getattr(self, '_bypass_triage_check', False):
+            if self.current_queue == 'DOCTOR' or self.status in ['WAITING_FOR_DOCTOR', 'IN_CONSULTATION']:
+                from apps.triage.models import TriageVitals
+                if not hasattr(self, 'triage') and not TriageVitals.objects.filter(visit=self).exists():
+                    raise ValidationError({
+                        'current_queue': "Cannot advance visit to DOCTOR queue without recorded triage vitals."
+                    })
+
+    def save(self, *args, **kwargs):
+        # Auto-align completed states
+        if self.status == 'COMPLETED':
+            self.current_queue = 'COMPLETED'
+            if not self.completed_time:
+                self.completed_time = timezone.now()
+        elif self.current_queue == 'COMPLETED':
+            self.status = 'COMPLETED'
+            if not self.completed_time:
+                self.completed_time = timezone.now()
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"Visit {self.visit_id} ({self.opd_date}) - {self.patient.name}"
 
@@ -93,3 +131,18 @@ class VisitStatusHistory(models.Model):
 
     def __str__(self):
         return f"{self.visit.visit_id}: {self.from_status} -> {self.to_status} at {self.timestamp}"
+
+# Phase 11 Target Physical Model: FacilityDailyCounter
+class FacilityDailyCounter(models.Model):
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.RESTRICT, related_name='daily_counters')
+    counter_date = models.DateField(default=datetime.date.today)
+    counter_type = models.CharField(max_length=20, default='OPD') # 'OPD', 'LAB'
+    last_token_number = models.IntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'facility_daily_counters'
+        unique_together = [('facility', 'counter_date', 'counter_type')]
+
+    def __str__(self):
+        return f"{self.facility.facility_name} [{self.counter_type}] on {self.counter_date}: {self.last_token_number}"

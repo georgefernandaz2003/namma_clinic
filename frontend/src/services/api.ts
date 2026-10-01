@@ -1,32 +1,9 @@
-import axios from 'axios';
+﻿/**
+ * Backward-compatible bridge to centralized API client.
+ * Refactored in Phase 21 to use src/api/client.ts with automated token refresh,
+ * structured error parsing, and configurable base URL.
+ */
+import apiClient, { API_BASE_URL, parseApiError } from '../api/client';
 
-const API_BASE_URL = 'http://localhost:8000/api/';
-
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
-      // Clear token if expired/unauthorized
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-    }
-    return Promise.reject(error);
-  }
-);
-
-export default api;
+export { apiClient, API_BASE_URL, parseApiError };
+export default apiClient;

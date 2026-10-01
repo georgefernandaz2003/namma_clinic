@@ -52,6 +52,21 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
     }
   };
 
+  const handleVerify = async (rxId: number) => {
+    try {
+      const res = await api.post(`prescriptions/${rxId}/verify/`, {
+        notes: 'Pharmacist verification completed at dispensing counter',
+      });
+      alert(res.data.message || 'Prescription verified successfully.');
+      fetchPrescriptions();
+      if (selectedRx && selectedRx.id === rxId) {
+        setSelectedRx({ ...selectedRx, status: 'VERIFIED' });
+      }
+    } catch (e: any) {
+      alert(e.response?.data?.error || 'Failed to verify prescription.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Pharmacist Banner */}
@@ -86,33 +101,34 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <p className="text-[11px] font-bold text-slate-500 uppercase">Prescriptions</p>
-          <h3 className="text-xl font-black text-slate-900 mt-1">{prescriptions.length}</h3>
+          <h3 className="text-xl font-black text-slate-900 mt-1">{summary?.pharmacy_summary?.total_prescriptions ?? summary?.kpis?.pharmacy_total ?? 0}</h3>
           <p className="text-[10px] text-amber-700 font-medium mt-0.5">Total EMR Orders</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-amber-800 uppercase">Waiting</p>
-          <h3 className="text-xl font-black text-amber-900 mt-1">{prescriptions.filter(p => p.status === 'PENDING').length}</h3>
+          <h3 className="text-xl font-black text-amber-900 mt-1">{summary?.pharmacy_summary?.pending ?? summary?.kpis?.pharmacy_waiting ?? 0}</h3>
           <p className="text-[10px] text-amber-700 font-medium mt-0.5">Dispense Queue</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-emerald-800 uppercase">Dispensed</p>
-          <h3 className="text-xl font-black text-emerald-900 mt-1">{prescriptions.filter(p => p.status === 'DISPENSED').length}</h3>
+          <h3 className="text-xl font-black text-emerald-900 mt-1">{summary?.pharmacy_summary?.dispensed_today ?? summary?.kpis?.pharmacy_dispensed_today ?? 0}</h3>
           <p className="text-[10px] text-emerald-700 font-medium mt-0.5">Completed Today</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-rose-800 uppercase">Low Stock</p>
-          <h3 className="text-xl font-black text-rose-900 mt-1">{inventory.low_stock || 0}</h3>
+          <h3 className="text-xl font-black text-rose-900 mt-1">{summary?.inventory_summary?.low_stock ?? summary?.pharmacy_summary?.low_stock ?? 0}</h3>
           <p className="text-[10px] text-rose-700 font-medium mt-0.5">Below Threshold</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-orange-200 bg-orange-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-orange-800 uppercase">Expiring Soon</p>
-          <h3 className="text-xl font-black text-orange-900 mt-1">{inventory.expiring_soon || 0}</h3>
+          <h3 className="text-xl font-black text-orange-900 mt-1">{summary?.inventory_summary?.expiring_soon ?? summary?.pharmacy_summary?.expiring_soon ?? 0}</h3>
           <p className="text-[10px] text-orange-700 font-medium mt-0.5">FEFO Action Required</p>
         </div>
+
       </div>
 
       {/* Main Grid: Active Prescription Panel & Pharmacy Queue */}
@@ -159,7 +175,15 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
                 System will automatically pick earliest expiring active batch and update inventory stock in backend.
               </div>
 
-              {selectedRx.status === 'PENDING' ? (
+              {selectedRx.status === 'PENDING_VERIFICATION' ? (
+                <button
+                  onClick={() => handleVerify(selectedRx.id)}
+                  disabled={!isToday}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Verify Prescription Safety Check
+                </button>
+              ) : ['VERIFIED', 'ACTIVE', 'PENDING', 'PARTIALLY_DISPENSED'].includes(selectedRx.status) ? (
                 <button
                   onClick={() => handleDispense(selectedRx.id)}
                   disabled={dispensing || !isToday}
@@ -168,8 +192,8 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
                   {dispensing ? 'Dispensing...' : 'Execute FEFO Dispense & Deduct Stock'}
                 </button>
               ) : (
-                <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-900 font-bold text-center">
-                  Prescription Already Dispensed
+                <div className="p-2.5 rounded-xl bg-slate-100 text-slate-800 font-bold text-center">
+                  Prescription Status: {selectedRx.status}
                 </div>
               )}
             </div>
@@ -214,7 +238,13 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({ summar
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                          p.status === 'DISPENSED' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'
+                          p.status === 'DISPENSED'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : p.status === 'VERIFIED'
+                            ? 'bg-teal-50 text-teal-800 border-teal-200'
+                            : p.status === 'PARTIALLY_DISPENSED'
+                            ? 'bg-blue-50 text-blue-800 border-blue-200'
+                            : 'bg-amber-50 text-amber-800 border-amber-200'
                         }`}>
                           {p.status}
                         </span>

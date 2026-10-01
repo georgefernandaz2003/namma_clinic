@@ -41,3 +41,28 @@ class TriageVitals(models.Model):
 
     def __str__(self):
         return f"Triage Vitals - {self.patient.name} ({self.blood_pressure_systolic}/{self.blood_pressure_diastolic} BP)"
+
+class Triage(models.Model):
+    visit = models.OneToOneField('visits.Visit', on_delete=models.CASCADE, related_name='triage_observation')
+    triaged_by_staff = models.ForeignKey('accounts.StaffProfile', on_delete=models.RESTRICT, related_name='triages')
+    systolic_bp = models.IntegerField(null=True, blank=True)
+    diastolic_bp = models.IntegerField(null=True, blank=True)
+    pulse_rate = models.IntegerField(null=True, blank=True)
+    temperature_celsius = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    spo2_percentage = models.IntegerField(null=True, blank=True)
+    weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    height_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    bmi = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'triages'
+        constraints = [
+            models.CheckConstraint(check=models.Q(systolic_bp__isnull=True) | models.Q(systolic_bp__range=(40, 300)), name='chk_triages_bp_sys'),
+            models.CheckConstraint(check=models.Q(diastolic_bp__isnull=True) | models.Q(diastolic_bp__range=(30, 200)), name='chk_triages_bp_dia'),
+            models.CheckConstraint(check=models.Q(spo2_percentage__isnull=True) | models.Q(spo2_percentage__range=(50, 100)), name='chk_triages_spo2'),
+            models.CheckConstraint(check=models.Q(pulse_rate__isnull=True) | models.Q(pulse_rate__range=(30, 250)), name='chk_triages_pulse'),
+        ]
+
+    def __str__(self):
+        return f"Triage for Visit #{self.visit_id} by Staff #{self.triaged_by_staff_id}"

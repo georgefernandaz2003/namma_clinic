@@ -10,6 +10,28 @@ class PatientSerializer(serializers.ModelSerializer):
         model = Patient
         fields = '__all__'
 
+    def validate(self, attrs):
+        facility = attrs.get('registered_at_facility') or getattr(self.instance, 'registered_at_facility', None)
+        district = attrs.get('district') or getattr(self.instance, 'district', None)
+        ward = attrs.get('ward') or getattr(self.instance, 'ward', None)
+
+        if facility:
+            facility_dist = getattr(facility, 'district', None)
+            if facility_dist:
+                if not district:
+                    attrs['district'] = facility_dist
+                elif district.id != facility_dist.id:
+                    raise serializers.ValidationError({
+                        'district': f"Patient district ({district.name}) must match registration facility district ({facility_dist.name})."
+                    })
+        if ward and district:
+            ward_dist = getattr(ward, 'district', None)
+            if ward_dist and ward_dist.id != district.id:
+                raise serializers.ValidationError({
+                    'ward': f"Patient ward ({ward.name}) does not belong to district ({district.name})."
+                })
+        return attrs
+
 class HouseholdSerializer(serializers.ModelSerializer):
     ward_name = serializers.ReadOnlyField(source='ward.name')
 

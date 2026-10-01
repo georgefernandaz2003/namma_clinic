@@ -1,3 +1,4 @@
+import uuid
 from rest_framework import serializers, viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -6,6 +7,7 @@ from django.utils import timezone
 import datetime
 
 from apps.visits.models import Visit, Token, VisitStatusHistory
+from apps.visits.services import issue_opd_token
 from apps.patients.serializers import PatientSerializer
 from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission
 
@@ -45,6 +47,15 @@ class VisitViewSet(viewsets.ModelViewSet):
     serializer_class = VisitSerializer
     permission_classes = [permissions.IsAuthenticated, HasPermission]
     required_permissions = {
+        'list': 'queue.view',
+        'retrieve': 'queue.view',
+        'history_summary': 'queue.view',
+        'create': 'queue.create',
+        'call_next_patient': 'queue.call_next',
+        'transition_status': 'queue.transition',
+        'update': 'queue.update',
+        'partial_update': 'queue.update',
+        'destroy': 'queue.update',
         'GET': 'queue.view',
         'POST': 'queue.update',
         'PUT': 'queue.update',
@@ -124,17 +135,18 @@ class VisitViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError):
             pass
 
+        from apps.accounts.permissions import can_access_facility
+        if not can_access_facility(request.user, facility_id):
+            return Response(
+                {'error': 'You do not have authorization to create OPD tokens for a facility outside your assigned scope.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         # Operational OPD Date is strictly today
         today = datetime.date.today()
 
         with transaction.atomic():
-            # Server-side sequential token generation per facility and date
-            max_token = Token.objects.select_for_update().filter(
-                facility_id=facility_id, date=today
-            ).aggregate(models.Max('token_number'))['token_number__max'] or 0
-            
-            token_number = max_token + 1
-            base_id = f"VIS-F{facility_id}-{today.strftime('%Y%m%d')}-{token_number:03d}"
+            base_id = f"VIS-F{facility_id}-{today.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
             visit_id = base_id
             seq = 1
             while Visit.objects.filter(visit_id=visit_id).exists():
@@ -154,14 +166,7 @@ class VisitViewSet(viewsets.ModelViewSet):
                 arrival_time=timezone.now()
             )
 
-            token = Token.objects.create(
-                token_number=token_number,
-                visit=visit,
-                facility_id=facility_id,
-                date=today,
-                priority=priority,
-                status='WAITING'
-            )
+            token = issue_opd_token(visit=visit, facility=visit.facility, priority=priority)
 
             VisitStatusHistory.objects.create(
                 visit=visit,
@@ -170,7 +175,7 @@ class VisitViewSet(viewsets.ModelViewSet):
                 queue='TRIAGE',
                 performed_by=request.user,
                 performed_by_role=getattr(request.user, 'role', ''),
-                notes=f"Issued OPD Token #{token_number} for {today}"
+                notes=f"Issued OPD Token #{token.token_number} for {today}"
             )
 
         return Response(VisitSerializer(visit).data, status=status.HTTP_201_CREATED)
@@ -187,12 +192,19 @@ class VisitViewSet(viewsets.ModelViewSet):
         if not facility_id:
             return Response({'error': 'Facility context required to call next patient.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Enforce minimum necessary queue privilege per role
+        user_role = getattr(request.user, 'role', '')
+        if user_role == 'DOCTOR' and target_queue != 'DOCTOR':
+            return Response({'error': 'Doctors are only authorized to call patients from the DOCTOR consultation queue.'}, status=status.HTTP_403_FORBIDDEN)
+        elif user_role == 'NURSE' and target_queue != 'TRIAGE':
+            return Response({'error': 'Nurses are only authorized to call patients from the TRIAGE queue.'}, status=status.HTTP_403_FORBIDDEN)
+
         with transaction.atomic():
             waiting_status_map = {
-                'TRIAGE': 'WAITING_FOR_TRIAGE',
-                'DOCTOR': 'WAITING_FOR_DOCTOR',
-                'LAB': 'LAB_PENDING',
-                'PHARMACY': 'WAITING_FOR_PHARMACY'
+                'TRIAGE': ['WAITING_FOR_TRIAGE', 'WAITING'],
+                'DOCTOR': ['WAITING_FOR_DOCTOR', 'WAITING', 'TRIAGED', 'DOCTOR_REVIEW', 'LAB_COMPLETED'],
+                'LAB': ['WAITING_FOR_LAB', 'LAB_PENDING'],
+                'PHARMACY': ['WAITING_FOR_PHARMACY']
             }
             active_status_map = {
                 'TRIAGE': ('IN_TRIAGE', 'TRIAGE'),
@@ -201,7 +213,7 @@ class VisitViewSet(viewsets.ModelViewSet):
                 'PHARMACY': ('IN_PHARMACY', 'PHARMACY')
             }
 
-            req_status = waiting_status_map.get(target_queue, 'WAITING_FOR_DOCTOR')
+            eligible_statuses = waiting_status_map.get(target_queue, ['WAITING_FOR_DOCTOR'])
             next_status, queue_code = active_status_map.get(target_queue, ('IN_CONSULTATION', 'DOCTOR'))
 
             priority_case = models.Case(
@@ -217,7 +229,7 @@ class VisitViewSet(viewsets.ModelViewSet):
                 facility_id=facility_id,
                 opd_date=today,
                 current_queue=target_queue,
-                status__in=[req_status, 'WAITING', 'TRIAGED']
+                status__in=eligible_statuses
             ).annotate(priority_weight=priority_case).order_by('priority_weight', 'arrival_time').first()
 
             if not next_visit:
@@ -263,6 +275,22 @@ class VisitViewSet(viewsets.ModelViewSet):
         if not to_status:
             return Response({'error': 'Parameter to_status is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # FND-09: Role validation for transitions
+        user_role = getattr(request.user, 'role', '')
+        if to_status in ['TRIAGED', 'WAITING_FOR_DOCTOR', 'DOCTOR_REVIEW'] and user_role not in ['NURSE', 'ADMIN', 'SYSTEM_ADMIN', 'DOCTOR', 'LAB_TECHNICIAN']:
+            return Response({'error': f"Role '{user_role}' is not authorized to transition visit to DOCTOR queue."}, status=status.HTTP_403_FORBIDDEN)
+        if to_status in ['IN_CONSULTATION', 'DOCTOR_REVIEW'] and user_role not in ['DOCTOR', 'ADMIN', 'SYSTEM_ADMIN', 'LAB_TECHNICIAN']:
+            return Response({'error': f"Role '{user_role}' is not authorized to begin consultation or doctor review."}, status=status.HTTP_403_FORBIDDEN)
+
+        # FND-09: Prevent transition to DOCTOR queue without recorded triage vitals
+        if to_status in ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION'] or target_queue == 'DOCTOR':
+            from apps.triage.models import TriageVitals
+            if not hasattr(visit, 'triage') and not TriageVitals.objects.filter(visit=visit).exists():
+                return Response(
+                    {'error': 'Cannot advance visit to DOCTOR queue without recorded triage vitals.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         from_status = visit.status
         visit.status = to_status
         visit.current_queue = target_queue
@@ -272,9 +300,13 @@ class VisitViewSet(viewsets.ModelViewSet):
             visit.triage_end_time = now
             visit.current_queue = 'DOCTOR'
             visit.status = 'WAITING_FOR_DOCTOR'
-        elif to_status == 'COMPLETED':
+        elif to_status == 'DOCTOR_REVIEW':
+            visit.current_queue = 'DOCTOR'
+            visit.status = 'DOCTOR_REVIEW'
+        elif to_status == 'COMPLETED' or target_queue == 'COMPLETED':
             visit.completed_time = now
             visit.current_queue = 'COMPLETED'
+            visit.status = 'COMPLETED'
         elif to_status == 'WAITING_FOR_PHARMACY':
             visit.consultation_end_time = now
             visit.current_queue = 'PHARMACY'

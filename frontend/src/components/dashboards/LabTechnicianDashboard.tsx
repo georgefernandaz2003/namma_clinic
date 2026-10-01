@@ -98,28 +98,29 @@ export const LabTechnicianDashboard: React.FC<LabTechnicianDashboardProps> = ({ 
 
         <div className="bg-white p-4 rounded-xl border border-purple-200 bg-purple-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-purple-800 uppercase">Sample Pending</p>
-          <h3 className="text-xl font-black text-purple-900 mt-1">{labOrders.filter(o => o.status === 'ORDERED').length}</h3>
+          <h3 className="text-xl font-black text-purple-900 mt-1">{summary?.lab_summary?.ordered ?? labOrders.filter(o => o.status === 'ORDERED').length}</h3>
           <p className="text-[10px] text-purple-700 font-medium mt-0.5">Blood / Urine Draw</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-blue-200 bg-blue-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-blue-800 uppercase">Processing</p>
-          <h3 className="text-xl font-black text-blue-900 mt-1">{labOrders.filter(o => o.status === 'SAMPLE_COLLECTED').length}</h3>
+          <h3 className="text-xl font-black text-blue-900 mt-1">{summary?.lab_summary?.processing ?? labOrders.filter(o => o.status === 'SAMPLE_COLLECTED').length}</h3>
           <p className="text-[10px] text-blue-700 font-medium mt-0.5">Rapid Strip / Analyzer</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-amber-800 uppercase">Results Pending</p>
-          <h3 className="text-xl font-black text-amber-900 mt-1">{labOrders.filter(o => o.status === 'SAMPLE_COLLECTED').length}</h3>
+          <h3 className="text-xl font-black text-amber-900 mt-1">{summary?.lab_summary?.sample_collected ?? labOrders.filter(o => o.status === 'SAMPLE_COLLECTED').length}</h3>
           <p className="text-[10px] text-amber-700 font-medium mt-0.5">Awaiting Verification</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
           <p className="text-[11px] font-bold text-emerald-800 uppercase">Completed</p>
-          <h3 className="text-xl font-black text-emerald-900 mt-1">{labOrders.filter(o => o.status === 'VERIFIED').length}</h3>
+          <h3 className="text-xl font-black text-emerald-900 mt-1">{summary?.lab_summary?.verified ?? labOrders.filter(o => o.status === 'VERIFIED').length}</h3>
           <p className="text-[10px] text-emerald-700 font-medium mt-0.5">Released to EMR</p>
         </div>
       </div>
+
 
       {/* Main Grid: Result Verification Form & Lab Queue Table */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

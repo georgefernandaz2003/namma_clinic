@@ -32,3 +32,26 @@ class Alert(models.Model):
 
     def __str__(self):
         return f"[{self.severity}] {self.title} @ {self.facility.facility_name}"
+
+class OperationalAlert(models.Model):
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='operational_alerts')
+    acknowledged_by_staff = models.ForeignKey('accounts.StaffProfile', on_delete=models.RESTRICT, null=True, blank=True, related_name='acknowledged_alerts')
+    alert_category = models.CharField(max_length=50) # 'PANIC_LAB', 'DRUG_EXPIRY', 'EPIDEMIC_SURGE'
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    severity = models.CharField(max_length=20, default='INFO', choices=[
+        ('INFO', 'Info'),
+        ('WARNING', 'Warning'),
+        ('CRITICAL', 'Critical')
+    ])
+    is_active = models.BooleanField(default=True)
+    source_entity_type = models.CharField(max_length=50, blank=True, null=True)
+    source_entity_id = models.BigIntegerField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'operational_alerts'
+
+    def __str__(self):
+        return f"[{self.severity}] {self.title} @ Facility #{self.facility_id}"

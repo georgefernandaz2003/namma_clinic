@@ -86,7 +86,7 @@ export const DistrictOfficerDashboard: React.FC<DistrictOfficerDashboardProps> =
           <div className="flex justify-between items-start">
             <div>
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Facilities</p>
-              <h3 className="text-2xl font-black text-slate-900 mt-1">{summary?.total_facilities || 4}</h3>
+              <h3 className="text-2xl font-black text-slate-900 mt-1">{summary?.total_facilities ?? 0}</h3>
               <p className="text-[10px] text-teal-700 font-semibold mt-1">Active Healthcare Nodes</p>
             </div>
             <div className="p-3 bg-teal-50 rounded-xl text-teal-700 border border-teal-100">

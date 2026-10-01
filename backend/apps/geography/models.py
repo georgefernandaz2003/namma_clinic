@@ -15,6 +15,20 @@ class District(models.Model):
     def __str__(self):
         return f"{self.name} ({self.state.name})"
 
+class Taluk(models.Model):
+    district = models.ForeignKey(District, on_delete=models.RESTRICT, related_name='taluks')
+    code = models.CharField(max_length=20)
+    name = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'taluks'
+        unique_together = [('district', 'code')]
+
+    def __str__(self):
+        return f"{self.name} [{self.code}]"
+
 class Zone(models.Model):
     district = models.ForeignKey(District, on_delete=models.CASCADE, related_name='zones')
     name = models.CharField(max_length=100)

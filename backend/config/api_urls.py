@@ -15,11 +15,13 @@ from apps.patients.views import (
 from apps.visits.views import VisitViewSet
 from apps.triage.views import TriageVitalsViewSet
 from apps.consultations.views import ConsultationViewSet, PrescriptionViewSet
-from apps.laboratory.views import LabTestMasterViewSet, LabOrderViewSet
+from apps.laboratory.views import LabTestMasterViewSet, LabOrderViewSet, LabTokenViewSet
 from apps.pharmacy.views import (
     MedicineMasterViewSet, MedicineBatchViewSet, DispenseMedicineView,
     VendorViewSet, PurchaseOrderViewSet, InventoryTransactionViewSet,
-    PharmacyDashboardSummaryView, PharmacyAlertsView, PharmacyReportsView
+    PharmacyDashboardSummaryView, PharmacyAlertsView, PharmacyReportsView,
+    GoodsReceiptNoteViewSet, DispensationReturnViewSet, BatchRecallViewSet,
+    PatientCounsellingViewSet, ColdChainLogViewSet
 )
 from apps.referrals.views import ReferralViewSet, FollowUpViewSet
 from apps.ncd.views import NCDRecordViewSet
@@ -56,11 +58,17 @@ router.register(r'prescriptions', PrescriptionViewSet, basename='prescription')
 router.register(r'pharmacy/prescriptions', PrescriptionViewSet, basename='pharmacyprescription')
 router.register(r'lab/tests', LabTestMasterViewSet, basename='labtest')
 router.register(r'lab/orders', LabOrderViewSet, basename='laborder')
+router.register(r'lab/tokens', LabTokenViewSet, basename='labtoken')
 router.register(r'pharmacy/medicines', MedicineMasterViewSet, basename='medicinemaster')
 router.register(r'pharmacy/batches', MedicineBatchViewSet, basename='medicinebatch')
 router.register(r'pharmacy/vendors', VendorViewSet, basename='pharmacyvendor')
 router.register(r'pharmacy/purchase-orders', PurchaseOrderViewSet, basename='pharmacypurchaseorder')
 router.register(r'pharmacy/transactions', InventoryTransactionViewSet, basename='pharmacytransaction')
+router.register(r'pharmacy/grn', GoodsReceiptNoteViewSet, basename='pharmacygrn')
+router.register(r'pharmacy/returns', DispensationReturnViewSet, basename='pharmacyreturn')
+router.register(r'pharmacy/recalls', BatchRecallViewSet, basename='pharmacyrecall')
+router.register(r'pharmacy/counselling', PatientCounsellingViewSet, basename='pharmacycounselling')
+router.register(r'pharmacy/cold-chain', ColdChainLogViewSet, basename='pharmacycoldchain')
 router.register(r'referrals', ReferralViewSet, basename='referral')
 router.register(r'followups', FollowUpViewSet, basename='followup')
 router.register(r'ncd', NCDRecordViewSet, basename='ncd')
