@@ -8,7 +8,7 @@ class RoleChoices(models.TextChoices):
     HOSPITAL_ADMIN = 'HOSPITAL_ADMIN', 'Hospital Administrator'
     DOCTOR = 'DOCTOR', 'Doctor'
     NURSE = 'NURSE', 'Nurse'
-    COMPOUNDER = 'COMPOUNDER', 'Compounder'
+    FRONT_DESK_OFFICER = 'FRONT_DESK_OFFICER', 'Front Desk Officer'
     LAB_TECHNICIAN = 'LAB_TECHNICIAN', 'Lab Technician'
     PHARMACIST = 'PHARMACIST', 'Pharmacist'
     INVENTORY = 'INVENTORY', 'Inventory Manager'

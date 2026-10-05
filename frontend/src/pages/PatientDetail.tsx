@@ -17,7 +17,8 @@ export const PatientDetail: React.FC = () => {
   const navigate = useNavigate();
   const { user, activeFacility } = useAuth();
   const isDistrictOfficer = user?.role === 'DISTRICT_OFFICER';
-  const isCompounder = user?.role === 'COMPOUNDER';
+  const isFrontDeskOfficer = user?.role === 'FRONT_DESK_OFFICER';
+  const isCompounder = isFrontDeskOfficer;
   const isLabTech = user?.role === 'LAB_TECHNICIAN';
   const isPharmacist = user?.role === 'PHARMACIST';
 

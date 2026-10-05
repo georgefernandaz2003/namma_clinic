@@ -1,4 +1,4 @@
-﻿"""
+"""
 Playwright Browser Validation: Staff & Clinic Administration UI
 Verifies:
 A. Clinic Admin (testadmin): Login, Staff Directory, Invite, Role Assignments (Doctor, Nurse, Compounder), Lifecycle Actions
@@ -109,12 +109,12 @@ def run_browser_validation():
         page.click('[data-testid="open-invite-staff-btn"]')
         page.wait_for_selector('[data-testid="submit-invite-btn"]', timeout=5000)
 
-        # Check that DOCTOR, NURSE, COMPOUNDER are options, and NO NURSE_COMPOUNDER or SYSTEM_ADMIN
+        # Check that DOCTOR, NURSE, FRONT_DESK_OFFICER are options, and NO NURSE_COMPOUNDER or SYSTEM_ADMIN
         role_select = page.wait_for_selector('[data-testid="invite-role-select"]')
         options_text = role_select.inner_text()
         assert "Doctor" in options_text, "Doctor must be available in invite role options"
         assert "Nurse" in options_text, "Nurse must be available in invite role options"
-        assert "Compounder" in options_text, "Compounder must be available in invite role options"
+        assert "Front Desk Officer" in options_text, "Front Desk Officer must be available in invite role options"
         assert "NURSE_COMPOUNDER" not in options_text, "NURSE_COMPOUNDER must not exist!"
         assert "SYSTEM_ADMIN" not in options_text, "SYSTEM_ADMIN must not exist!"
         log("Verified: Role selection options in Invite modal adhere strictly to operational catalogue.")
@@ -142,9 +142,9 @@ def run_browser_validation():
                 ar_options = ar_select.inner_text()
                 assert "Doctor" in ar_options
                 assert "Nurse" in ar_options
-                assert "Compounder" in ar_options
+                assert "Front Desk Officer" in ar_options
                 assert "NURSE_COMPOUNDER" not in ar_options
-                log("Verified: Assign Role modal has separate NURSE and COMPOUNDER options.")
+                log("Verified: Assign Role modal has separate NURSE and FRONT_DESK_OFFICER options.")
                 page.click('text=Cancel')
 
             # Close detail modal

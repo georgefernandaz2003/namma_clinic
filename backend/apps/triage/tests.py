@@ -48,7 +48,7 @@ class TriageHandoffAndAtomicityTests(TestCase):
         )
 
         role_nurse = RoleMaster.objects.get(code="NURSE")
-        role_compounder = RoleMaster.objects.get(code="COMPOUNDER")
+        role_compounder = RoleMaster.objects.get(code="FRONT_DESK_OFFICER")
 
         # Nurse User at Facility 1
         p_nurse = Person.objects.create(first_name="Radha", last_name="Nurse", gender="FEMALE", date_of_birth="1992-03-03")
@@ -63,15 +63,15 @@ class TriageHandoffAndAtomicityTests(TestCase):
         )
 
         # Compounder User at Facility 1
-        p_cmp = Person.objects.create(first_name="Kumar", last_name="Compounder", gender="MALE", date_of_birth="1990-01-01")
+        p_cmp = Person.objects.create(first_name="Kumar", last_name="FrontDesk", gender="MALE", date_of_birth="1990-01-01")
         staff_cmp = StaffProfile.objects.create(
-            person=p_cmp, employee_id="EMP-CMP-01", designation="Compounder", status="ACTIVE"
+            person=p_cmp, employee_id="EMP-CMP-01", designation="Front Desk Officer", status="ACTIVE"
         )
         StaffRoleAssignment.objects.create(staff=staff_cmp, role=role_compounder, effective_from="2026-01-01", is_active=True)
         StaffFacilityAssignment.objects.create(staff=staff_cmp, facility=self.facility_1, is_primary=True, is_active=True)
         self.user_compounder = User.objects.create_user(
             username="test_triage_cmp", password="password123",
-            role="COMPOUNDER", assigned_facility=self.facility_1, staff_profile=staff_cmp
+            role="FRONT_DESK_OFFICER", assigned_facility=self.facility_1, staff_profile=staff_cmp
         )
 
         # Patient at Facility 1

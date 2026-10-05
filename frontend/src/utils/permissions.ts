@@ -28,7 +28,7 @@ export const ROLE_PERMISSIONS: Record<Role, Set<string>> = {
     'vitals.view', 'vitals.create', 'triage.view', 'triage.create', 'queue.view', 'queue.call_next', 'queue.transition', 'queue.create', 'queue.issue_token', 'queue.void', 'queue.update',
     'clinic.view', 'dashboard.view', 'ncd.view', 'ncd.create', 'ncd.update', 'surveillance.view'
   ]),
-  COMPOUNDER: new Set([
+  FRONT_DESK_OFFICER: new Set([
     'patients.view', 'patients.create', 'patients.update_demographics',
     'queue.view', 'queue.create', 'queue.issue_token', 'queue.void',
     'clinic.view', 'dashboard.view'
@@ -54,7 +54,7 @@ export const HUMAN_ROLE_LABELS: Record<Role, string> = {
   HOSPITAL_ADMIN: 'Hospital Admin',
   DOCTOR: 'Doctor',
   NURSE: 'Nurse',
-  COMPOUNDER: 'Compounder',
+  FRONT_DESK_OFFICER: 'Front Desk Officer',
   LAB_TECHNICIAN: 'Lab Technician',
   PHARMACIST: 'Pharmacist',
   INVENTORY: 'Inventory Manager'
@@ -81,8 +81,8 @@ export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
   NURSE: [
     '/', '/patients', '/triage', '/queue', '/followups', '/ncd', '/outreach', '/wellness', '/alerts'
   ],
-  COMPOUNDER: [
-    '/', '/dashboard/compounder', '/patients', '/queue', '/alerts'
+  FRONT_DESK_OFFICER: [
+    '/', '/dashboard/front-desk', '/dashboard/compounder', '/patients', '/queue', '/alerts'
   ],
   LAB_TECHNICIAN: [
     '/', '/queue', '/lab', '/alerts'

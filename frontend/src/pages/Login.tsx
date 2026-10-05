@@ -34,8 +34,8 @@ interface DemoUser {
 const ALL_DEMO_CREDENTIALS: DemoUser[] = [
   // --- All 8 Core Operational Roles + Dual Role ---
   {
-    role: 'Compounder / Intake',
-    roleBadge: 'COMPOUNDER',
+    role: 'Front Desk Officer',
+    roleBadge: 'FRONT_DESK_OFFICER',
     username: 'e2e_compounder_user',
     password: 'Password123!',
     desc: 'Patient intake registration, demographic search & OPD token issuance',

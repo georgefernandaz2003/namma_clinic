@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Authentication & IAM Types
  * Authoritative Backend Contract: docs/FRONTEND_API_CONTRACT.md (Section 2)
  */
@@ -8,7 +8,7 @@ export type Role =
   | 'HOSPITAL_ADMIN'
   | 'DOCTOR'
   | 'NURSE'
-  | 'COMPOUNDER'
+  | 'FRONT_DESK_OFFICER'
   | 'LAB_TECHNICIAN'
   | 'PHARMACIST'
   | 'INVENTORY';
@@ -18,7 +18,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   HOSPITAL_ADMIN: 'Hospital Administrator (Clinic Admin)',
   DOCTOR: 'Doctor (Medical Officer)',
   NURSE: 'Staff Nurse',
-  COMPOUNDER: 'Compounder',
+  FRONT_DESK_OFFICER: 'Front Desk Officer',
   LAB_TECHNICIAN: 'Lab Technician',
   PHARMACIST: 'Pharmacist',
   INVENTORY: 'Inventory Manager',

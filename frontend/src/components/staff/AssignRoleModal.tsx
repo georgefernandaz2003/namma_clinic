@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { X, ShieldCheck, AlertCircle } from 'lucide-react';
 import type { Role } from '../../types/auth';
 import type { AssignRolePayload } from '../../types/staff';
@@ -39,7 +39,7 @@ export const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
     ? [
         { value: 'DOCTOR', label: 'Doctor (Medical Officer)' },
         { value: 'NURSE', label: 'Nurse' },
-        { value: 'COMPOUNDER', label: 'Compounder' },
+        { value: 'FRONT_DESK_OFFICER', label: 'Front Desk Officer' },
         { value: 'LAB_TECHNICIAN', label: 'Lab Technician' },
         { value: 'PHARMACIST', label: 'Pharmacist' },
         { value: 'INVENTORY', label: 'Inventory Manager' },
@@ -48,7 +48,7 @@ export const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
     : [
         { value: 'DOCTOR', label: 'Doctor (Medical Officer)' },
         { value: 'NURSE', label: 'Nurse' },
-        { value: 'COMPOUNDER', label: 'Compounder' },
+        { value: 'FRONT_DESK_OFFICER', label: 'Front Desk Officer' },
         { value: 'LAB_TECHNICIAN', label: 'Lab Technician' },
         { value: 'PHARMACIST', label: 'Pharmacist' },
         { value: 'INVENTORY', label: 'Inventory Manager' },

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Role & Permission Catalogue Test Suite.
 Verifies the 14 IAM Authorization Source-of-Truth Hardening requirements:
 1. RoleMaster/RolePermission is authoritative.
@@ -88,7 +88,7 @@ class RolePermissionCatalogueHardeningTests(TestCase):
         )
         self.user_compounder = User.objects.create_user(
             username="test_compounder", password="password123",
-            role=RoleChoices.COMPOUNDER, assigned_facility=self.clinic
+            role=RoleChoices.FRONT_DESK_OFFICER, assigned_facility=self.clinic
         )
         self.user_lab_tech = User.objects.create_user(
             username="test_lab", password="password123",
@@ -185,11 +185,11 @@ class RolePermissionCatalogueHardeningTests(TestCase):
         mapping.save()
         self.assertTrue(has_role_permission(self.user_doctor, "lab_order.create"))
 
-    # 6. Existing seven roles remain intact
+    # 6. Existing eight roles remain intact
     def test_06_existing_eight_roles_remain_intact(self):
         expected_roles = {
             "DISTRICT_OFFICER", "HOSPITAL_ADMIN", "DOCTOR",
-            "NURSE", "COMPOUNDER", "LAB_TECHNICIAN", "PHARMACIST", "INVENTORY"
+            "NURSE", "FRONT_DESK_OFFICER", "LAB_TECHNICIAN", "PHARMACIST", "INVENTORY"
         }
         roles = set(RoleMaster.objects.values_list('code', flat=True))
         self.assertEqual(roles, expected_roles)
@@ -205,20 +205,22 @@ class RolePermissionCatalogueHardeningTests(TestCase):
     # 8. No NURSE_COMPOUNDER or composite role exists
     def test_08_no_nurse_compounder_role(self):
         self.assertFalse(RoleMaster.objects.filter(code="NURSE_COMPOUNDER").exists())
+        self.assertFalse(RoleMaster.objects.filter(code="NURSE_FRONT_DESK_OFFICER").exists())
         self.assertFalse(RoleMaster.objects.filter(code="CLINIC_ADMIN").exists())
         self.assertFalse(RoleMaster.objects.filter(code="PHARMACY_INVENTORY").exists())
         self.assertFalse(RoleMaster.objects.filter(code="INVENTORY_PHARMACIST").exists())
         self.assertFalse(RoleMaster.objects.filter(code="STORE_PHARMACIST").exists())
         self.assertNotIn("NURSE_COMPOUNDER", [c[0] for c in RoleChoices.choices])
+        self.assertNotIn("NURSE_FRONT_DESK_OFFICER", [c[0] for c in RoleChoices.choices])
         self.assertNotIn("CLINIC_ADMIN", [c[0] for c in RoleChoices.choices])
         self.assertNotIn("PHARMACY_INVENTORY", [c[0] for c in RoleChoices.choices])
         self.assertNotIn("INVENTORY_PHARMACIST", [c[0] for c in RoleChoices.choices])
         self.assertNotIn("STORE_PHARMACIST", [c[0] for c in RoleChoices.choices])
 
-    # 9. Compounder still has exactly the approved seven permissions
+    # 9. Front Desk Officer still has exactly the approved seven permissions
     def test_09_compounder_has_exactly_approved_seven_permissions(self):
         compounder_perms = set(RolePermission.objects.filter(
-            role__code="COMPOUNDER", is_active=True
+            role__code="FRONT_DESK_OFFICER", is_active=True
         ).values_list('permission__code', flat=True))
 
         expected = {
@@ -313,13 +315,13 @@ class RolePermissionCatalogueHardeningTests(TestCase):
 
     # 14. Existing approved authorization tests continue to pass and Multi-Role readiness
     def test_14_multi_role_readiness_and_matrix_completeness(self):
-        # 1. Multi-role resolution: User with StaffProfile having both NURSE and COMPOUNDER roles
+        # 1. Multi-role resolution: User with StaffProfile having both NURSE and FRONT_DESK_OFFICER roles
         person = Person.objects.create(
             first_name="Radha", last_name="Sharma", gender="FEMALE",
             date_of_birth=datetime.date(1992, 5, 10), phone_number="9876500001"
         )
         staff_prof = StaffProfile.objects.create(
-            person=person, employee_id="STF-MULTI-01", designation="Staff Nurse & Compounder", status="ACTIVE"
+            person=person, employee_id="STF-MULTI-01", designation="Staff Nurse & Front Desk Officer", status="ACTIVE"
         )
         multi_user = User.objects.create_user(
             username="multi_role_staff", password="password123",
@@ -327,23 +329,23 @@ class RolePermissionCatalogueHardeningTests(TestCase):
         )
 
         role_nurse = RoleMaster.objects.get(code="NURSE")
-        role_compounder = RoleMaster.objects.get(code="COMPOUNDER")
+        role_front_desk = RoleMaster.objects.get(code="FRONT_DESK_OFFICER")
 
         StaffRoleAssignment.objects.create(
             staff=staff_prof, role=role_nurse, is_active=True
         )
         StaffRoleAssignment.objects.create(
-            staff=staff_prof, role=role_compounder, is_active=True
+            staff=staff_prof, role=role_front_desk, is_active=True
         )
 
         # Active role codes must reflect both roles
         active_roles = get_user_active_role_codes(multi_user)
-        self.assertEqual(active_roles, {"NURSE", "COMPOUNDER"})
+        self.assertEqual(active_roles, {"NURSE", "FRONT_DESK_OFFICER"})
 
         # Multi-role user has UNION of both roles
         # From NURSE: vitals.create
         self.assertTrue(has_role_permission(multi_user, "vitals.create"))
-        # From COMPOUNDER: patients.create
+        # From FRONT_DESK_OFFICER: patients.create
         self.assertTrue(has_role_permission(multi_user, "patients.create"))
         # Prohibited for both: consultation.create
         self.assertFalse(has_role_permission(multi_user, "consultation.create"))

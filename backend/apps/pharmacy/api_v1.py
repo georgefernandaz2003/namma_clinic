@@ -85,7 +85,7 @@ from rest_framework.permissions import BasePermission
 
 class PharmacyAccessPermission(BasePermission):
     """
-    Denies prescription and dispensation records to Compounder, Lab Technician, and Inventory-only users.
+    Denies prescription and dispensation records to Front Desk Officer, Lab Technician, and Inventory-only users.
     Allows Pharmacist, Doctor, Nurse, Hospital Admin, District Officer, Superuser.
     Preserves multi-role access (e.g. INVENTORY + PHARMACIST).
     """
@@ -100,7 +100,7 @@ class PharmacyAccessPermission(BasePermission):
             allowed_clinical_roles = {'PHARMACIST', 'DOCTOR', 'NURSE', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER'}
             return bool(active_roles.intersection(allowed_clinical_roles))
         role = getattr(request.user, 'role', '')
-        if role in ['COMPOUNDER', 'LAB_TECHNICIAN', 'INVENTORY']:
+        if role in ['FRONT_DESK_OFFICER', 'LAB_TECHNICIAN', 'INVENTORY']:
             return False
         return True
 

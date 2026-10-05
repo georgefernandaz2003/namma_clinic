@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import apiClient, { parseApiError } from '../api/client';
 import type { UserProfile, Facility } from '../types';
 
@@ -45,6 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    setLoading(true);
     try {
       // 1. Fetch authenticated user profile
       const userRes = await apiClient.get<UserProfile>('auth/me/');

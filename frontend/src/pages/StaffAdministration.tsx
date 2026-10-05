@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ForbiddenCard } from '../components/common/ForbiddenCard';
 import { ErrorAlert } from '../components/common/ErrorAlert';
@@ -269,7 +269,7 @@ export const StaffAdministration: React.FC = () => {
     }
   };
 
-  // If role is operational (e.g. DOCTOR, NURSE, COMPOUNDER, LAB_TECHNICIAN, PHARMACIST)
+  // If role is operational (e.g. DOCTOR, NURSE, FRONT_DESK_OFFICER, LAB_TECHNICIAN, PHARMACIST)
   if (!isAuthorized) {
     return (
       <div className="p-6">

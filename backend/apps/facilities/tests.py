@@ -44,7 +44,7 @@ class FacilityAuthorizationTests(TestCase):
         self.role_admin = RoleMaster.objects.get(code='HOSPITAL_ADMIN')
         self.role_doc = RoleMaster.objects.get(code='DOCTOR')
         self.role_nurse = RoleMaster.objects.get(code='NURSE')
-        self.role_compounder = RoleMaster.objects.get(code='COMPOUNDER')
+        self.role_compounder = RoleMaster.objects.get(code='FRONT_DESK_OFFICER')
         self.role_lab = RoleMaster.objects.get(code='LAB_TECHNICIAN')
         self.role_pharm = RoleMaster.objects.get(code='PHARMACIST')
 
@@ -85,12 +85,12 @@ class FacilityAuthorizationTests(TestCase):
         )
         StaffRoleAssignment.objects.create(staff=self.staff_doc, role=self.role_doc, effective_from=datetime.date(2026, 1, 1), is_active=True)
 
-        # 5. Compounder User
-        p_cmp = Person.objects.create(first_name='Compounder', last_name='Staff', gender='MALE', date_of_birth='1992-04-04')
-        self.staff_cmp = StaffProfile.objects.create(person=p_cmp, employee_id='EMP-CMP-01', designation='Compounder', status='ACTIVE')
+        # 5. Front Desk Officer User
+        p_cmp = Person.objects.create(first_name='FrontDesk', last_name='Staff', gender='MALE', date_of_birth='1992-04-04')
+        self.staff_cmp = StaffProfile.objects.create(person=p_cmp, employee_id='EMP-CMP-01', designation='Front Desk Officer', status='ACTIVE')
         self.user_cmp = User.objects.create_user(
-            username='test_cmp', password='password123', full_name='Compounder Staff',
-            role='COMPOUNDER', assigned_facility=self.facility_a, staff_profile=self.staff_cmp
+            username='test_cmp', password='password123', full_name='Front Desk Staff',
+            role='FRONT_DESK_OFFICER', assigned_facility=self.facility_a, staff_profile=self.staff_cmp
         )
         StaffRoleAssignment.objects.create(staff=self.staff_cmp, role=self.role_compounder, effective_from=datetime.date(2026, 1, 1), is_active=True)
 

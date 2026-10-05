@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ROLE_DASHBOARD_ROUTES,
@@ -68,7 +68,7 @@ test('2. Navigation visibility by role', async (t) => {
   await t.test('PHARMACIST has pharmacy and drug ledger in nav', () => {
     const pharmItems = getRoleNavigation('PHARMACIST').flatMap((s) => s.items);
     assert.ok(pharmItems.some((i) => i.path === '/pharmacy'));
-    assert.ok(pharmItems.some((i) => i.path === '/infrastructure'));
+    assert.ok(pharmItems.some((i) => i.path === '/queue'));
   });
 
   await t.test('LAB_TECHNICIAN has diagnostics lab in nav', () => {

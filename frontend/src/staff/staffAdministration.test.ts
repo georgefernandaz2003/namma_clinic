@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   STATUS_LABELS,
@@ -180,8 +180,8 @@ test('5. Role assignment: assigns operational role with effective dates', () => 
   assert.equal(rolePayload.effective_to, null);
 });
 
-// 6. NURSE + COMPOUNDER dual role assignment
-test('6. NURSE + COMPOUNDER assignment: results in two separate authoritative role records', () => {
+// 6. NURSE + FRONT_DESK_OFFICER dual role assignment
+test('6. NURSE + FRONT_DESK_OFFICER assignment: results in two separate authoritative role records', () => {
   const assignments: StaffRoleItem[] = [
     {
       id: 201,
@@ -196,8 +196,8 @@ test('6. NURSE + COMPOUNDER assignment: results in two separate authoritative ro
     {
       id: 202,
       role_id: 5,
-      role_code: 'COMPOUNDER',
-      role_name: 'Compounder',
+      role_code: 'FRONT_DESK_OFFICER',
+      role_name: 'Front Desk Officer',
       effective_from: '2026-01-01',
       effective_to: null,
       is_active: true,
@@ -208,12 +208,12 @@ test('6. NURSE + COMPOUNDER assignment: results in two separate authoritative ro
   assert.equal(assignments.length, 2);
   const roleCodes = assignments.map((a) => a.role_code);
   assert.ok(roleCodes.includes('NURSE'));
-  assert.ok(roleCodes.includes('COMPOUNDER'));
-  assert.equal(roleCodes.filter((r) => r === 'NURSE_COMPOUNDER').length, 0);
+  assert.ok(roleCodes.includes('FRONT_DESK_OFFICER'));
+  assert.equal(roleCodes.filter((r) => r === 'NURSE_COMPOUNDER' || r === 'NURSE_FRONT_DESK_OFFICER').length, 0);
 });
 
 // 7. End individual role
-test('7. End individual role: ending COMPOUNDER leaves NURSE active', () => {
+test('7. End individual role: ending FRONT_DESK_OFFICER leaves NURSE active', () => {
   let activeRoles: StaffRoleItem[] = [
     {
       id: 201,
@@ -227,15 +227,15 @@ test('7. End individual role: ending COMPOUNDER leaves NURSE active', () => {
     {
       id: 202,
       role_id: 5,
-      role_code: 'COMPOUNDER',
-      role_name: 'Compounder',
+      role_code: 'FRONT_DESK_OFFICER',
+      role_name: 'Front Desk Officer',
       effective_from: '2026-01-01',
       effective_to: null,
       is_active: true,
     },
   ];
 
-  // End role with id 202 (COMPOUNDER)
+  // End role with id 202 (FRONT_DESK_OFFICER)
   const targetEndId = 202;
   activeRoles = activeRoles.map((r) => (r.id === targetEndId ? { ...r, is_active: false, effective_to: '2026-09-28' } : r));
 
@@ -354,7 +354,7 @@ test('15. DHO district scope: District Officer has district-wide governance perm
 
 // 16. Operational roles cannot access staff UI
 test('16. Operational clinical roles are blocked from Staff Administration route and navigation', () => {
-  const clinicalRoles: Role[] = ['DOCTOR', 'NURSE', 'COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST'];
+  const clinicalRoles: Role[] = ['DOCTOR', 'NURSE', 'FRONT_DESK_OFFICER', 'LAB_TECHNICIAN', 'PHARMACIST'];
 
   for (const role of clinicalRoles) {
     // Check navigation items
@@ -376,8 +376,9 @@ test('16. Operational clinical roles are blocked from Staff Administration route
 test('17. Role catalogue: strictly prohibits fictitious NURSE_COMPOUNDER role', () => {
   const allRoles = Object.keys(ROLE_LABELS);
   assert.equal(allRoles.includes('NURSE_COMPOUNDER'), false);
+  assert.equal(allRoles.includes('NURSE_FRONT_DESK_OFFICER'), false);
   assert.ok(allRoles.includes('NURSE'));
-  assert.ok(allRoles.includes('COMPOUNDER'));
+  assert.ok(allRoles.includes('FRONT_DESK_OFFICER'));
 });
 
 // 18. No SYSTEM_ADMIN, SUPER_ADMIN, or CLINIC_ADMIN
@@ -389,9 +390,9 @@ test('18. Role catalogue: strictly prohibits SYSTEM_ADMIN, SUPER_ADMIN, and CLIN
   // Exactly the 8 approved operational roles (including INVENTORY from Phase 27)
   assert.equal(allRoles.length, 8);
   assert.deepEqual(allRoles.sort(), [
-    'COMPOUNDER',
     'DISTRICT_OFFICER',
     'DOCTOR',
+    'FRONT_DESK_OFFICER',
     'HOSPITAL_ADMIN',
     'INVENTORY',
     'LAB_TECHNICIAN',

@@ -1,11 +1,16 @@
-﻿# Namma Clinic — IAM & Staff Role Design: Compounder Separation & Multi-Role Authority Architecture
+# Namma Clinic — IAM & Staff Role Design: Compounder Separation & Multi-Role Authority Architecture
 
 **Document ID:** ARCH-IAM-2026-001  
 **Status:** FINAL PROPOSED / PM & RSA REVIEW REVISION  
 **Baseline Commit:** `e60cfdfa60cf6ebee96116192d59dc23bd634525`  
 **Target Branch:** `feature/namma-clinic-demo-data-model`  
 **Author:** Antigravity AI Engineering / Namma Clinic Architecture Guild  
-**Date:** September 28, 2026  
+**Date:** September 28, 2026 (Amended October 5, 2026 for Phase 28B-0)  
+
+> [!NOTE]
+> **PHASE 28B-0 AMENDMENT (October 5, 2026)**:
+> In accordance with Phase 28B-0, the role identifier `COMPOUNDER` has been officially renamed to `FRONT_DESK_OFFICER` ("Front Desk Officer") across backend models (`RoleChoices`, `RoleMaster`), frontend navigation, IAM types, and tests.
+> This rename is strictly a terminology and identity update. All 7 permissions (`patients.create`, `patients.read`, `patients.update_demographics`, `queue.create`, `queue.issue_token`, `queue.view`, `queue.void`), facility scope, and separation-of-duty boundaries remain identical. Historical documentation references below mentioning `COMPOUNDER` correspond to the active `FRONT_DESK_OFFICER` role.
 
 ---
 

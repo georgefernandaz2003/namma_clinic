@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -115,9 +115,17 @@ export const App: React.FC = () => {
             }
           />
           <Route
+            path="/dashboard/front-desk"
+            element={
+              <ProtectedRoute allowedRoles={['FRONT_DESK_OFFICER']}>
+                <CompounderDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/compounder"
             element={
-              <ProtectedRoute allowedRoles={['COMPOUNDER']}>
+              <ProtectedRoute allowedRoles={['FRONT_DESK_OFFICER']}>
                 <CompounderDashboard />
               </ProtectedRoute>
             }

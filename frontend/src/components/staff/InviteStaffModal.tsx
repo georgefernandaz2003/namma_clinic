@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { X, UserPlus, AlertCircle } from 'lucide-react';
 import type { Role } from '../../types/auth';
 import type { InviteStaffPayload } from '../../types/staff';
@@ -37,7 +37,7 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
     ? [
         { value: 'DOCTOR', label: 'Doctor (Medical Officer)' },
         { value: 'NURSE', label: 'Nurse' },
-        { value: 'COMPOUNDER', label: 'Compounder' },
+        { value: 'FRONT_DESK_OFFICER', label: 'Front Desk Officer' },
         { value: 'LAB_TECHNICIAN', label: 'Lab Technician' },
         { value: 'PHARMACIST', label: 'Pharmacist' },
         { value: 'HOSPITAL_ADMIN', label: 'Hospital Admin (Clinic Admin)' },
@@ -45,7 +45,7 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
     : [
         { value: 'DOCTOR', label: 'Doctor (Medical Officer)' },
         { value: 'NURSE', label: 'Nurse' },
-        { value: 'COMPOUNDER', label: 'Compounder' },
+        { value: 'FRONT_DESK_OFFICER', label: 'Front Desk Officer' },
         { value: 'LAB_TECHNICIAN', label: 'Lab Technician' },
         { value: 'PHARMACIST', label: 'Pharmacist' },
       ];

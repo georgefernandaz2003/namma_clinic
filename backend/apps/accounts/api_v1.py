@@ -1,10 +1,10 @@
-﻿"""
+"""
 IAM REST API (v1).
 Delegates all identity, role, and facility mutations to domain services.
 Direct PUT/PATCH/DELETE mutations are disabled to enforce service workflows and audit trails.
 Role and Permission catalogue definitions are system-level assets restricted to system superusers.
 Staff administration and directory listing is restricted to authorized administrators (Superuser, DHO, Clinic Admin).
-Operational clinical roles (DOCTOR, NURSE, COMPOUNDER, LAB_TECHNICIAN, PHARMACIST) are denied staff administration.
+Operational clinical roles (DOCTOR, NURSE, FRONT_DESK_OFFICER, LAB_TECHNICIAN, PHARMACIST) are denied staff administration.
 """
 import datetime
 from django.db import transaction
@@ -35,7 +35,7 @@ from apps.facilities.models import Facility, Department
 class IsSystemAdminForCatalogue(permissions.BasePermission):
     """
     Catalogue definitions (Roles, Permissions, RolePermission mappings) are system-level assets.
-    Operational roles (DISTRICT_OFFICER, HOSPITAL_ADMIN, DOCTOR, NURSE, COMPOUNDER, LAB_TECHNICIAN, PHARMACIST)
+    Operational roles (DISTRICT_OFFICER, HOSPITAL_ADMIN, DOCTOR, NURSE, FRONT_DESK_OFFICER, LAB_TECHNICIAN, PHARMACIST)
     are strictly denied mutation access.
     Only trusted Django system superusers may create, modify, or delete definitions.
     """
@@ -53,7 +53,7 @@ class IsStaffAdministrator(permissions.BasePermission):
     - Django System Superusers (Global scope)
     - DISTRICT_OFFICER / DHO (District scope)
     - HOSPITAL_ADMIN / Clinic Admin (Facility scope)
-    Operational clinical roles (DOCTOR, NURSE, COMPOUNDER, LAB_TECHNICIAN, PHARMACIST)
+    Operational clinical roles (DOCTOR, NURSE, FRONT_DESK_OFFICER, LAB_TECHNICIAN, PHARMACIST)
     are strictly denied staff administration (HTTP 403 Forbidden).
     """
     def has_permission(self, request, view):

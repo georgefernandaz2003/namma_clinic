@@ -100,6 +100,11 @@ export const InventoryConsole: React.FC = () => {
   const [selectedBatchForReconcile, setSelectedBatchForReconcile] = useState<MedicineBatch | null>(null);
   const [selectedPOForDetail, setSelectedPOForDetail] = useState<PurchaseOrder | null>(null);
 
+  // Modal In-Dialog Error States (UI-28A-01)
+  const [poModalError, setPoModalError] = useState<string | null>(null);
+  const [grnModalError, setGrnModalError] = useState<string | null>(null);
+  const [reconcileModalError, setReconcileModalError] = useState<string | null>(null);
+
   // Form State: Create PO
   const [newPOVendor, setNewPOVendor] = useState<number | ''>('');
   const [newPODeliveryDate, setNewPODeliveryDate] = useState<string>('');
@@ -199,21 +204,21 @@ export const InventoryConsole: React.FC = () => {
 
   const handleCreatePO = async (e: React.FormEvent) => {
     e.preventDefault();
+    setPoModalError(null);
     if (!activeFacility?.id) {
-      setError('Please select an active facility before creating purchase orders.');
+      setPoModalError('Please select an active facility before creating purchase orders.');
       return;
     }
     if (!newPOVendor) {
-      setError('Please select a supplier / vendor.');
+      setPoModalError('Please select a supplier / vendor.');
       return;
     }
     if (newPOItems.length === 0 || newPOItems.some(i => !i.medicine || i.ordered_quantity <= 0)) {
-      setError('Please specify valid line items with medicine and quantity > 0.');
+      setPoModalError('Please specify valid line items with medicine and quantity > 0.');
       return;
     }
 
     setSubmittingPO(true);
-    setError(null);
     try {
       await createPurchaseOrder({
         facility: activeFacility.id,
@@ -224,12 +229,13 @@ export const InventoryConsole: React.FC = () => {
       });
       setSuccessMsg('Purchase Order created successfully in DRAFT status.');
       setShowCreatePOModal(false);
+      setPoModalError(null);
       setNewPOItems([{ medicine: medicines[0]?.id || 0, ordered_quantity: 100, unit_price: 10.0 }]);
       setNewPONotes('');
       setNewPODeliveryDate('');
       await loadData(true);
     } catch (err: any) {
-      setError(parseApiError(err));
+      setPoModalError(parseApiError(err));
     } finally {
       setSubmittingPO(false);
     }
@@ -272,6 +278,7 @@ export const InventoryConsole: React.FC = () => {
   // GRN Operations
   // ==========================================
   const handleOpenGRNModal = (preselectedPO?: PurchaseOrder) => {
+    setGrnModalError(null);
     if (preselectedPO) {
       setGrnPOId(preselectedPO.id);
       // Pre-fill line items from PO
@@ -325,21 +332,21 @@ export const InventoryConsole: React.FC = () => {
 
   const handleCreateGRN = async (e: React.FormEvent) => {
     e.preventDefault();
+    setGrnModalError(null);
     if (!activeFacility?.id) {
-      setError('Please select an active facility.');
+      setGrnModalError('Please select an active facility.');
       return;
     }
     if (!grnPOId) {
-      setError('Please select an eligible Purchase Order.');
+      setGrnModalError('Please select an eligible Purchase Order.');
       return;
     }
     if (grnItems.length === 0 || grnItems.some(i => !i.batch_number || !i.expiry_date || i.received_quantity <= 0)) {
-      setError('Please provide valid batch details, expiry date, and received quantity for all items.');
+      setGrnModalError('Please provide valid batch details, expiry date, and received quantity for all items.');
       return;
     }
 
     setSubmittingGRN(true);
-    setError(null);
     try {
       await createGoodsReceiptNote({
         facility: activeFacility.id,
@@ -350,9 +357,10 @@ export const InventoryConsole: React.FC = () => {
       });
       setSuccessMsg('Goods Receipt Note processed! Stock increased and posted to Inventory Ledger.');
       setShowCreateGRNModal(false);
+      setGrnModalError(null);
       await loadData(true);
     } catch (err: any) {
-      setError(parseApiError(err));
+      setGrnModalError(parseApiError(err));
     } finally {
       setSubmittingGRN(false);
     }
@@ -367,6 +375,7 @@ export const InventoryConsole: React.FC = () => {
     setReconcilePhysicalCount(batch.available_quantity ?? batch.quantity ?? 0);
     setReconcileDelta('');
     setReconcileRemarks('Physical inventory count verification audit');
+    setReconcileModalError(null);
     setShowReconcileModal(true);
   };
 
@@ -374,8 +383,8 @@ export const InventoryConsole: React.FC = () => {
     e.preventDefault();
     if (!selectedBatchForReconcile) return;
 
+    setReconcileModalError(null);
     setSubmittingReconcile(true);
-    setError(null);
     try {
       const payload: { physical_count?: number; quantity_delta?: number; remarks: string } = {
         remarks: reconcileRemarks
@@ -383,14 +392,14 @@ export const InventoryConsole: React.FC = () => {
 
       if (reconcileMode === 'COUNT') {
         if (reconcilePhysicalCount === '' || Number(reconcilePhysicalCount) < 0) {
-          setError('Please provide a valid non-negative physical count.');
+          setReconcileModalError('Please provide a valid non-negative physical count.');
           setSubmittingReconcile(false);
           return;
         }
         payload.physical_count = Number(reconcilePhysicalCount);
       } else {
         if (reconcileDelta === '' || Number(reconcileDelta) === 0) {
-          setError('Please provide a non-zero adjustment delta.');
+          setReconcileModalError('Please provide a non-zero adjustment delta.');
           setSubmittingReconcile(false);
           return;
         }
@@ -400,9 +409,10 @@ export const InventoryConsole: React.FC = () => {
       await adjustMedicineBatch(selectedBatchForReconcile.id, payload);
       setSuccessMsg(`Stock reconciled for batch ${selectedBatchForReconcile.batch_number}. Ledger updated.`);
       setShowReconcileModal(false);
+      setReconcileModalError(null);
       await loadData(true);
     } catch (err: any) {
-      setError(parseApiError(err));
+      setReconcileModalError(parseApiError(err));
     } finally {
       setSubmittingReconcile(false);
     }
@@ -1062,10 +1072,14 @@ export const InventoryConsole: React.FC = () => {
                 <ShoppingCart className="w-6 h-6 text-teal-600" />
                 <h3 className="text-lg font-bold text-slate-900">Create Procurement Purchase Order</h3>
               </div>
-              <button onClick={() => setShowCreatePOModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setShowCreatePOModal(false); setPoModalError(null); }} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {poModalError && (
+              <ErrorAlert message={poModalError} onDismiss={() => setPoModalError(null)} />
+            )}
 
             <form onSubmit={handleCreatePO} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1183,7 +1197,7 @@ export const InventoryConsole: React.FC = () => {
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button
                   type="button"
-                  onClick={() => setShowCreatePOModal(false)}
+                  onClick={() => { setShowCreatePOModal(false); setPoModalError(null); }}
                   className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
                 >
                   Cancel
@@ -1193,7 +1207,7 @@ export const InventoryConsole: React.FC = () => {
                   disabled={submittingPO}
                   className="px-5 py-2 text-sm font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-lg shadow-sm disabled:opacity-50"
                 >
-                  {submittingPO ? 'Creating...' : 'Create Draft PO'}
+                  {submittingPO ? 'Creating...' : 'Create Purchase Order'}
                 </button>
               </div>
             </form>
@@ -1212,10 +1226,14 @@ export const InventoryConsole: React.FC = () => {
                 <Truck className="w-6 h-6 text-teal-600" />
                 <h3 className="text-lg font-bold text-slate-900">Goods Receipt Note (GRN) Intake</h3>
               </div>
-              <button onClick={() => setShowCreateGRNModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setShowCreateGRNModal(false); setGrnModalError(null); }} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {grnModalError && (
+              <ErrorAlert message={grnModalError} onDismiss={() => setGrnModalError(null)} />
+            )}
 
             <form onSubmit={handleCreateGRN} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1371,7 +1389,7 @@ export const InventoryConsole: React.FC = () => {
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button
                   type="button"
-                  onClick={() => setShowCreateGRNModal(false)}
+                  onClick={() => { setShowCreateGRNModal(false); setGrnModalError(null); }}
                   className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
                 >
                   Cancel
@@ -1400,10 +1418,14 @@ export const InventoryConsole: React.FC = () => {
                 <ClipboardCheck className="w-6 h-6 text-teal-600" />
                 <h3 className="text-lg font-bold text-slate-900">Physical Count Reconciliation</h3>
               </div>
-              <button onClick={() => setShowReconcileModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setShowReconcileModal(false); setReconcileModalError(null); }} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {reconcileModalError && (
+              <ErrorAlert message={reconcileModalError} onDismiss={() => setReconcileModalError(null)} />
+            )}
 
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
               <div className="text-xs text-slate-500 uppercase font-semibold">Target Batch</div>
@@ -1499,7 +1521,7 @@ export const InventoryConsole: React.FC = () => {
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button
                   type="button"
-                  onClick={() => setShowReconcileModal(false)}
+                  onClick={() => { setShowReconcileModal(false); setReconcileModalError(null); }}
                   className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
                 >
                   Cancel

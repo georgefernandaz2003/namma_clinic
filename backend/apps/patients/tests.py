@@ -66,7 +66,7 @@ class PatientAuthorizationAndIntakeTests(TestCase):
         )
 
         # 3. Roles from catalogue
-        self.role_compounder = RoleMaster.objects.get(code="COMPOUNDER")
+        self.role_compounder = RoleMaster.objects.get(code="FRONT_DESK_OFFICER")
         self.role_admin = RoleMaster.objects.get(code="HOSPITAL_ADMIN")
         self.role_nurse = RoleMaster.objects.get(code="NURSE")
         self.role_doctor = RoleMaster.objects.get(code="DOCTOR")
@@ -74,12 +74,12 @@ class PatientAuthorizationAndIntakeTests(TestCase):
         self.role_pharm = RoleMaster.objects.get(code="PHARMACIST")
 
         # 4. Users
-        # Compounder (Facility A)
+        # Front Desk Officer (Facility A)
         p_cmp = Person.objects.create(first_name="Ravi", last_name="Kumar", gender="MALE", date_of_birth="1990-01-01")
-        self.staff_cmp = StaffProfile.objects.create(person=p_cmp, employee_id="EMP-CMP-TEST", designation="Compounder", status="ACTIVE")
+        self.staff_cmp = StaffProfile.objects.create(person=p_cmp, employee_id="EMP-CMP-TEST", designation="Front Desk Officer", status="ACTIVE")
         StaffRoleAssignment.objects.create(staff=self.staff_cmp, role=self.role_compounder, effective_from="2026-01-01", is_active=True)
         StaffFacilityAssignment.objects.create(staff=self.staff_cmp, facility=self.facility_a, is_primary=True, is_active=True)
-        self.user_cmp = User.objects.create_user(username="test_cmp", password="password123", role="COMPOUNDER", assigned_facility=self.facility_a, staff_profile=self.staff_cmp)
+        self.user_cmp = User.objects.create_user(username="test_cmp", password="password123", role="FRONT_DESK_OFFICER", assigned_facility=self.facility_a, staff_profile=self.staff_cmp)
 
         # Hospital Admin (Facility A)
         p_adm = Person.objects.create(first_name="Admin", last_name="Staff", gender="FEMALE", date_of_birth="1980-02-02")
@@ -380,25 +380,25 @@ class PatientConcurrencyAndDuplicateRegressionTests(TransactionTestCase):
             status="ACTIVE"
         )
 
-        # Compounder assigned to Facility 1
-        role_compounder = RoleMaster.objects.get(code="COMPOUNDER")
+        # Front Desk Officer assigned to Facility 1
+        role_compounder = RoleMaster.objects.get(code="FRONT_DESK_OFFICER")
         p_cmp1 = Person.objects.create(first_name="Comp", last_name="One", gender="MALE", date_of_birth="1991-01-01")
-        staff_cmp1 = StaffProfile.objects.create(person=p_cmp1, employee_id="EMP-CMP-C1", designation="Compounder", status="ACTIVE")
+        staff_cmp1 = StaffProfile.objects.create(person=p_cmp1, employee_id="EMP-CMP-C1", designation="Front Desk Officer", status="ACTIVE")
         StaffRoleAssignment.objects.create(staff=staff_cmp1, role=role_compounder, effective_from="2026-01-01", is_active=True)
         StaffFacilityAssignment.objects.create(staff=staff_cmp1, facility=self.facility_1, is_primary=True, is_active=True)
         self.user_cmp1 = User.objects.create_user(
             username="test_cmp_c1", password="password123",
-            role="COMPOUNDER", assigned_facility=self.facility_1, staff_profile=staff_cmp1
+            role="FRONT_DESK_OFFICER", assigned_facility=self.facility_1, staff_profile=staff_cmp1
         )
 
-        # Compounder assigned to Facility 2
+        # Front Desk Officer assigned to Facility 2
         p_cmp2 = Person.objects.create(first_name="Comp", last_name="Two", gender="FEMALE", date_of_birth="1992-02-02")
-        staff_cmp2 = StaffProfile.objects.create(person=p_cmp2, employee_id="EMP-CMP-C2", designation="Compounder", status="ACTIVE")
+        staff_cmp2 = StaffProfile.objects.create(person=p_cmp2, employee_id="EMP-CMP-C2", designation="Front Desk Officer", status="ACTIVE")
         StaffRoleAssignment.objects.create(staff=staff_cmp2, role=role_compounder, effective_from="2026-01-01", is_active=True)
         StaffFacilityAssignment.objects.create(staff=staff_cmp2, facility=self.facility_2, is_primary=True, is_active=True)
         self.user_cmp2 = User.objects.create_user(
             username="test_cmp_c2", password="password123",
-            role="COMPOUNDER", assigned_facility=self.facility_2, staff_profile=staff_cmp2
+            role="FRONT_DESK_OFFICER", assigned_facility=self.facility_2, staff_profile=staff_cmp2
         )
 
     def test_same_facility_same_name_same_mobile_duplicate_returns_409(self):

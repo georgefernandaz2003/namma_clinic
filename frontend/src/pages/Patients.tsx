@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import type { Patient } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { Users, Search, UserPlus, Clock, History, X, Activity, FileText, Pill, Share2, Stethoscope } from 'lucide-react';
+import { Users, Search, UserPlus, Clock, History, X, Activity, FileText, Pill, Share2, Stethoscope, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { hasPermission } from '../utils/permissions';
+import ErrorAlert from '../components/common/ErrorAlert';
 
 export const Patients: React.FC = () => {
   const { activeFacility, user } = useAuth();
@@ -36,6 +37,12 @@ export const Patients: React.FC = () => {
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
+  // Feedback States (UI-28A-01, UI-28A-03)
+  const [regError, setRegError] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+
   const currentFacility = activeFacility || (user?.facility_details ? (user.facility_details as any) : (user?.assigned_facility ? { id: user.assigned_facility, facility_name: user.facility_name || 'Assigned Facility', facility_code: '' } : null));
 
   const loadPatients = async () => {
@@ -54,6 +61,7 @@ export const Patients: React.FC = () => {
 
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault();
+    setRegError(null);
     try {
       const res = await api.post('v1/patients/', {
         name,
@@ -66,8 +74,9 @@ export const Patients: React.FC = () => {
         registered_at_facility: activeFacility?.id
       });
       const newPat = res.data;
-      alert(`Patient '${newPat.name}' registered successfully!\nAssigned Patient ID: ${newPat.patient_id}`);
+      setSuccessMsg(`Patient '${newPat.name}' registered successfully! Assigned Patient ID: ${newPat.patient_id}`);
       setShowRegisterModal(false);
+      setRegError(null);
       setName('');
       setAge('');
       setMobile('');
@@ -86,19 +95,20 @@ export const Patients: React.FC = () => {
           .map(([k, v]) => `${k.toUpperCase()}: ${Array.isArray(v) ? v.join(', ') : v}`)
           .join('\n');
       }
-      alert(msg);
+      setRegError(msg);
     }
   };
 
   const handleIssueTokenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setTokenError(null);
     if (!targetPatient) {
-      alert('Please select a valid registered patient.');
+      setTokenError('Please select a valid registered patient.');
       return;
     }
     const effectiveFacility = currentFacility || activeFacility;
     if (!effectiveFacility) {
-      alert('Facility context is required. Please ensure an active facility is assigned.');
+      setTokenError('Facility context is required. Please ensure an active facility is assigned.');
       return;
     }
     setSubmittingToken(true);
@@ -111,12 +121,13 @@ export const Patients: React.FC = () => {
         chief_complaint: chiefComplaint
       });
       const newVisit = res.data;
-      alert(`OPD Token #${newVisit.token_details?.token_number || newVisit.id} Issued for ${targetPatient.name}!`);
+      setSuccessMsg(`OPD Token #${newVisit.token_details?.token_number || newVisit.id} Issued for ${targetPatient.name}!`);
       setShowTokenModal(false);
+      setTokenError(null);
       setChiefComplaint('');
       navigate('/queue');
     } catch (e: any) {
-      alert(e.response?.data?.error || e.response?.data?.detail || 'Failed to issue OPD token');
+      setTokenError(e.response?.data?.error || e.response?.data?.detail || 'Failed to issue OPD token');
     } finally {
       setSubmittingToken(false);
     }
@@ -160,7 +171,7 @@ export const Patients: React.FC = () => {
 
         {hasPermission(user?.role, 'patients.create') && (
           <button
-            onClick={() => setShowRegisterModal(true)}
+            onClick={() => { setRegError(null); setShowRegisterModal(true); }}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm transition"
           >
             <UserPlus className="w-4 h-4" />
@@ -168,6 +179,26 @@ export const Patients: React.FC = () => {
           </button>
         )}
       </div>
+
+      {/* Page Feedback Alerts */}
+      {successMsg && (
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{successMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessMsg(null)}
+            className="text-emerald-500 hover:text-emerald-800 p-1"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+      {pageError && (
+        <ErrorAlert message={pageError} onDismiss={() => setPageError(null)} />
+      )}
 
       {/* Search Bar */}
       <div className="glass-panel p-4 rounded-xl border border-slate-200 bg-white flex items-center gap-3">
@@ -224,6 +255,7 @@ export const Patients: React.FC = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           setTargetPatient(p);
+                          setTokenError(null);
                           setShowTokenModal(true);
                         }}
                         className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1 shadow-xs transition"
@@ -232,7 +264,18 @@ export const Patients: React.FC = () => {
                         <span>Issue Token</span>
                       </button>
                     ) : (
-                      <span className="text-[11px] text-slate-400 font-medium italic">Read-Only</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openTimelineModal(p);
+                        }}
+                        className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs inline-flex items-center gap-1 border border-slate-300 transition"
+                        title="View Medical Timeline"
+                      >
+                        <History className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Timeline</span>
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -246,7 +289,20 @@ export const Patients: React.FC = () => {
       {showRegisterModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
-            <h2 className="text-base font-bold text-slate-900">Register New Patient</h2>
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h2 className="text-base font-bold text-slate-900">Register New Patient</h2>
+              <button
+                type="button"
+                onClick={() => { setShowRegisterModal(false); setRegError(null); }}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {regError && (
+              <ErrorAlert message={regError} onDismiss={() => setRegError(null)} />
+            )}
 
             <form onSubmit={handleRegisterPatient} className="space-y-4 text-xs">
               <div>
@@ -341,7 +397,7 @@ export const Patients: React.FC = () => {
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowRegisterModal(false)}
+                  onClick={() => { setShowRegisterModal(false); setRegError(null); }}
                   className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-100"
                 >
                   Cancel
@@ -373,12 +429,16 @@ export const Patients: React.FC = () => {
                 </p>
               </div>
               <button
-                onClick={() => setShowTokenModal(false)}
+                onClick={() => { setShowTokenModal(false); setTokenError(null); }}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {tokenError && (
+              <ErrorAlert message={tokenError} onDismiss={() => setTokenError(null)} />
+            )}
 
             <form onSubmit={handleIssueTokenSubmit} className="space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-3">
@@ -423,7 +483,7 @@ export const Patients: React.FC = () => {
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowTokenModal(false)}
+                  onClick={() => { setShowTokenModal(false); setTokenError(null); }}
                   className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-100"
                 >
                   Cancel

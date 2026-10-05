@@ -1,4 +1,4 @@
-﻿import type { Role } from '../types/auth';
+import type { Role } from '../types/auth';
 
 export interface NavItem {
   name: string;
@@ -27,7 +27,7 @@ export const ROLE_DASHBOARD_ROUTES: Record<Role, string> = {
   HOSPITAL_ADMIN: '/dashboard/admin',
   DOCTOR: '/dashboard/doctor',
   NURSE: '/dashboard/nurse',
-  COMPOUNDER: '/dashboard/compounder',
+  FRONT_DESK_OFFICER: '/dashboard/front-desk',
   LAB_TECHNICIAN: '/dashboard/lab',
   PHARMACIST: '/dashboard/pharmacy',
   INVENTORY: '/inventory',
@@ -82,11 +82,11 @@ export const ROLE_DASHBOARD_METADATA: Record<Role, RoleDashboardMeta> = {
     iconName: 'Pill',
     scopeTypeRequired: 'FACILITY',
   },
-  COMPOUNDER: {
-    role: 'COMPOUNDER',
-    title: 'Compounder & Front Desk Console',
+  FRONT_DESK_OFFICER: {
+    role: 'FRONT_DESK_OFFICER',
+    title: 'Front Desk Officer Console',
     subtitle: 'Patient registration, master patient index lookup, and OPD queue management.',
-    landingRoute: '/patients',
+    landingRoute: '/dashboard/front-desk',
     iconName: 'Users',
     scopeTypeRequired: 'FACILITY',
   },
@@ -153,7 +153,6 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
         { name: 'OPD Queue Status', path: '/queue', iconName: 'Clock', description: 'Daily outpatient appointment and token flow' },
         { name: 'Pharmacy & Stock', path: '/pharmacy', iconName: 'Pill', description: 'Dispensing records and medicine inventory batches' },
         { name: 'Inventory & Procurement', path: '/inventory', iconName: 'Package', description: 'Procurement orders, goods receipt, and stock ledger' },
-        { name: 'Referral Transfers', path: '/referrals', iconName: 'Share2', description: 'Inbound and outbound clinical referral records' },
         { name: 'Follow-up Tracking', path: '/followups', iconName: 'CalendarCheck', description: 'Post-consultation follow-up scheduling' },
         { name: 'Infra & Maintenance', path: '/infrastructure', iconName: 'Wrench', description: 'Facility maintenance tickets and consumable stock' },
       ],
@@ -248,7 +247,6 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
         { name: 'Pharmacy Dashboard', path: '/dashboard/pharmacy', iconName: 'LayoutDashboard', description: 'Prescription dispensing queue and stock summary' },
         { name: 'Dispensing Queue', path: '/queue', iconName: 'Clock', description: 'Verified doctor prescriptions awaiting drug dispensing' },
         { name: 'FEFO Drug Dispensation', path: '/pharmacy', iconName: 'Pill', description: 'Batch-tracked medicine issue with FEFO allocation' },
-        { name: 'Clinic Storage & Infra', path: '/infrastructure', iconName: 'Wrench', description: 'Cold chain monitoring and dispensary storage' },
       ],
     },
     {
@@ -258,11 +256,11 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
       ],
     },
   ],
-  COMPOUNDER: [
+  FRONT_DESK_OFFICER: [
     {
       title: 'PATIENT INTAKE & REGISTRATION',
       items: [
-        { name: 'Front Desk Console', path: '/dashboard/compounder', iconName: 'LayoutDashboard', description: 'Front desk intake, registration, duplicate warning, and tokens' },
+        { name: 'Front Desk Console', path: '/dashboard/front-desk', iconName: 'LayoutDashboard', description: 'Front desk intake, registration, duplicate warning, and tokens' },
         { name: 'Patient Directory', path: '/patients', iconName: 'Users', description: 'Patient demographic records and registration list' },
         { name: 'OPD Queue', path: '/queue', iconName: 'Clock', description: 'Outpatient flow and token management' },
       ],

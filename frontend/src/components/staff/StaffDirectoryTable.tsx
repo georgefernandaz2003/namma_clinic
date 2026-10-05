@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Search, Eye, UserCheck } from 'lucide-react';
 import type { StaffProfile } from '../../types/staff';
 import { StaffStatusBadge } from './StaffStatusBadge';
@@ -75,7 +75,7 @@ export const StaffDirectoryTable: React.FC<StaffDirectoryTableProps> = ({
             <option value="">All Operational Roles</option>
             <option value="DOCTOR">Doctor</option>
             <option value="NURSE">Nurse</option>
-            <option value="COMPOUNDER">Compounder</option>
+            <option value="FRONT_DESK_OFFICER">Front Desk Officer</option>
             <option value="LAB_TECHNICIAN">Lab Technician</option>
             <option value="PHARMACIST">Pharmacist</option>
             <option value="HOSPITAL_ADMIN">Hospital Admin</option>

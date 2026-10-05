@@ -37,6 +37,7 @@ export const CompounderDashboard: React.FC = () => {
   const [regVulnerability, setRegVulnerability] = useState<string>('Slum Resident / Low Income Group');
   const [registering, setRegistering] = useState<boolean>(false);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [regError, setRegError] = useState<string | null>(null);
 
   // Token Modal State
   const [showTokenModal, setShowTokenModal] = useState<boolean>(false);
@@ -44,6 +45,7 @@ export const CompounderDashboard: React.FC = () => {
   const [visitType, setVisitType] = useState<string>('GENERAL_OPD');
   const [priority, setPriority] = useState<string>('NORMAL');
   const [submittingToken, setSubmittingToken] = useState<boolean>(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
 
   // Void Token State
   const [voidingVisitId, setVoidingVisitId] = useState<number | null>(null);
@@ -109,7 +111,7 @@ export const CompounderDashboard: React.FC = () => {
     }
 
     setRegistering(true);
-    setError(null);
+    setRegError(null);
     setSuccessMsg(null);
 
     try {
@@ -127,6 +129,7 @@ export const CompounderDashboard: React.FC = () => {
       const newPat = res.data;
       setSuccessMsg(`Patient '${newPat.name}' registered successfully! Assigned Patient ID: ${newPat.patient_id}`);
       setShowRegisterModal(false);
+      setRegError(null);
       setRegName('');
       setRegAge('');
       setRegMobile('');
@@ -154,7 +157,7 @@ export const CompounderDashboard: React.FC = () => {
           .map(([k, v]) => `${k.toUpperCase()}: ${Array.isArray(v) ? v.join(', ') : v}`)
           .join('; ');
       }
-      setError(msg);
+      setRegError(msg);
     } finally {
       setRegistering(false);
     }
@@ -165,7 +168,7 @@ export const CompounderDashboard: React.FC = () => {
     if (!selectedPatient || !activeFacility) return;
 
     setSubmittingToken(true);
-    setError(null);
+    setTokenError(null);
     setSuccessMsg(null);
 
     try {
@@ -181,9 +184,10 @@ export const CompounderDashboard: React.FC = () => {
       setSuccessMsg(`OPD Token #${tokenNum} issued for ${selectedPatient.name}! Added to live front desk queue.`);
       setShowTokenModal(false);
       setSelectedPatient(null);
+      setTokenError(null);
       await loadDashboardData(true);
     } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to issue OPD queue token.');
+      setTokenError(err?.response?.data?.error || err?.response?.data?.detail || 'Failed to issue OPD queue token.');
     } finally {
       setSubmittingToken(false);
     }
@@ -474,12 +478,19 @@ export const CompounderDashboard: React.FC = () => {
                 <span>Patient Front-Desk Registration</span>
               </h2>
               <button
-                onClick={() => setShowRegisterModal(false)}
+                onClick={() => {
+                  setShowRegisterModal(false);
+                  setRegError(null);
+                }}
                 className="text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 ✕
               </button>
             </div>
+
+            {regError && (
+              <ErrorAlert message={regError} onDismiss={() => setRegError(null)} />
+            )}
 
             {duplicateWarning && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
@@ -615,12 +626,17 @@ export const CompounderDashboard: React.FC = () => {
                 onClick={() => {
                   setShowTokenModal(false);
                   setSelectedPatient(null);
+                  setTokenError(null);
                 }}
                 className="text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 ✕
               </button>
             </div>
+
+            {tokenError && (
+              <ErrorAlert message={tokenError} onDismiss={() => setTokenError(null)} />
+            )}
 
             <div className="p-3 bg-slate-50 rounded-xl space-y-1 text-xs">
               <div className="font-bold text-slate-900">{selectedPatient.name}</div>
@@ -684,4 +700,5 @@ export const CompounderDashboard: React.FC = () => {
   );
 };
 
+export const FrontDeskDashboard = CompounderDashboard;
 export default CompounderDashboard;

@@ -1,4 +1,4 @@
-﻿import datetime
+import datetime
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
@@ -76,7 +76,7 @@ class Phase274CrossDomainRBACAuditTests(TestCase):
         self.u_admin, self.stf_admin = make_staff("audit_admin", RoleChoices.HOSPITAL_ADMIN)
         self.u_doc, self.stf_doc = make_staff("audit_doc", RoleChoices.DOCTOR)
         self.u_nurse, self.stf_nurse = make_staff("audit_nurse", RoleChoices.NURSE)
-        self.u_comp, self.stf_comp = make_staff("audit_comp", RoleChoices.COMPOUNDER)
+        self.u_comp, self.stf_comp = make_staff("audit_comp", RoleChoices.FRONT_DESK_OFFICER)
         self.u_lab, self.stf_lab = make_staff("audit_lab", RoleChoices.LAB_TECHNICIAN)
         self.u_phm, self.stf_phm = make_staff("audit_phm", RoleChoices.PHARMACIST)
         self.u_inv, self.stf_inv = make_staff("audit_inv", RoleChoices.INVENTORY)
@@ -231,7 +231,7 @@ class Phase274CrossDomainRBACAuditTests(TestCase):
         for user, role_code in [
             (self.u_doc, "DOCTOR"),
             (self.u_nurse, "NURSE"),
-            (self.u_comp, "COMPOUNDER"),
+            (self.u_comp, "FRONT_DESK_OFFICER"),
             (self.u_lab, "LAB_TECHNICIAN"),
             (self.u_phm, "PHARMACIST"),
             (self.u_admin, "HOSPITAL_ADMIN"),

@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import type { StaffRoleItem } from '../../types/staff';
 import type { Role } from '../../types/auth';
 import { ROLE_LABELS } from '../../types/auth';
@@ -34,6 +34,7 @@ export const StaffRoleBadges: React.FC<StaffRoleBadgesProps> = ({ roles = [], ma
         return 'bg-blue-50 text-blue-700 border-blue-200';
       case 'NURSE':
         return 'bg-teal-50 text-teal-700 border-teal-200';
+      case 'FRONT_DESK_OFFICER':
       case 'COMPOUNDER':
         return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'LAB_TECHNICIAN':

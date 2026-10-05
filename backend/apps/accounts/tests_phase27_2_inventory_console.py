@@ -328,7 +328,7 @@ class Phase272InventoryConsoleBackendTests(TestCase):
         self.assertEqual(res_grn.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_07_clinical_roles_denied_from_inventory_administration(self):
-        """DOCTOR, NURSE, LAB, COMPOUNDER cannot access inventory administration."""
+        """DOCTOR, NURSE, LAB, FRONT_DESK_OFFICER cannot access inventory administration."""
         res_adj = self.client_doc.post(
             f"/api/v1/pharmacy/batches/{self.batch_a.id}/adjust/",
             {"physical_count": 50},

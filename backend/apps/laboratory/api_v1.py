@@ -80,7 +80,7 @@ class DiagnosticAccessPermission(BasePermission):
             return bool(active_roles.intersection(allowed))
 
         role = getattr(request.user, 'role', '')
-        if role in ['COMPOUNDER', 'PHARMACIST', 'INVENTORY']:
+        if role in ['FRONT_DESK_OFFICER', 'PHARMACIST', 'INVENTORY']:
             return False
         return role in ['LAB_TECHNICIAN', 'DOCTOR', 'NURSE', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER']
 

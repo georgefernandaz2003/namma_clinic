@@ -190,7 +190,7 @@ ROLE_PERMISSIONS = {
         'patients.read', 'consultation.read', 'diagnosis.read', 'prescription.read',
         'lab_order.read', 'lab_result.read', 'specimen.collect', 'medicine_batch.read'
     },
-    'COMPOUNDER': {
+    'FRONT_DESK_OFFICER': {
         'patients.view', 'patients.read', 'patients.create', 'patients.update', 'patients.update_demographics',
         'queue.view', 'queue.create', 'queue.issue_token', 'queue.void',
         'clinic.view', 'dashboard.view'

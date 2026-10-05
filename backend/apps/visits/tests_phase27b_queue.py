@@ -58,7 +58,7 @@ class Phase27BBaseHelper:
         dept_a, _ = Department.objects.get_or_create(facility=facility_a, code="OPD", defaults=dict(name="Outpatient"))
         dept_b, _ = Department.objects.get_or_create(facility=facility_b, code="OPD", defaults=dict(name="Outpatient"))
 
-        role_compounder, _ = RoleMaster.objects.get_or_create(code="COMPOUNDER", defaults=dict(name="Compounder"))
+        role_compounder, _ = RoleMaster.objects.get_or_create(code="FRONT_DESK_OFFICER", defaults=dict(name="Front Desk Officer"))
         role_nurse, _ = RoleMaster.objects.get_or_create(code="NURSE", defaults=dict(name="Staff Nurse"))
         role_admin, _ = RoleMaster.objects.get_or_create(code="HOSPITAL_ADMIN", defaults=dict(name="Hospital Admin"))
 
@@ -293,7 +293,7 @@ class QueueStateMachineTests(TestCase):
         self.dept_a = self.base["dept_a"]
 
         self.user_compounder, self.staff_compounder = Phase27BBaseHelper.create_staff_user(
-            "compounder_user", "COMPOUNDER", self.facility_a, self.dept_a
+            "compounder_user", "FRONT_DESK_OFFICER", self.facility_a, self.dept_a
         )
         self.user_nurse, self.staff_nurse = Phase27BBaseHelper.create_staff_user(
             "nurse_user", "NURSE", self.facility_a, self.dept_a
@@ -476,7 +476,7 @@ class QueueAPIv1EndpointTests(TestCase):
         self.dept_a = self.base["dept_a"]
 
         self.user_compounder, self.staff_compounder = Phase27BBaseHelper.create_staff_user(
-            "api_compounder", "COMPOUNDER", self.facility_a, self.dept_a
+            "api_compounder", "FRONT_DESK_OFFICER", self.facility_a, self.dept_a
         )
         self.user_nurse, self.staff_nurse = Phase27BBaseHelper.create_staff_user(
             "api_nurse", "NURSE", self.facility_a, self.dept_a

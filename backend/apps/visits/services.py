@@ -135,9 +135,9 @@ def call_next_queue_item(facility, requesting_user=None, target_queue="TRIAGE", 
 
     user_roles = get_user_active_role_codes(requesting_user)
 
-    # Disallow Compounder from calling patients
-    if "COMPOUNDER" in user_roles and "NURSE" not in user_roles and "DOCTOR" not in user_roles and not requesting_user.is_superuser:
-        raise PermissionDenied("Compounder role is strictly prohibited from calling patients.")
+    # Disallow Front Desk Officer from calling patients
+    if "FRONT_DESK_OFFICER" in user_roles and "NURSE" not in user_roles and "DOCTOR" not in user_roles and not requesting_user.is_superuser:
+        raise PermissionDenied("Front Desk Officer role is strictly prohibited from calling patients.")
 
     target_queue_upper = (target_queue or "TRIAGE").upper()
     if "NURSE" in user_roles and target_queue_upper != "TRIAGE" and not requesting_user.is_superuser:
@@ -231,10 +231,10 @@ def transition_visit_status(visit, to_status, requesting_user=None, target_queue
 
     user_roles = get_user_active_role_codes(requesting_user)
 
-    # Disallow Compounder from advancing patient through clinical stages
-    if "COMPOUNDER" in user_roles and "NURSE" not in user_roles and "DOCTOR" not in user_roles and not requesting_user.is_superuser:
+    # Disallow Front Desk Officer from advancing patient through clinical stages
+    if "FRONT_DESK_OFFICER" in user_roles and "NURSE" not in user_roles and "DOCTOR" not in user_roles and not requesting_user.is_superuser:
         if to_status in ['IN_TRIAGE', 'TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION', 'WAITING_FOR_PHARMACY', 'IN_PHARMACY']:
-            raise PermissionDenied("Compounder role is strictly prohibited from transitioning clinical workflow states.")
+            raise PermissionDenied("Front Desk Officer role is strictly prohibited from transitioning clinical workflow states.")
 
     # Guard historical date modification
     if visit.opd_date != today and not requesting_user.is_superuser:

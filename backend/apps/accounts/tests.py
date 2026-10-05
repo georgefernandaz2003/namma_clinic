@@ -1072,7 +1072,7 @@ class PhaseC2RegressionTests(TestCase):
             username='nurse_c2', role='NURSE', assigned_facility=self.clinic_a
         )
         self.compounder = User.objects.create_user(
-            username='compounder_c2', role='COMPOUNDER', assigned_facility=self.clinic_a
+            username='compounder_c2', role='FRONT_DESK_OFFICER', assigned_facility=self.clinic_a
         )
         self.doctor = User.objects.create_user(
             username='doctor_c2', role='DOCTOR', assigned_facility=self.clinic_a
@@ -1474,7 +1474,7 @@ class PhaseC3RegressionTests(TestCase):
             assigned_facility=self.clinic_a
         )
         self.compounder = User.objects.create_user(
-            username='compounder_c3', password='password', role='COMPOUNDER',
+            username='compounder_c3', password='password', role='FRONT_DESK_OFFICER',
             assigned_facility=self.clinic_a
         )
         self.pharmacist = User.objects.create_user(

@@ -1,13 +1,13 @@
-﻿import React from 'react';
+import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getRoleLandingRoute } from '../../navigation/navigationConfig';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 export const DashboardIndex: React.FC = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, token } = useAuth();
 
-  if (loading) {
+  if (loading || (token && !user)) {
     return (
       <div className="h-64 flex items-center justify-center">
         <LoadingSpinner size="lg" label="Routing to role console..." />

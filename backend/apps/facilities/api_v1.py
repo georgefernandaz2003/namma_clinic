@@ -50,7 +50,7 @@ class IsFacilityAdministrator(permissions.BasePermission):
     Rules:
     - Superusers have global facility administration authority.
     - DISTRICT_OFFICER (DHO) may create and mutate facilities strictly within their assigned district.
-    - HOSPITAL_ADMIN, DOCTOR, NURSE, COMPOUNDER, LAB_TECHNICIAN, PHARMACIST receive HTTP 403 Forbidden.
+    - HOSPITAL_ADMIN, DOCTOR, NURSE, FRONT_DESK_OFFICER, LAB_TECHNICIAN, PHARMACIST receive HTTP 403 Forbidden.
     """
     def has_permission(self, request, view):
         user = getattr(request, 'user', None)

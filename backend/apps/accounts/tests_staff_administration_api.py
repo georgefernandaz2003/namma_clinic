@@ -1,4 +1,4 @@
-﻿"""
+"""
 Comprehensive Real-Database Verification Suite for Staff Administration API & Lifecycle Hardening.
 Tests DHO authority, Clinic Admin authority, operational role protection, role/facility invariants,
 multi-role safety, transfer atomicity, lifecycle enforcement, User.role zero-weight at API level,
@@ -62,7 +62,7 @@ class StaffAdministrationApiTests(TestCase):
         self.role_admin = RoleMaster.objects.get(code="HOSPITAL_ADMIN")
         self.role_doc = RoleMaster.objects.get(code="DOCTOR")
         self.role_nurse = RoleMaster.objects.get(code="NURSE")
-        self.role_compounder = RoleMaster.objects.get(code="COMPOUNDER")
+        self.role_compounder = RoleMaster.objects.get(code="FRONT_DESK_OFFICER")
         self.role_lab = RoleMaster.objects.get(code="LAB_TECHNICIAN")
         self.role_pharm = RoleMaster.objects.get(code="PHARMACIST")
 
@@ -237,7 +237,7 @@ class StaffAdministrationApiTests(TestCase):
         """Clinic Admin can assign operational clinical roles within own facility."""
         self.client.force_authenticate(user=self.user_admin)
         res = self.client.post(f'/api/v1/accounts/staff-profiles/{self.staff_nurse.id}/assign-role/', {
-            "role_code": "COMPOUNDER"
+            "role_code": "FRONT_DESK_OFFICER"
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertTrue(StaffRoleAssignment.objects.filter(staff=self.staff_nurse, role=self.role_compounder, is_active=True).exists())
@@ -294,11 +294,11 @@ class StaffAdministrationApiTests(TestCase):
 
     # 12. Multi-role preservation
     def test_12_multi_role_preservation(self):
-        """Assigning a second NURSE does not affect first NURSE+COMPOUNDER; ending one removes only that role."""
-        # 1. Staff 1 assigned NURSE + COMPOUNDER
+        """Assigning a second NURSE does not affect first NURSE+FRONT_DESK_OFFICER; ending one removes only that role."""
+        # 1. Staff 1 assigned NURSE + FRONT_DESK_OFFICER
         assign_role(self.staff_nurse, self.role_compounder, actor=self.user_admin)
         roles_s1 = set(StaffRoleAssignment.objects.filter(staff=self.staff_nurse, is_active=True).values_list('role__code', flat=True))
-        self.assertEqual(roles_s1, {'NURSE', 'COMPOUNDER'})
+        self.assertEqual(roles_s1, {'NURSE', 'FRONT_DESK_OFFICER'})
 
         # 2. Staff 2 hired and assigned NURSE
         p2 = Person.objects.create(first_name="Nurse2", last_name="K", gender="FEMALE", date_of_birth="1995-01-01")
@@ -308,9 +308,9 @@ class StaffAdministrationApiTests(TestCase):
 
         # Verify Staff 1 still has both
         roles_s1_after = set(StaffRoleAssignment.objects.filter(staff=self.staff_nurse, is_active=True).values_list('role__code', flat=True))
-        self.assertEqual(roles_s1_after, {'NURSE', 'COMPOUNDER'})
+        self.assertEqual(roles_s1_after, {'NURSE', 'FRONT_DESK_OFFICER'})
 
-        # 3. End COMPOUNDER on Staff 1
+        # 3. End FRONT_DESK_OFFICER on Staff 1
         comp_assign = StaffRoleAssignment.objects.get(staff=self.staff_nurse, role=self.role_compounder, is_active=True)
         end_role_assignment(comp_assign, actor=self.user_admin)
 
@@ -393,10 +393,10 @@ class StaffAdministrationApiTests(TestCase):
 
     # 18. Seven roles remain unchanged
     def test_18_seven_roles_remain_unchanged(self):
-        """Exactly the 7 canonical roles exist in RoleMaster."""
+        """Canonical roles exist in RoleMaster."""
         expected = {
             "DISTRICT_OFFICER", "HOSPITAL_ADMIN", "DOCTOR",
-            "NURSE", "COMPOUNDER", "LAB_TECHNICIAN", "PHARMACIST"
+            "NURSE", "FRONT_DESK_OFFICER", "LAB_TECHNICIAN", "PHARMACIST"
         }
         actual = set(RoleMaster.objects.values_list('code', flat=True))
         self.assertTrue(expected.issubset(actual))
@@ -406,7 +406,8 @@ class StaffAdministrationApiTests(TestCase):
         """SYSTEM_ADMIN is not in the approved role catalogue."""
         self.assertFalse(RoleMaster.objects.filter(code="SYSTEM_ADMIN").exists())
 
-    # 20. No NURSE_COMPOUNDER role
+    # 20. No NURSE_COMPOUNDER or NURSE_FRONT_DESK_OFFICER role
     def test_20_no_nurse_compounder_role(self):
-        """NURSE_COMPOUNDER does not exist as a composite role definition."""
+        """NURSE_COMPOUNDER or NURSE_FRONT_DESK_OFFICER does not exist as a composite role definition."""
         self.assertFalse(RoleMaster.objects.filter(code="NURSE_COMPOUNDER").exists())
+        self.assertFalse(RoleMaster.objects.filter(code="NURSE_FRONT_DESK_OFFICER").exists())

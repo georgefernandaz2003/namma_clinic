@@ -42,9 +42,9 @@ SEEDED_ROLES = [
         "is_active": True
     },
     {
-        "code": "COMPOUNDER",
-        "name": "Compounder",
-        "display_name": "Compounder / Registration Clerk",
+        "code": "FRONT_DESK_OFFICER",
+        "name": "Front Desk Officer",
+        "display_name": "Front Desk Officer / Registration Clerk",
         "description": "Front-desk patient registration, demographic updates, and OPD queue token issuance",
         "scope_level": "FACILITY",
         "is_system_role": True,
@@ -566,7 +566,7 @@ SEEDED_PERMISSIONS = [
 
 # Explicit Role -> Permission Mapping for the 7 Operational Roles
 ROLE_PERMISSION_MAP = {
-    "COMPOUNDER": [
+    "FRONT_DESK_OFFICER": [
         "patients.read",
         "patients.create",
         "patients.update_demographics",

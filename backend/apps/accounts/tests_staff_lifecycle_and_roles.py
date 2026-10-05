@@ -1,4 +1,4 @@
-﻿"""
+"""
 Targeted Verification Suite: Staff Identity, Account Lifecycle, Multi-Role & Anti-Privilege Escalation.
 Validates the database-backed StaffRoleAssignment foundation across all 20 required points.
 """
@@ -127,39 +127,39 @@ class StaffLifecycleAndRoleAssignmentTests(TestCase):
     # 2. Multiple active roles resolve as union
     def test_02_multiple_active_roles_resolve_as_union(self):
         role_nurse = RoleMaster.objects.get(code='NURSE')
-        role_compounder = RoleMaster.objects.get(code='COMPOUNDER')
+        role_front_desk = RoleMaster.objects.get(code='FRONT_DESK_OFFICER')
 
         StaffRoleAssignment.objects.create(
             staff=self.staff_jane, role=role_nurse, facility=self.clinic_a,
             effective_from=datetime.date.today(), is_active=True
         )
         StaffRoleAssignment.objects.create(
-            staff=self.staff_jane, role=role_compounder, facility=self.clinic_a,
+            staff=self.staff_jane, role=role_front_desk, facility=self.clinic_a,
             effective_from=datetime.date.today(), is_active=True
         )
 
         active_roles = get_user_active_role_codes(self.user_jane)
-        self.assertEqual(active_roles, {'NURSE', 'COMPOUNDER'})
+        self.assertEqual(active_roles, {'NURSE', 'FRONT_DESK_OFFICER'})
 
         perms = get_user_role_permissions(self.user_jane)
         # Nurse permissions
         self.assertIn('triage.create', perms)
         self.assertIn('vitals.create', perms)
-        # Compounder permissions
+        # Front Desk Officer permissions
         self.assertIn('patients.create', perms)
         self.assertIn('queue.create', perms)
         self.assertIn('queue.issue_token', perms)
 
-    # 3. NURSE + COMPOUNDER works
-    def test_03_nurse_plus_compounder_works(self):
+    # 3. NURSE + FRONT_DESK_OFFICER works
+    def test_03_nurse_plus_front_desk_officer_works(self):
         role_nurse = RoleMaster.objects.get(code='NURSE')
-        role_compounder = RoleMaster.objects.get(code='COMPOUNDER')
+        role_front_desk = RoleMaster.objects.get(code='FRONT_DESK_OFFICER')
 
         StaffRoleAssignment.objects.create(
             staff=self.staff_jane, role=role_nurse, facility=self.clinic_a, is_active=True
         )
         StaffRoleAssignment.objects.create(
-            staff=self.staff_jane, role=role_compounder, facility=self.clinic_a, is_active=True
+            staff=self.staff_jane, role=role_front_desk, facility=self.clinic_a, is_active=True
         )
 
         # Has both triage and intake capability
@@ -170,13 +170,15 @@ class StaffLifecycleAndRoleAssignmentTests(TestCase):
         self.assertFalse(has_role_permission(self.user_jane, 'consultation.create'))
         self.assertFalse(has_role_permission(self.user_jane, 'pharmacy.dispense'))
 
-    # 4. NURSE_COMPOUNDER and composite roles do not exist
+    # 4. NURSE_COMPOUNDER, NURSE_FRONT_DESK_OFFICER and composite roles do not exist
     def test_04_nurse_compounder_role_does_not_exist(self):
         self.assertFalse(RoleMaster.objects.filter(code='NURSE_COMPOUNDER').exists())
+        self.assertFalse(RoleMaster.objects.filter(code='NURSE_FRONT_DESK_OFFICER').exists())
         self.assertFalse(RoleMaster.objects.filter(code='PHARMACY_INVENTORY').exists())
         self.assertFalse(RoleMaster.objects.filter(code='INVENTORY_PHARMACIST').exists())
         self.assertFalse(RoleMaster.objects.filter(code='STORE_PHARMACIST').exists())
         self.assertNotIn('NURSE_COMPOUNDER', RoleChoices.values)
+        self.assertNotIn('NURSE_FRONT_DESK_OFFICER', RoleChoices.values)
         self.assertNotIn('PHARMACY_INVENTORY', RoleChoices.values)
         self.assertNotIn('INVENTORY_PHARMACIST', RoleChoices.values)
         self.assertNotIn('STORE_PHARMACIST', RoleChoices.values)
@@ -198,14 +200,14 @@ class StaffLifecycleAndRoleAssignmentTests(TestCase):
 
     # 6. User.role is ignored for authorization when StaffRoleAssignment exists
     def test_06_user_role_is_ignored_for_authorization_when_sra_exists(self):
-        role_compounder = RoleMaster.objects.get(code='COMPOUNDER')
+        role_front_desk = RoleMaster.objects.get(code='FRONT_DESK_OFFICER')
         StaffRoleAssignment.objects.create(
-            staff=self.staff_jane, role=role_compounder, facility=self.clinic_a, is_active=True
+            staff=self.staff_jane, role=role_front_desk, facility=self.clinic_a, is_active=True
         )
         self.user_jane.role = RoleChoices.DOCTOR
         self.user_jane.save()
 
-        # Authorization check: Jane has compounder perms, NOT doctor perms
+        # Authorization check: Jane has front desk officer perms, NOT doctor perms
         self.assertTrue(has_role_permission(self.user_jane, 'patients.create'))
         self.assertFalse(has_role_permission(self.user_jane, 'consultation.create'))
         self.assertFalse(has_role_permission(self.user_jane, 'diagnosis.create'))
@@ -397,7 +399,7 @@ class StaffLifecycleAndRoleAssignmentTests(TestCase):
             'HOSPITAL_ADMIN',
             'DOCTOR',
             'NURSE',
-            'COMPOUNDER',
+            'FRONT_DESK_OFFICER',
             'LAB_TECHNICIAN',
             'PHARMACIST',
             'INVENTORY'

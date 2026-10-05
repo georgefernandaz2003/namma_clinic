@@ -1,4 +1,4 @@
-﻿"""
+"""
 IAM Domain Services: Professional Identity, Role Assignments, Account Lifecycle, and Postings.
 Authoritative domain logic with anti-privilege escalation, multi-role assignment, and durable auditing.
 """
@@ -108,7 +108,7 @@ def validate_admin_actor(actor, target_facility=None, target_staff=None, target_
             raise UnauthorizedDomainAction(f"Staff '{actor_staff.employee_id}' lacks administrative authority.")
 
     # Operational roles cannot perform admin actions
-    operational_roles = ['DOCTOR', 'NURSE', 'COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST']
+    operational_roles = ['DOCTOR', 'NURSE', 'FRONT_DESK_OFFICER', 'LAB_TECHNICIAN', 'PHARMACIST']
     if actor_role in operational_roles:
         if action in ['transfer', 'assign_facility']:
             pass
@@ -423,7 +423,7 @@ def assign_role(staff_profile, role, facility=None, effective_from=None, effecti
     )
 
     # Section 9: Validate role-facility/district invariants
-    facility_roles = ['HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST']
+    facility_roles = ['HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'FRONT_DESK_OFFICER', 'LAB_TECHNICIAN', 'PHARMACIST']
     if role.code in facility_roles and not context_facility:
         raise DomainValidationError(
             f"Role '{role.code}' requires a valid facility context.",
@@ -828,6 +828,16 @@ def seed_roles_and_permissions(stdout=None):
     mappings_created = 0
 
     # 1. Seed Roles
+    from apps.accounts.models import User, StaffProfile
+    RoleMaster.objects.filter(code="COMPOUNDER").update(
+        code="FRONT_DESK_OFFICER",
+        name="Front Desk Officer",
+        display_name="Front Desk Officer / Registration Clerk",
+        description="Front-desk patient registration, demographic updates, and OPD queue token issuance"
+    )
+    User.objects.filter(role="COMPOUNDER").update(role="FRONT_DESK_OFFICER")
+    StaffProfile.objects.filter(designation__iexact="Compounder").update(designation="Front Desk Officer")
+
     role_objs = {}
     for r_data in SEEDED_ROLES:
         role, created = RoleMaster.objects.get_or_create(

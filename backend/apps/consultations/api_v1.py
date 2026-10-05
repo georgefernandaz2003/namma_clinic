@@ -40,7 +40,7 @@ class ClinicalTriagePermission(BasePermission):
             return bool({'NURSE', 'DOCTOR'}.intersection(active_roles))
 
         role = getattr(user, 'role', '')
-        if role in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER', 'INVENTORY']:
+        if role in ['FRONT_DESK_OFFICER', 'LAB_TECHNICIAN', 'PHARMACIST', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER', 'INVENTORY']:
             return False
 
         return role in ['NURSE', 'DOCTOR']
@@ -49,7 +49,7 @@ class ClinicalTriagePermission(BasePermission):
 class PhysicianConsultationPermission(BasePermission):
     """
     Access to physician consultation records is restricted to medical officers.
-    Denies Compounder, Lab Tech, Pharmacist, Nurse, Hospital Admin, District Officer, Inventory.
+    Denies Front Desk Officer, Lab Tech, Pharmacist, Nurse, Hospital Admin, District Officer, Inventory.
     Enforces active database role assignments strictly.
     """
     def has_permission(self, request, view):
@@ -66,7 +66,7 @@ class PhysicianConsultationPermission(BasePermission):
             return 'DOCTOR' in active_roles
 
         role = getattr(user, 'role', '')
-        if role in ['COMPOUNDER', 'LAB_TECHNICIAN', 'PHARMACIST', 'NURSE', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER', 'INVENTORY']:
+        if role in ['FRONT_DESK_OFFICER', 'LAB_TECHNICIAN', 'PHARMACIST', 'NURSE', 'HOSPITAL_ADMIN', 'DISTRICT_OFFICER', 'INVENTORY']:
             return False
 
         return role == 'DOCTOR'
