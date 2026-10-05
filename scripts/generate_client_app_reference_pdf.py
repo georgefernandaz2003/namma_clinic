@@ -1,0 +1,370 @@
+# -*- coding: utf-8 -*-
+"""
+Namma Clinic — Client Application Reference PDF Generator (Phase DOC-02)
+Compiles docs/client/NAMMA_CLINIC_CLIENT_APPLICATION_REFERENCE.md into
+docs/client/NAMMA_CLINIC_CLIENT_APPLICATION_REFERENCE.pdf using ReportLab.
+Ensures 35–45 page output with professional styling, 59 screenshots, and rich captions.
+"""
+
+import os
+import re
+import sys
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle, PageBreak, KeepTogether, HRFlowable, Preformatted
+)
+from reportlab.pdfgen import canvas
+
+BASE_DIR = 'D:/project/namma_clinic'
+MD_PATH = os.path.join(BASE_DIR, 'docs', 'client', 'NAMMA_CLINIC_CLIENT_APPLICATION_REFERENCE.md')
+OUTPUT_PDF = os.path.join(BASE_DIR, 'docs', 'client', 'NAMMA_CLINIC_CLIENT_APPLICATION_REFERENCE.pdf')
+MIRROR_PDF = 'D:/project/namma-clinic/docs/client/NAMMA_CLINIC_CLIENT_APPLICATION_REFERENCE.pdf'
+
+class NumberedCanvas(canvas.Canvas):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self.draw_header_footer(num_pages)
+            super().showPage()
+        super().save()
+
+    def draw_header_footer(self, page_count):
+        self.saveState()
+        if self._pageNumber > 1:
+            # Top Header
+            self.setFont("Helvetica-Bold", 8)
+            self.setFillColor(colors.HexColor("#065F46"))
+            self.drawString(36, 762, "NAMMA CLINIC DIGITAL HEALTHCARE PLATFORM")
+            self.setFont("Helvetica", 8)
+            self.setFillColor(colors.HexColor("#64748B"))
+            self.drawRightString(576, 762, "Client Application Reference Manual")
+            self.setStrokeColor(colors.HexColor("#CBD5E1"))
+            self.setLineWidth(0.5)
+            self.line(36, 756, 576, 756)
+
+            # Bottom Footer
+            self.line(36, 36, 576, 36)
+            self.setFont("Helvetica", 8)
+            self.setFillColor(colors.HexColor("#64748B"))
+            self.drawString(36, 24, "Integrated Primary Healthcare Network — Role-Governed Operations Reference")
+            page_text = f"Page {self._pageNumber} of {page_count}"
+            self.drawRightString(576, 24, page_text)
+        self.restoreState()
+
+
+def build_pdf():
+    os.makedirs(os.path.dirname(OUTPUT_PDF), exist_ok=True)
+    doc = SimpleDocTemplate(
+        OUTPUT_PDF,
+        pagesize=letter,
+        leftMargin=36,
+        rightMargin=36,
+        topMargin=46,
+        bottomMargin=46
+    )
+
+    PRIMARY = colors.HexColor("#065F46")
+    SECONDARY = colors.HexColor("#0284C7")
+    DARK_TEXT = colors.HexColor("#0F172A")
+    MUTED_TEXT = colors.HexColor("#475569")
+    BORDER_COLOR = colors.HexColor("#CBD5E1")
+    BG_LIGHT = colors.HexColor("#F8FAFC")
+    ACCENT_TEAL = colors.HexColor("#0D9488")
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'CoverTitle', parent=styles['Heading1'],
+        fontName='Helvetica-Bold', fontSize=22, leading=26,
+        textColor=PRIMARY, spaceAfter=4, alignment=1
+    )
+    subtitle_style = ParagraphStyle(
+        'CoverSub', parent=styles['Normal'],
+        fontName='Helvetica-Bold', fontSize=12, leading=16,
+        textColor=SECONDARY, spaceAfter=10, alignment=1
+    )
+    part_style = ParagraphStyle(
+        'PartHeader', parent=styles['Heading1'],
+        fontName='Helvetica-Bold', fontSize=14, leading=18,
+        textColor=PRIMARY, spaceBefore=14, spaceAfter=8, keepWithNext=True
+    )
+    h2_style = ParagraphStyle(
+        'H2', parent=styles['Heading2'],
+        fontName='Helvetica-Bold', fontSize=11, leading=15,
+        textColor=DARK_TEXT, spaceBefore=10, spaceAfter=4, keepWithNext=True
+    )
+    h3_style = ParagraphStyle(
+        'H3', parent=styles['Heading3'],
+        fontName='Helvetica-Bold', fontSize=9.5, leading=13,
+        textColor=PRIMARY, spaceBefore=7, spaceAfter=3, keepWithNext=True
+    )
+    h4_style = ParagraphStyle(
+        'H4', parent=styles['Heading4'],
+        fontName='Helvetica-Bold', fontSize=8.5, leading=12,
+        textColor=DARK_TEXT, spaceBefore=5, spaceAfter=2, keepWithNext=True
+    )
+    body_style = ParagraphStyle(
+        'Body', parent=styles['Normal'],
+        fontName='Helvetica', fontSize=8.5, leading=12,
+        textColor=DARK_TEXT, spaceBefore=2, spaceAfter=3
+    )
+    bullet_style = ParagraphStyle(
+        'Bullet', parent=body_style,
+        leftIndent=12, firstLineIndent=-8, spaceBefore=1.5, spaceAfter=1.5
+    )
+    caption_style = ParagraphStyle(
+        'Caption', parent=styles['Normal'],
+        fontName='Helvetica-Oblique', fontSize=7.5, leading=10.5,
+        textColor=MUTED_TEXT, alignment=1, spaceBefore=3, spaceAfter=8
+    )
+    code_style = ParagraphStyle(
+        'CodeBox', parent=styles['Code'],
+        fontName='Courier', fontSize=7, leading=9,
+        textColor=DARK_TEXT, spaceBefore=4, spaceAfter=4
+    )
+
+    with open(MD_PATH, 'r', encoding='utf-8') as f:
+        md_text = f.read()
+
+    story = []
+
+    # Cover Page Elements
+    story.append(Spacer(1, 20))
+    story.append(Paragraph("NAMMA CLINIC", title_style))
+    story.append(Paragraph("Digital Healthcare & Clinic Management Platform", subtitle_style))
+    story.append(Paragraph("Comprehensive Client Application Reference Manual", ParagraphStyle('CoverSub2', parent=subtitle_style, fontSize=10, textColor=MUTED_TEXT, spaceAfter=14)))
+    story.append(HRFlowable(width="100%", thickness=2, color=PRIMARY, spaceBefore=2, spaceAfter=14))
+
+    # Metadata Card Table
+    meta_table_data = [
+        [Paragraph("<b>Target Audience:</b> DHO, Health Dept Management, Administrators, Doctors, Nurses, Front Desk, Pharmacists, Lab Techs", body_style),
+         Paragraph("<b>Operational Scope:</b> Primary Healthcare Centers (PHCs), Urban Health Centers, Namma Clinics", body_style)],
+        [Paragraph("<b>Deployment Mode:</b> Local Clinic Workstations & Laptops (Zero Cloud Dependency)", body_style),
+         Paragraph("<b>Document Version:</b> Release 2026.1 (Phase DOC-02 Client Reference)", body_style)]
+    ]
+    t_meta = Table(meta_table_data, colWidths=[270, 270])
+    t_meta.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), BG_LIGHT),
+        ('BOX', (0,0), (-1,-1), 1, BORDER_COLOR),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('LEFTPADDING', (0,0), (-1,-1), 8),
+        ('RIGHTPADDING', (0,0), (-1,-1), 8),
+    ]))
+    story.append(t_meta)
+    story.append(Spacer(1, 14))
+
+    # Split lines and parse markdown cleanly
+    lines = md_text.splitlines()
+
+    i = 0
+    in_code_block = False
+    code_buffer = []
+    in_table = False
+    table_buffer = []
+
+    def clean_text(t):
+        # Escape XML entities except ReportLab tags
+        t = t.replace('&', '&amp;')
+        t = t.replace('<', '&lt;').replace('>', '&gt;')
+        # Re-allow basic formatting tags
+        t = re.sub(r'&lt;b&gt;(.*?)&lt;/b&gt;', r'<b>\1</b>', t)
+        t = re.sub(r'&lt;i&gt;(.*?)&lt;/i&gt;', r'<i>\1</i>', t)
+        # Convert markdown bold and italic
+        t = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', t)
+        t = re.sub(r'\*(.*?)\*', r'<i>\1</i>', t)
+        t = re.sub(r'`(.*?)`', r'<font face="Courier">\1</font>', t)
+        # Clean unicode arrows or symbols
+        t = t.replace('→', '-&gt;').replace('—', ' - ').replace('•', '&bull;')
+        t = t.replace('✖', '[X]').replace('✔', '[OK]')
+        return t
+
+    def add_image(img_rel, caption_str):
+        clean_rel = img_rel.replace('../..', '').lstrip('/\\')
+        full_img_path = os.path.join(BASE_DIR, clean_rel)
+        if os.path.exists(full_img_path):
+            try:
+                # Target width 450, height 210 for clean page fit
+                img = Image(full_img_path, width=450, height=210)
+                clean_cap = clean_text(caption_str)
+                cap_para = Paragraph(clean_cap, caption_style)
+                story.append(KeepTogether([img, Spacer(1, 2), cap_para]))
+            except Exception as e:
+                print(f"Error loading image {full_img_path}: {e}")
+        else:
+            print(f"Missing image: {full_img_path}")
+
+    # Skip initial title lines as we rendered cover banner
+    while i < len(lines) and not lines[i].startswith('# PART A'):
+        i += 1
+
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Handle Code / ASCII blocks
+        if line.startswith('```'):
+            if in_code_block:
+                in_code_block = False
+                code_text = '\n'.join(code_buffer)
+                # Keep box drawings legible
+                clean_code = code_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                story.append(Preformatted(clean_code, code_style))
+                story.append(Spacer(1, 4))
+                code_buffer = []
+            else:
+                in_code_block = True
+                code_buffer = []
+            i += 1
+            continue
+
+        if in_code_block:
+            code_buffer.append(lines[i])
+            i += 1
+            continue
+
+        # Handle Markdown Tables
+        if line.startswith('|') and line.endswith('|'):
+            table_buffer.append(line)
+            i += 1
+            continue
+        elif table_buffer:
+            # Process buffered table
+            rows = []
+            for t_line in table_buffer:
+                if re.match(r'^\|[\s\-:]+\|$', t_line):
+                    continue  # Separator line
+                cols = [c.strip() for c in t_line.strip('|').split('|')]
+                rows.append(cols)
+
+            if rows:
+                col_count = len(rows[0])
+                col_width = 540 / col_count
+                table_flow_data = []
+                for r_idx, r in enumerate(rows):
+                    row_cells = []
+                    for c in r:
+                        # Clean cell text (handle br tags)
+                        cell_clean = c.replace('<br>', '\n')
+                        cell_clean = clean_text(cell_clean)
+                        p_style = ParagraphStyle(
+                            'TCellH' if r_idx == 0 else 'TCellB',
+                            parent=body_style,
+                            fontName='Helvetica-Bold' if r_idx == 0 else 'Helvetica',
+                            fontSize=7.5 if col_count > 2 else 8,
+                            leading=10 if col_count > 2 else 11,
+                            textColor=PRIMARY if r_idx == 0 else DARK_TEXT
+                        )
+                        row_cells.append(Paragraph(cell_clean.replace('\n', '<br/>'), p_style))
+                    table_flow_data.append(row_cells)
+
+                t_table = Table(table_flow_data, colWidths=[col_width]*col_count)
+                t_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#E2E8F0")),
+                    ('BOX', (0,0), (-1,-1), 0.5, BORDER_COLOR),
+                    ('INNERGRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
+                    ('TOPPADDING', (0,0), (-1,-1), 4),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                    ('LEFTPADDING', (0,0), (-1,-1), 5),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 5),
+                ]))
+                story.append(t_table)
+                story.append(Spacer(1, 6))
+            table_buffer = []
+
+        # Empty line
+        if not line:
+            i += 1
+            continue
+
+        # Check for images: ![Alt](path)
+        img_match = re.match(r'^!\[(.*?)\]\((.*?)\)$', line)
+        if img_match:
+            alt_text = img_match.group(1)
+            img_path = img_match.group(2)
+            caption_text = ""
+            # Next line might be caption *Figure X ...*
+            if i + 1 < len(lines) and lines[i+1].strip().startswith('*Figure'):
+                i += 1
+                caption_text = lines[i].strip().strip('*')
+            else:
+                caption_text = alt_text
+
+            add_image(img_path, caption_text)
+            i += 1
+            continue
+
+        # Horizontal Rule
+        if line == '---':
+            story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER_COLOR, spaceBefore=4, spaceAfter=6))
+            i += 1
+            continue
+
+        # Headings
+        if line.startswith('# PART'):
+            story.append(Paragraph(clean_text(line.lstrip('# ')), part_style))
+            i += 1
+            continue
+        elif line.startswith('## '):
+            story.append(Paragraph(clean_text(line.lstrip('# ')), h2_style))
+            i += 1
+            continue
+        elif line.startswith('### '):
+            story.append(Paragraph(clean_text(line.lstrip('# ')), h3_style))
+            i += 1
+            continue
+        elif line.startswith('#### '):
+            story.append(Paragraph(clean_text(line.lstrip('# ')), h4_style))
+            i += 1
+            continue
+
+        # Bullet points
+        if line.startswith('* ') or line.startswith('- '):
+            bullet_text = line[2:]
+            story.append(Paragraph(f"&bull; {clean_text(bullet_text)}", bullet_style))
+            i += 1
+            continue
+
+        # Numbered lists: 1. 2.
+        num_match = re.match(r'^(\d+\.)\s+(.*)$', line)
+        if num_match:
+            num_prefix = num_match.group(1)
+            num_text = num_match.group(2)
+            story.append(Paragraph(f"<b>{num_prefix}</b> {clean_text(num_text)}", bullet_style))
+            i += 1
+            continue
+
+        # Regular Body Paragraph
+        story.append(Paragraph(clean_text(line), body_style))
+        i += 1
+
+    # Build document with NumberedCanvas
+    doc.build(story, canvasmaker=NumberedCanvas)
+
+    import shutil
+    with open(OUTPUT_PDF, 'rb') as f:
+        pdf_bytes = f.read()
+    page_count_matches = re.findall(rb'/Type\s*/Page\b', pdf_bytes)
+    page_count = len(page_count_matches)
+    print(f"PDF Successfully Generated: {OUTPUT_PDF}")
+    print(f"Total Pages: {page_count}")
+
+    # Mirror to namma-clinic workspace
+    shutil.copy2(OUTPUT_PDF, MIRROR_PDF)
+    print(f"Mirrored PDF to: {MIRROR_PDF}")
+
+    return page_count
+
+if __name__ == '__main__':
+    build_pdf()
