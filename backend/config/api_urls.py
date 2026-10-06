@@ -32,6 +32,10 @@ from apps.surveillance.intelligence_views import (
     PublicHealthDistrictAggregationView,
     PublicHealthIntelligenceSummaryView
 )
+from apps.surveillance.intelligence_forecast_views import (
+    PublicHealthForecastView,
+    PublicHealthSeasonalityView
+)
 from apps.telemedicine.views import TeleconsultationViewSet
 from apps.outreach.views import OutreachActivityViewSet
 from apps.wellness.views import WellnessSessionViewSet
@@ -124,6 +128,10 @@ urlpatterns = [
     path('surveillance/intelligence/hospital-aggregation/', PublicHealthHospitalAggregationView.as_view(), name='intelligence_hospital_aggregation'),
     path('surveillance/intelligence/district-aggregation/', PublicHealthDistrictAggregationView.as_view(), name='intelligence_district_aggregation'),
 
+    # Public Health Intelligence & Forecasting - Step 2 Forecasting & Seasonality
+    path('surveillance/intelligence/forecast/', PublicHealthForecastView.as_view(), name='intelligence_forecast'),
+    path('surveillance/intelligence/seasonality/', PublicHealthSeasonalityView.as_view(), name='intelligence_seasonality'),
+
     # Direct Alias /api/intelligence/...
     path('intelligence/summary/', PublicHealthIntelligenceSummaryView.as_view(), name='intelligence_summary_alias'),
     path('intelligence/overview/', PublicHealthIntelligenceSummaryView.as_view(), name='intelligence_overview_alias'),
@@ -132,6 +140,8 @@ urlpatterns = [
     path('intelligence/historical-disease/', PublicHealthHistoricalDiseaseView.as_view(), name='intelligence_historical_disease_alias'),
     path('intelligence/hospital-aggregation/', PublicHealthHospitalAggregationView.as_view(), name='intelligence_hospital_aggregation_alias'),
     path('intelligence/district-aggregation/', PublicHealthDistrictAggregationView.as_view(), name='intelligence_district_aggregation_alias'),
+    path('intelligence/forecast/', PublicHealthForecastView.as_view(), name='intelligence_forecast_alias'),
+    path('intelligence/seasonality/', PublicHealthSeasonalityView.as_view(), name='intelligence_seasonality_alias'),
 
     # Router URLs
     path('', include(router.urls)),
