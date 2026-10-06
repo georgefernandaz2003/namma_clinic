@@ -63,9 +63,62 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date, i
         </div>
       </div>
 
-      {/* 4 KPI Cards: 1. Total Patients OPD, 2. Triage Waiting, 3. Emergency & Red Flags, 4. Completed Patients */}
+      {/* 4 KPI Cards: 1. Triage Waiting, 2. Emergency & Red Flags, 3. Triage Completed, 4. Total Patients OPD */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Card 1: Total Patients Today OPD with New Patients Indicator */}
+        {/* Card 1: Triage Waiting */}
+        <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/30 shadow-xs flex flex-col justify-between">
+          <div>
+            <p className="text-[11px] font-bold text-amber-800 uppercase flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              Triage Waiting
+            </p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <h3 className="text-xl font-black text-amber-900">{kpis.triage_waiting ?? summary?.nurse_summary?.triage_waiting ?? 0}</h3>
+              <span className="text-[10px] font-semibold text-amber-700">Awaiting Vitals</span>
+            </div>
+          </div>
+          <p className="text-[10px] text-amber-700 font-medium mt-1 pt-1 border-t border-amber-100">
+            Awaiting Screening
+          </p>
+        </div>
+
+        {/* Card 2: Emergency & Red Flags */}
+        <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/30 shadow-xs flex flex-col justify-between">
+          <div>
+            <p className="text-[11px] font-bold text-rose-800 uppercase flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+              Emergency &amp; Red Flags
+            </p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <h3 className="text-xl font-black text-rose-900">{summary?.emergency_count ?? kpis.emergency ?? summary?.nurse_summary?.emergency ?? 0}</h3>
+              <span className="text-[10px] font-semibold text-rose-700">Priority</span>
+            </div>
+          </div>
+          <p className="text-[10px] text-rose-700 font-medium mt-1 pt-1 border-t border-rose-100">
+            Priority Red Flags
+          </p>
+        </div>
+
+        {/* Card 3: Triage Completed */}
+        <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-xs flex flex-col justify-between">
+          <div>
+            <p className="text-[11px] font-bold text-emerald-800 uppercase flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              Triage Completed
+            </p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <h3 className="text-xl font-black text-emerald-900">
+                {summary?.nurse_summary?.triage_completed ?? summary?.kpis?.triage_completed ?? summary?.queues?.triage_completed ?? summary?.queue_summary?.triage_completed ?? summary?.triage_completed ?? 0}
+              </h3>
+              <span className="text-[10px] font-semibold text-emerald-700">Finished</span>
+            </div>
+          </div>
+          <p className="text-[10px] text-emerald-700 font-medium mt-1 pt-1 border-t border-emerald-100">
+            Nurse Vitals &amp; Screening Finished
+          </p>
+        </div>
+
+        {/* Card 4: Total Patients OPD (Top Right Corner) */}
         <div className="bg-white p-4 rounded-xl border border-purple-200 bg-purple-50/30 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-1">
@@ -82,66 +135,13 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({ summary, date, i
               </span>
             </div>
             <div className="flex items-baseline gap-2 mt-1">
-              <h3 className="text-xl font-black text-purple-900">{summary?.todays_opd || 0}</h3>
+              <h3 className="text-xl font-black text-purple-900">{summary?.todays_opd || summary?.nurse_summary?.todays_opd || 0}</h3>
               <span className="text-[10px] font-semibold text-purple-700">Total Visits</span>
             </div>
           </div>
           <p className="text-[10px] text-purple-700 font-medium mt-1 pt-1 border-t border-purple-100 flex items-center justify-between">
             <span>All Registered OPD</span>
             <span className="text-emerald-700 font-bold">{summary?.new_opd_patients ?? summary?.registered_today ?? 0} New in OPD</span>
-          </p>
-        </div>
-
-        {/* Card 2: Triage Waiting */}
-        <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/30 shadow-xs flex flex-col justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-amber-800 uppercase flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-amber-600" />
-              Triage Waiting
-            </p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <h3 className="text-xl font-black text-amber-900">{kpis.triage_waiting || 0}</h3>
-              <span className="text-[10px] font-semibold text-amber-700">Awaiting Vitals</span>
-            </div>
-          </div>
-          <p className="text-[10px] text-amber-700 font-medium mt-1 pt-1 border-t border-amber-100">
-            Awaiting Screening
-          </p>
-        </div>
-
-        {/* Card 3: Emergency & Red Flags */}
-        <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/30 shadow-xs flex flex-col justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-rose-800 uppercase flex items-center gap-1.5">
-              <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
-              Emergency &amp; Red Flags
-            </p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <h3 className="text-xl font-black text-rose-900">{summary?.emergency_count ?? kpis.emergency ?? 0}</h3>
-              <span className="text-[10px] font-semibold text-rose-700">Priority</span>
-            </div>
-          </div>
-          <p className="text-[10px] text-rose-700 font-medium mt-1 pt-1 border-t border-rose-100">
-            Priority Red Flags
-          </p>
-        </div>
-
-        {/* Card 4: Completed Patients Count (Last Card) */}
-        <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-xs flex flex-col justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-emerald-800 uppercase flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              Completed Patients
-            </p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <h3 className="text-xl font-black text-emerald-900">
-                {summary?.visits?.completed ?? summary?.queue_summary?.completed ?? kpis.completed ?? 0}
-              </h3>
-              <span className="text-[10px] font-semibold text-emerald-700">Finished</span>
-            </div>
-          </div>
-          <p className="text-[10px] text-emerald-700 font-medium mt-1 pt-1 border-t border-emerald-100">
-            Care &amp; Consultation Completed
           </p>
         </div>
       </div>

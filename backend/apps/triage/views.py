@@ -12,9 +12,21 @@ class TriageVitalsSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class TriageVitalsViewSet(viewsets.ModelViewSet):
-    queryset = TriageVitals.objects.all().select_related('visit', 'patient', 'nurse')
     serializer_class = TriageVitalsSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = TriageVitals.objects.all().select_related('visit', 'patient', 'nurse')
+        visit_param = self.request.query_params.get('visit')
+        if visit_param:
+            queryset = queryset.filter(visit_id=visit_param)
+        patient_param = self.request.query_params.get('patient')
+        if patient_param:
+            queryset = queryset.filter(patient_id=patient_param)
+        facility_param = self.request.query_params.get('facility')
+        if facility_param:
+            queryset = queryset.filter(visit__facility_id=facility_param)
+        return queryset
 
     def perform_create(self, serializer):
         triage = serializer.save(nurse=self.request.user)

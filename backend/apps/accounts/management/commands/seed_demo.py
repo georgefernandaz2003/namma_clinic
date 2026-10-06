@@ -18,6 +18,8 @@ from apps.laboratory.models import LabTestMaster, LabOrder, LabSample, LabResult
 from apps.pharmacy.models import MedicineMaster, MedicineBatch, InventoryTransaction, Vendor, PurchaseOrder, PurchaseOrderItem
 from apps.referrals.models import Referral, ReferralResponse, FollowUp
 from apps.ncd.models import NCDRecord
+from apps.maternal.models import MaternalRecord
+from apps.child.models import ChildRecord
 from apps.surveillance.models import DiseaseCase
 from apps.telemedicine.models import Teleconsultation
 from apps.outreach.models import OutreachActivity
@@ -52,6 +54,8 @@ class Command(BaseCommand):
         OutreachActivity.objects.all().delete()
         Teleconsultation.objects.all().delete()
         DiseaseCase.objects.all().delete()
+        ChildRecord.objects.all().delete()
+        MaternalRecord.objects.all().delete()
         NCDRecord.objects.all().delete()
         FollowUp.objects.all().delete()
         ReferralResponse.objects.all().delete()
@@ -510,6 +514,21 @@ class Command(BaseCommand):
         )
         Token.objects.create(token_number=1, visit=v_rc_yest, facility=rc_a4, date=yest, priority='NORMAL', status='COMPLETED')
 
+        # Additional Multi-Day Historical Visits across all 4 facilities for forecasting baseline
+        hist_visit_offsets = [2, 3, 5, 7, 8, 10, 12, 14, 16, 18, 21, 24, 28]
+        for offset_days in hist_visit_offsets:
+            past_dt = today - datetime.timedelta(days=offset_days)
+            for f_idx, fac in enumerate(facilities_list):
+                pt = [p_dh_1, p_anita, p_ramesh, p_suresh][f_idx]
+                Visit.objects.create(
+                    visit_id=f"VIS-HIST-{fac.facility_code}-{past_dt.strftime('%Y%m%d')}-{f_idx+1}",
+                    patient=pt, facility=fac, opd_date=past_dt, visit_type='GENERAL_OPD' if offset_days % 3 != 0 else 'NCD_FOLLOWUP',
+                    priority='NORMAL', current_queue='COMPLETED', status='COMPLETED',
+                    chief_complaint=f"Follow-up routine checkup on {past_dt}",
+                    arrival_time=timezone.make_aware(datetime.datetime.combine(past_dt, datetime.time(9 + f_idx, 30))),
+                    completed_time=timezone.make_aware(datetime.datetime.combine(past_dt, datetime.time(10 + f_idx, 15)))
+                )
+
         # 9. TRIAGE VITALS FOR ALL FACILITIES
         TriageVitals.objects.create(
             visit=v_dh_1, patient=p_dh_2, nurse=u_dh_nurse,
@@ -696,17 +715,81 @@ class Command(BaseCommand):
             due_date=today + datetime.timedelta(days=28), status='PENDING', notes='Next ANC routine checkup'
         )
 
-        # 15. NCD RECORDS FOR ALL FACILITIES
+        # 15. NCD, MATERNAL & CHILD HEALTH RECORDS
         NCDRecord.objects.create(patient=p_dh_2, facility=hosp_a, hypertension_diagnosed=True, diabetes_diagnosed=False, risk_level='HIGH', control_status='UNCONTROLLED', last_bp='160/102', last_glucose=140, next_followup_due=today + datetime.timedelta(days=7))
         NCDRecord.objects.create(patient=p_sdh_2, facility=nc_a1, hypertension_diagnosed=True, diabetes_diagnosed=False, risk_level='MODERATE', control_status='CONTROLLED', last_bp='134/86', last_glucose=115, next_followup_due=today + datetime.timedelta(days=30))
         NCDRecord.objects.create(patient=p_ramesh, facility=rc_a4, hypertension_diagnosed=True, diabetes_diagnosed=True, risk_level='HIGH', control_status='UNCONTROLLED', last_bp='148/96', last_glucose=185, next_followup_due=today + datetime.timedelta(days=14))
         NCDRecord.objects.create(patient=p_suresh, facility=vc_a4_1, hypertension_diagnosed=True, diabetes_diagnosed=True, risk_level='MODERATE', control_status='CONTROLLED', last_bp='130/84', last_glucose=125, next_followup_due=today + datetime.timedelta(days=30))
 
-        # 16. PUBLIC HEALTH SURVEILLANCE DISEASE CASES
-        for fac in facilities_list:
+        m_anita = MaternalRecord.objects.create(
+            patient=p_anita, anc_number='ANC-2026-001',
+            lmp_date=today - datetime.timedelta(days=120),
+            edd_date=today + datetime.timedelta(days=160),
+            high_risk_flag=True, high_risk_reason='Gestational Anemia / Previous LSCS',
+            anc_checkups_count=3, tt_vaccine_given=True, ifa_tablets_issued=True, status='ACTIVE'
+        )
+        m_gowramma = MaternalRecord.objects.create(
+            patient=p_vh2_2, anc_number='ANC-2026-002',
+            lmp_date=today - datetime.timedelta(days=75),
+            edd_date=today + datetime.timedelta(days=205),
+            high_risk_flag=False, anc_checkups_count=2, tt_vaccine_given=True, ifa_tablets_issued=True, status='ACTIVE'
+        )
+        ChildRecord.objects.create(
+            patient=p_rc_lab, maternal_record=m_anita, birth_weight_kg=2.45,
+            immunization_status='UP_TO_DATE', sam_mam_status='MAM', growth_chart_status='YELLOW_ZONE'
+        )
+
+        # 16. PUBLIC HEALTH SURVEILLANCE DISEASE CASES (Historical Multi-Week Time Series)
+        historical_surveillance_data = [
+            # Recent window (0 - 6 days ago)
+            (0, hosp_a, ward12, p_dh_1, 'Dengue Fever', 'MODERATE', 'CONFIRMED'),
+            (0, nc_a1, ward12, p_anita, 'Dengue Fever', 'SEVERE', 'CONFIRMED'),
+            (1, nc_a1, ward12, p_sdh_2, 'Dengue Fever', 'MILD', 'CONFIRMED'),
+            (1, rc_a4, ward_rural, p_ramesh, 'Acute Pyrexia / Suspected Viral Fever', 'MODERATE', 'CONFIRMED'),
+            (2, hosp_a, ward14, p_dh_2, 'Dengue Fever', 'MODERATE', 'CONFIRMED'),
+            (2, vc_a4_1, ward_rural, p_suresh, 'Acute Gastroenteritis', 'MILD', 'CONFIRMED'),
+            (3, nc_a1, ward12, p_sdh_2, 'Dengue Fever', 'SEVERE', 'CONFIRMED'),
+            (3, rc_a4, ward_rural, p_vh1_2, 'Acute Pyrexia / Suspected Viral Fever', 'MILD', 'CONFIRMED'),
+            (4, hosp_a, ward12, p_dh_1, 'Acute Respiratory Infection', 'MILD', 'CONFIRMED'),
+            (5, nc_a1, ward14, p_anita, 'Dengue Fever', 'MODERATE', 'CONFIRMED'),
+            (6, rc_a4, ward_rural, p_ramesh, 'Acute Pyrexia / Suspected Viral Fever', 'MODERATE', 'CONFIRMED'),
+            # Previous window (7 - 13 days ago)
+            (7, hosp_a, ward12, p_dh_2, 'Dengue Fever', 'MILD', 'CONFIRMED'),
+            (8, nc_a1, ward12, p_sdh_2, 'Acute Pyrexia / Suspected Viral Fever', 'MILD', 'CONFIRMED'),
+            (9, rc_a4, ward_rural, p_vh1_2, 'Acute Gastroenteritis', 'MODERATE', 'CONFIRMED'),
+            (10, hosp_a, ward45, p_dh_1, 'Acute Respiratory Infection', 'MILD', 'CONFIRMED'),
+            (11, nc_a1, ward12, p_anita, 'Dengue Fever', 'MODERATE', 'CONFIRMED'),
+            (12, vc_a4_1, ward_rural, p_suresh, 'Typhoid Fever', 'MODERATE', 'CONFIRMED'),
+            (13, rc_a4, ward_rural, p_ramesh, 'Acute Pyrexia / Suspected Viral Fever', 'MILD', 'CONFIRMED'),
+            # Baseline period (14 - 45 days ago)
+            (15, hosp_a, ward12, p_dh_1, 'Acute Respiratory Infection', 'MILD', 'CONFIRMED'),
+            (16, nc_a1, ward14, p_sdh_2, 'Acute Pyrexia / Suspected Viral Fever', 'MILD', 'CONFIRMED'),
+            (18, rc_a4, ward_rural, p_vh1_2, 'Acute Gastroenteritis', 'MILD', 'CONFIRMED'),
+            (20, hosp_a, ward45, p_dh_2, 'Dengue Fever', 'MILD', 'CONFIRMED'),
+            (22, nc_a1, ward12, p_anita, 'Acute Pyrexia / Suspected Viral Fever', 'MILD', 'CONFIRMED'),
+            (25, rc_a4, ward_rural, p_ramesh, 'Acute Gastroenteritis', 'MODERATE', 'CONFIRMED'),
+            (28, hosp_a, ward12, p_dh_1, 'Typhoid Fever', 'MILD', 'CONFIRMED'),
+            (30, nc_a1, ward12, p_sdh_2, 'Acute Respiratory Infection', 'MILD', 'CONFIRMED'),
+            (33, vc_a4_1, ward_rural, p_suresh, 'Acute Pyrexia / Suspected Viral Fever', 'MILD', 'CONFIRMED'),
+            (36, hosp_a, ward14, p_dh_2, 'Acute Pyrexia / Suspected Viral Fever', 'MILD', 'CONFIRMED'),
+            (40, rc_a4, ward_rural, p_vh1_2, 'Acute Respiratory Infection', 'MILD', 'CONFIRMED'),
+            (45, hosp_a, ward12, p_dh_1, 'Acute Gastroenteritis', 'MILD', 'CONFIRMED'),
+            (50, nc_a1, ward12, p_anita, 'Acute Pyrexia / Suspected Viral Fever', 'MILD', 'CONFIRMED'),
+            (55, rc_a4, ward_rural, p_ramesh, 'Acute Respiratory Infection', 'MILD', 'CONFIRMED'),
+            (60, hosp_a, ward45, p_dh_2, 'Acute Pyrexia / Suspected Viral Fever', 'MILD', 'CONFIRMED')
+        ]
+
+        for days_ago, fac, ward, pt, dis, sev, st in historical_surveillance_data:
+            c_date = today - datetime.timedelta(days=days_ago)
             DiseaseCase.objects.create(
-                disease_name='Acute Pyrexia / Suspected Viral Fever', patient=p_ramesh,
-                facility=fac, ward=ward_rural, severity='MODERATE', status='CONFIRMED', notes=f'Fever case logged at {fac.facility_name}'
+                disease_name=dis,
+                patient=pt,
+                facility=fac,
+                ward=ward,
+                report_date=c_date,
+                severity=sev,
+                status=st,
+                notes=f"Surveillance case record logged on {c_date} at {fac.facility_name}"
             )
 
         # 17. OUTREACH & WELLNESS FOR ALL FACILITIES

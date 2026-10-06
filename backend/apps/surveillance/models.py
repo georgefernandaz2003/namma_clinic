@@ -1,3 +1,4 @@
+import datetime
 from django.db import models
 
 class DiseaseCase(models.Model):
@@ -5,7 +6,7 @@ class DiseaseCase(models.Model):
     patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE)
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE)
     ward = models.ForeignKey('geography.Ward', on_delete=models.SET_NULL, null=True, blank=True)
-    report_date = models.DateField(auto_now_add=True)
+    report_date = models.DateField(default=datetime.date.today, db_index=True)
     severity = models.CharField(max_length=20, default='MILD') # MILD, MODERATE, SEVERE
     status = models.CharField(max_length=20, default='CONFIRMED')
     notes = models.TextField(blank=True)

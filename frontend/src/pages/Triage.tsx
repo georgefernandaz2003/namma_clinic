@@ -20,19 +20,50 @@ export const Triage: React.FC = () => {
   const [facilityDoctors, setFacilityDoctors] = useState<any[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<number | ''>('');
 
-  // Vitals form
-  const [sys, setSys] = useState('142');
-  const [dia, setDia] = useState('94');
-  const [pulse, setPulse] = useState('82');
+  // Vitals form - standard normal baseline vitals
+  const [sys, setSys] = useState('120');
+  const [dia, setDia] = useState('80');
+  const [pulse, setPulse] = useState('72');
   const [temp, setTemp] = useState('98.6');
   const [spo2, setSpo2] = useState('98');
   const [resp] = useState('18');
   const [height, setHeight] = useState('165');
-  const [weight, setWeight] = useState('68');
-  const [glucose, setGlucose] = useState('175');
-  const [notes, setNotes] = useState('High BP and elevated glucose detected. High risk flag auto-triggered.');
+  const [weight, setWeight] = useState('65');
+  const [glucose, setGlucose] = useState('100');
+  const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [completedInfo, setCompletedInfo] = useState<{ patientName: string; tokenNumber?: string | number; doctorName?: string } | null>(null);
+
+  const resetVitalsForm = (visit?: Visit | null) => {
+    const vTriage = (visit as any)?.triage;
+    if (vTriage) {
+      setSys(String(vTriage.blood_pressure_systolic ?? '120'));
+      setDia(String(vTriage.blood_pressure_diastolic ?? '80'));
+      setPulse(String(vTriage.pulse_bpm ?? '72'));
+      setTemp(String(vTriage.temperature_f ?? '98.6'));
+      setSpo2(String(vTriage.spo2_percent ?? '98'));
+      setHeight(String(vTriage.height_cm ?? '165'));
+      setWeight(String(vTriage.weight_kg ?? '65'));
+      setGlucose(String(vTriage.blood_glucose_mgdl ?? '100'));
+      setNotes(vTriage.nurse_notes || '');
+    } else {
+      setSys('120');
+      setDia('80');
+      setPulse('72');
+      setTemp('98.6');
+      setSpo2('98');
+      setHeight('165');
+      setWeight('65');
+      setGlucose('100');
+      setNotes('');
+    }
+  };
+
+  useEffect(() => {
+    if (selectedVisit) {
+      resetVitalsForm(selectedVisit);
+    }
+  }, [selectedVisit?.id]);
 
   const loadQueue = async (targetId?: number | null) => {
     if (!activeFacility) return;
@@ -168,20 +199,20 @@ export const Triage: React.FC = () => {
 
   // Dynamic BMI Calculation
   const heightM = (parseFloat(height) || 165) / 100;
-  const weightKg = parseFloat(weight) || 68;
+  const weightKg = parseFloat(weight) || 65;
   const calculatedBmi = (weightKg / (heightM * heightM)).toFixed(1);
 
   // Dynamic Risk Flags Evaluator
-  const sNum = parseInt(sys) || 120;
-  const dNum = parseInt(dia) || 80;
-  const tempNum = parseFloat(temp) || 98.6;
-  const spo2Num = parseInt(spo2) || 98;
-  const gluNum = parseInt(glucose) || 100;
+  const sNum = parseInt(sys, 10);
+  const dNum = parseInt(dia, 10);
+  const tempNum = parseFloat(temp);
+  const spo2Num = parseInt(spo2, 10);
+  const gluNum = parseInt(glucose, 10);
 
-  const isHighBp = sNum >= 140 || dNum >= 90;
-  const isFever = tempNum >= 100.4;
-  const isLowSpo2 = spo2Num < 95;
-  const isHighGlucose = gluNum >= 140;
+  const isHighBp = (!isNaN(sNum) && sNum >= 140) || (!isNaN(dNum) && dNum >= 90);
+  const isFever = !isNaN(tempNum) && tempNum >= 100.4;
+  const isLowSpo2 = !isNaN(spo2Num) && spo2Num > 0 && spo2Num < 95;
+  const isHighGlucose = !isNaN(gluNum) && gluNum >= 160;
   const hasRiskFlags = isHighBp || isFever || isLowSpo2 || isHighGlucose;
 
   return (
@@ -375,7 +406,9 @@ export const Triage: React.FC = () => {
                     type="number"
                     value={glucose}
                     onChange={(e) => setGlucose(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-600 font-mono font-bold text-amber-700"
+                    className={`w-full px-3 py-2 bg-slate-50 border rounded-lg focus:outline-none focus:border-emerald-600 font-mono font-bold ${
+                      isHighGlucose ? 'border-purple-400 text-purple-700 bg-purple-50/40' : 'border-slate-300 text-slate-900'
+                    }`}
                   />
                 </div>
                 <div>

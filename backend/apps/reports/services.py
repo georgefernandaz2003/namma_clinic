@@ -187,6 +187,9 @@ def get_visit_and_queue_metrics(target_fac_ids, target_date, doctor_user=None):
         current_queue='TRIAGE',
         status='IN_TRIAGE'
     ).count()
+    triage_completed = opd_visits_qs.filter(
+        Q(triage_end_time__isnull=False) | Q(triage__isnull=False) | ~Q(current_queue='TRIAGE')
+    ).distinct().count()
 
     # 2. Doctor Queue (includes LAB_COMPLETED for re-consultation)
     doctor_waiting = opd_visits_qs.filter(
@@ -223,11 +226,13 @@ def get_visit_and_queue_metrics(target_fac_ids, target_date, doctor_user=None):
             'pharmacy_waiting_visits': pharmacy_waiting_visits,
             'completed': doctor_completed_count,
             'consultations_completed': consultations_completed,
+            'triage_completed': triage_completed,
             'emergency': emergency
         },
         'queues': {
             'triage_waiting': triage_waiting,
             'triage_in_progress': triage_in_progress,
+            'triage_completed': triage_completed,
             'doctor_waiting': doctor_waiting,
             'doctor_in_consultation': doctor_in_consultation,
             'lab_pending': lab_pending_visits,
@@ -661,6 +666,13 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
         'action_required': action_required,
 
         # Role-specific summary contracts
+        'nurse_summary': {
+            'todays_opd': v_metrics['visits']['total'],
+            'triage_waiting': v_metrics['queues']['triage_waiting'],
+            'in_triage': v_metrics['queues']['triage_in_progress'],
+            'triage_completed': v_metrics['queues']['triage_completed'],
+            'emergency': v_metrics['visits']['emergency'],
+        },
         'pharmacy_summary': {
             'total_prescriptions': pharmacy['total_prescriptions'],
             'pending_prescriptions': pharmacy['pending_prescriptions'],
@@ -686,6 +698,7 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
             'waiting': v_metrics['visits']['waiting'],
             'triage_waiting': v_metrics['queues']['triage_waiting'],
             'triage_in_progress': v_metrics['queues']['triage_in_progress'],
+            'triage_completed': v_metrics['queues']['triage_completed'],
             'doctor_waiting': v_metrics['queues']['doctor_waiting'],
             'doctor_in_consultation': v_metrics['queues']['doctor_in_consultation'],
             'lab_pending': v_metrics['queues']['lab_pending'],
@@ -705,6 +718,7 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
         'total_registered_today': patients['registered_today'],
         'todays_opd': v_metrics['visits']['total'],
         'emergency_count': v_metrics['visits']['emergency'],
+        'triage_completed': v_metrics['queues']['triage_completed'],
         'opd_stage_flow': {
             'registration': patients['registered_today'],
             'triage': v_metrics['queues']['triage_waiting'] + v_metrics['queues']['triage_in_progress'],
@@ -738,6 +752,7 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
         'kpis': {
             'triage_waiting': v_metrics['queues']['triage_waiting'],
             'in_triage': v_metrics['queues']['triage_in_progress'],
+            'triage_completed': v_metrics['queues']['triage_completed'],
             'vitals_pending': v_metrics['queues']['triage_waiting'],
             'doctor_waiting': v_metrics['queues']['doctor_waiting'],
             'in_consultation': v_metrics['queues']['doctor_in_consultation'],

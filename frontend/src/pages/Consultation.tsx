@@ -27,19 +27,20 @@ export const Consultation: React.FC = () => {
   const [patientLabHistory, setPatientLabHistory] = useState<LabOrder[]>([]);
   const [showPreviousLabHistory, setShowPreviousLabHistory] = useState(false);
 
+  const doctorDisplayName = (user?.full_name || user?.username || 'Doctor').startsWith('Dr.')
+    ? (user?.full_name || user?.username)
+    : `Dr. ${user?.full_name || user?.username}`;
+
   // Form states
   const [chiefComplaint, setChiefComplaint] = useState('');
-  const [history] = useState('Known history of hypertension, poor compliance.');
-  const [assessment, setAssessment] = useState('High BP 148/96 mmHg with elevated blood glucose.');
-  const [diagCode, setDiagCode] = useState('E11.9 / I10');
-  const [diagName, setDiagName] = useState('Type 2 Diabetes Mellitus with Essential Hypertension');
-  const [notes] = useState('Advised low salt diet, lifestyle modifications, and regular monitoring.');
+  const [history, setHistory] = useState('');
+  const [assessment, setAssessment] = useState('');
+  const [diagCode, setDiagCode] = useState('');
+  const [diagName, setDiagName] = useState('');
+  const [notes, setNotes] = useState('');
 
   // Prescription items
-  const [prescriptions, setPrescriptions] = useState<Array<{ medicine_name: string; dosage: string; quantity: number }>>([
-    { medicine_name: 'Metformin HCl 500 mg Tablet', dosage: '1-0-1 After Food', quantity: 28 },
-    { medicine_name: 'Amlodipine Besylate 5 mg Tablet', dosage: '1-0-0 Morning', quantity: 14 }
-  ]);
+  const [prescriptions, setPrescriptions] = useState<Array<{ medicine_name: string; dosage: string; quantity: number }>>([]);
 
   // Referral creation state
   const [createReferral, setCreateReferral] = useState(true);
@@ -114,15 +115,18 @@ export const Consultation: React.FC = () => {
   const selectVisit = async (v: Visit) => {
     setSelectedVisit(v);
     setSelectedTestIds([]);
-    setChiefComplaint(v.chief_complaint || 'Dizziness and fatigue');
+    setChiefComplaint(v.chief_complaint || 'Routine General OPD Checkup');
+
+    // Fetch matching triage vitals for this specific visit
+    let curVitals: TriageVitals | null = (v as any).triage_vitals || null;
     try {
       const trRes = await api.get(`triage/?visit=${v.id}`);
       const trList = trRes.data.results || trRes.data || [];
-      if (trList.length > 0) setVitals(trList[0]);
-      else setVitals(null);
+      if (trList.length > 0) curVitals = trList[0];
     } catch (e) {
-      setVitals(null);
+      // ignore
     }
+    setVitals(curVitals);
 
     try {
       setLoadingLab(true);
@@ -155,6 +159,73 @@ export const Consultation: React.FC = () => {
         if (c.diagnosis_name) setDiagName(c.diagnosis_name);
         if (c.clinical_assessment) setAssessment(c.clinical_assessment);
         if (c.chief_complaint) setChiefComplaint(c.chief_complaint);
+        if (c.clinical_history) setHistory(c.clinical_history);
+        if (c.clinical_notes) setNotes(c.clinical_notes);
+        if (c.prescription?.items && c.prescription.items.length > 0) {
+          setPrescriptions(c.prescription.items.map((i: any) => ({
+            medicine_name: i.medicine_name || i.medicine?.generic_name || 'Medicine',
+            dosage: i.dosage || '1-0-1 After Food',
+            quantity: i.quantity || 14
+          })));
+        }
+      } else {
+        // Fresh consultation for this patient - formulate based on ACTUAL nurse vitals
+        if (curVitals) {
+          const bp = `${curVitals.blood_pressure_systolic}/${curVitals.blood_pressure_diastolic} mmHg`;
+          const isHighBp = curVitals.high_bp_flag || curVitals.blood_pressure_systolic >= 140 || curVitals.blood_pressure_diastolic >= 90;
+          const isHighGlu = curVitals.high_glucose_flag || curVitals.blood_glucose_mgdl >= 160;
+          const isFever = curVitals.fever_flag || parseFloat(String(curVitals.temperature_f)) >= 100.4;
+          const isLowSpo2 = curVitals.low_spo2_flag || curVitals.spo2_percent < 95;
+
+          if (isHighBp || isHighGlu || isFever || isLowSpo2) {
+            const flags = [];
+            if (isHighBp) flags.push(`High BP ${bp}`);
+            if (isHighGlu) flags.push(`elevated blood glucose ${curVitals.blood_glucose_mgdl} mg/dL`);
+            if (isFever) flags.push(`fever ${curVitals.temperature_f}°F`);
+            if (isLowSpo2) flags.push(`low SpO2 ${curVitals.spo2_percent}%`);
+            setAssessment(`${flags.join(', ')}. Patient under clinical evaluation.`);
+            if (isHighBp && isHighGlu) {
+              setDiagCode('E11.9 / I10');
+              setDiagName('Type 2 Diabetes Mellitus with Essential Hypertension');
+              setPrescriptions([
+                { medicine_name: 'Metformin HCl 500 mg Tablet', dosage: '1-0-1 After Food', quantity: 28 },
+                { medicine_name: 'Amlodipine Besylate 5 mg Tablet', dosage: '1-0-0 Morning', quantity: 14 }
+              ]);
+            } else if (isHighBp) {
+              setDiagCode('I10');
+              setDiagName('Essential (primary) hypertension');
+              setPrescriptions([
+                { medicine_name: 'Amlodipine Besylate 5 mg Tablet', dosage: '1-0-0 Morning', quantity: 14 }
+              ]);
+            } else if (isHighGlu) {
+              setDiagCode('E11.9');
+              setDiagName('Type 2 diabetes mellitus without complications');
+              setPrescriptions([
+                { medicine_name: 'Metformin HCl 500 mg Tablet', dosage: '1-0-1 After Food', quantity: 28 }
+              ]);
+            } else if (isFever) {
+              setDiagCode('R50.9');
+              setDiagName('Fever, unspecified');
+              setPrescriptions([
+                { medicine_name: 'Paracetamol 500 mg Tablet', dosage: '1-1-1 SOS After Food', quantity: 10 }
+              ]);
+            }
+          } else {
+            setAssessment(`Vitals stable (BP: ${bp}, Pulse: ${curVitals.pulse_bpm} bpm, SpO2: ${curVitals.spo2_percent}%, Temp: ${curVitals.temperature_f}°F). Routine general examination.`);
+            setDiagCode('Z00.00');
+            setDiagName('Encounter for general adult medical examination');
+            setPrescriptions([
+              { medicine_name: 'Multivitamin & Zinc Tablet', dosage: '0-1-0 After Food', quantity: 14 }
+            ]);
+          }
+        } else {
+          setAssessment('Routine clinical evaluation. Vitals pending triage.');
+          setDiagCode('Z00.00');
+          setDiagName('Encounter for general adult medical examination');
+          setPrescriptions([]);
+        }
+        setHistory(`Patient presenting for ${v.chief_complaint || 'routine OPD checkup'}.`);
+        setNotes('Routine clinical evaluation and follow-up as indicated.');
       }
     } catch (e) {
       // ignore
@@ -339,13 +410,13 @@ export const Consultation: React.FC = () => {
               </span>
             </h2>
             <span className="text-[10px] font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
-              Dr. {user?.full_name || user?.username}
+              {doctorDisplayName}
             </span>
           </div>
 
           {triagedVisits.length === 0 ? (
             <div className="p-6 text-center text-xs text-slate-400">
-              No waiting patients currently assigned to Dr. {user?.full_name || user?.username}.
+              No waiting patients currently assigned to {doctorDisplayName}.
             </div>
           ) : (
             <div className="space-y-2 max-h-[500px] overflow-y-auto">
@@ -373,7 +444,7 @@ export const Consultation: React.FC = () => {
                   </div>
                   <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-center justify-between">
                     <span className="text-[9px] font-semibold text-teal-800 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200/60 truncate max-w-[200px]">
-                      🩺 Assigned to Dr. {user?.full_name || user?.username}
+                      🩺 Assigned to {doctorDisplayName}
                     </span>
                   </div>
                 </div>
@@ -396,7 +467,7 @@ export const Consultation: React.FC = () => {
                     </p>
                     <div className="mt-1.5 flex items-center gap-2">
                       <span className="text-[10px] font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 flex items-center gap-1">
-                        🩺 Attending Physician: Dr. {user?.full_name || user?.username}
+                        🩺 Attending Physician: {doctorDisplayName}
                       </span>
                     </div>
                   </div>

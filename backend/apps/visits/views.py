@@ -31,10 +31,17 @@ class VisitSerializer(serializers.ModelSerializer):
     assigned_doctor_name = serializers.ReadOnlyField(source='assigned_doctor.full_name')
     waiting_time_minutes = serializers.SerializerMethodField()
     status_history_list = VisitStatusHistorySerializer(source='status_history', many=True, read_only=True)
+    triage_vitals = serializers.SerializerMethodField()
 
     class Meta:
         model = Visit
         fields = '__all__'
+
+    def get_triage_vitals(self, obj):
+        if hasattr(obj, 'triage') and obj.triage:
+            from apps.triage.views import TriageVitalsSerializer
+            return TriageVitalsSerializer(obj.triage).data
+        return None
 
     def get_waiting_time_minutes(self, obj):
         if not obj.arrival_time:

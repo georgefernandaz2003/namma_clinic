@@ -35,6 +35,8 @@ INSTALLED_APPS = [
     'apps.pharmacy',
     'apps.referrals',
     'apps.ncd',
+    'apps.maternal',
+    'apps.child',
     'apps.surveillance',
     'apps.telemedicine',
     'apps.outreach',

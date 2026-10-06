@@ -28,6 +28,10 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
   const myVisits = opdQueue.filter(isMyPatient);
   const displayedQueue = myVisits;
 
+  const doctorDisplayName = (user?.full_name || user?.username || 'Doctor').startsWith('Dr.')
+    ? (user?.full_name || user?.username)
+    : `Dr. ${user?.full_name || user?.username}`;
+
   const fetchDoctorQueue = async () => {
     setLoading(true);
     try {
@@ -104,7 +108,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
               </span>
               <span className="text-xs text-blue-200 font-semibold">• {summary?.active_facility || 'Facility OPD'}</span>
             </div>
-            <h1 className="text-2xl font-black tracking-tight">Dr. {user?.full_name || user?.username}&apos;s Clinical Dashboard</h1>
+            <h1 className="text-2xl font-black tracking-tight">{doctorDisplayName}&apos;s Clinical Dashboard</h1>
             <p className="text-xs text-blue-100 mt-1 max-w-xl">
               OPD consultation queue management, called patient triage vitals review, lab diagnostic orders, and electronic prescription issuing.
             </p>
@@ -123,7 +127,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
@@ -137,23 +141,6 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
             </div>
             <div className="p-3 bg-amber-50 rounded-xl text-amber-700 border border-amber-100">
               <Clock className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-bold text-slate-500 uppercase">
-                {isToday ? 'My OPD Today' : `My OPD — ${date}`}
-              </p>
-              <h3 className="text-2xl font-black text-slate-900 mt-1">{myVisits.length}</h3>
-              <p className="text-[10px] text-blue-700 font-medium mt-1">
-                Assigned to Dr. {user?.full_name || user?.username}
-              </p>
-            </div>
-            <div className="p-3 bg-blue-50 rounded-xl text-blue-700 border border-blue-100">
-              <Stethoscope className="w-5 h-5" />
             </div>
           </div>
         </div>
@@ -227,19 +214,33 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Blood Pressure</span>
-              <span className="font-bold text-white block">150/96 mmHg</span>
+              <span className={`font-bold block ${activeVisit.triage_vitals?.high_bp_flag ? 'text-rose-300' : 'text-white'}`}>
+                {activeVisit.triage_vitals
+                  ? `${activeVisit.triage_vitals.blood_pressure_systolic}/${activeVisit.triage_vitals.blood_pressure_diastolic} mmHg`
+                  : 'Pending'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Pulse / SpO2</span>
-              <span className="font-bold text-white block">88 bpm / 97%</span>
+              <span className="font-bold text-white block">
+                {activeVisit.triage_vitals
+                  ? `${activeVisit.triage_vitals.pulse_bpm} bpm / ${activeVisit.triage_vitals.spo2_percent}%`
+                  : '--'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Blood Glucose</span>
-              <span className="font-bold text-rose-300 block">190 mg/dL (HIGH)</span>
+              <span className={`font-bold block ${activeVisit.triage_vitals?.high_glucose_flag ? 'text-rose-300' : 'text-white'}`}>
+                {activeVisit.triage_vitals
+                  ? `${activeVisit.triage_vitals.blood_glucose_mgdl} mg/dL${activeVisit.triage_vitals.high_glucose_flag ? ' (HIGH)' : ''}`
+                  : '--'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Temperature</span>
-              <span className="font-bold text-white block">101.2 °F</span>
+              <span className={`font-bold block ${activeVisit.triage_vitals?.fever_flag ? 'text-amber-300' : 'text-white'}`}>
+                {activeVisit.triage_vitals ? `${activeVisit.triage_vitals.temperature_f} °F` : '--'}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white/10 border border-white/10">
               <span className="text-[10px] text-blue-300 uppercase font-bold block">Priority</span>
@@ -258,7 +259,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ summary, date,
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-blue-600" />
-                  Dr. {user?.full_name || user?.username}&apos;s OPD Queue ({date})
+                  {doctorDisplayName}&apos;s OPD Queue ({date})
                 </h2>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200">
                   {myVisits.length} Assigned Patients
