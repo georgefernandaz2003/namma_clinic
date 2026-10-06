@@ -95,7 +95,7 @@ Namma Clinic organizes primary healthcare workflows, facility operations, supply
 > **Authoritative Capability Scope Breakdown**:
 > - **10 Implemented & Verified Core Modules**: Fully operational end-to-end workflows backed by local database models, verified automated business logic, strict role authorization, and local clinic deployment. Dual-Role capability (*Small-Clinic Rule*) is built directly into Staff Administration rather than standing as an artificial separate module.
 > - **8 Demonstration & Extension Modules**: Fully designed database schemas and user interface prototypes providing forward-looking workflows for specialized public health extensions (e.g., outreach camps, wellness programs, referral tracking). They currently operate in demonstration mode with mock or empty baselines.
-> - **3 Cross-Cutting Platform Services**: Foundational system services providing operational reporting (implemented), dashboard alert aggregation (demonstration), and immutable security audit logging (implemented).
+> - **3 Cross-Cutting Platform Services**: Foundational system services providing operational reporting (implemented), dashboard alert aggregation (demonstration), and structured security audit logging (implemented).
 > - **Administrative Capabilities**: Arogya Raksha Samiti (ARS) untied fund tracking is managed under Facility and District administrative governance.
 > - **Maternal & Child Health (MCH / ANC / PNC / Immunization)**: Explicitly out of scope per Engineering Rule 10, as national and state maternal vertical health programs are managed through specialized state registries.
 
@@ -409,7 +409,7 @@ The **Inventory & Procurement Console** enables Inventory Officers to manage cen
 1. **Inventory Workstation**: Bulk warehouse balances, batch listings, and expiry dates.
 2. **Procurement & Purchase Orders**: Purchase order creation, approval status, and supplier records.
 3. **Goods Receipt (GRN) Module**: Shipment intake dialog for verifying delivered quantities.
-4. **Inventory Movement Ledger**: Immutable chronological history of all stock additions and transfers.
+4. **Inventory Movement Ledger**: Authoritative chronological history of all stock additions and transfers.
 
 ### Step-by-Step Workflow
 1. The Inventory Officer checks the **Inventory Workstation** to review items approaching reorder levels.
@@ -547,13 +547,13 @@ Every patient visit follows a standardized, chronological clinical lifecycle. Th
 * **Who Performs It**: Front Desk Officer.
 * **What They Do**: Generates a daily sequential outpatient (OPD) token (e.g., Token #T-104) and directs the patient to the nursing triage waiting area.
 * **Information Captured**: Visit timestamp, assigned doctor clinic room, visit category (General OPD, Chronic Care, Acute Minor Illness).
-* **What Happens Next**: The token enters the facility live queue.
+* **What Happens Next**: The token enters the active facility outpatient queue.
 * **What the Next User Sees**: The triage nurse workstation displays the token in bold with an elapsed wait timer.
 * **Why it Matters**: Establishes transparent, orderly patient movement, eliminates hallway congestion, and creates an audit-ready timeline of patient wait durations.
 * **Management Monitoring**: Monitors average check-in speed and total queue volume across morning and evening sessions.
 
 ![Figure 28 — Facility OPD Token Queue View](../../scratch/ui_audit_screenshots/compounder/03_queue.png)
-*Figure 28 — Facility OPD Token Queue View — Live queue displaying sequential tokens, tracking citizen progression through registration, triage, consultation, laboratory testing, and pharmacy dispensing.*
+*Figure 28 — Facility OPD Token Queue View — Active facility queue displaying sequential tokens, tracking citizen progression through registration, triage, consultation, laboratory testing, and pharmacy dispensing.*
 
 #### Stage 3: Nurse Triage & Vital Signs Measurement
 * **Who Performs It**: Staff Nurse.
@@ -809,7 +809,7 @@ This section provides a structured operational reference for all twenty-one plat
 
 ### 14. Public Health Surveillance Module
 * **Classification**: Demonstration & Extension Module
-* **Purpose**: Monitors disease trends, fever spikes, and communicable outbreak signals (Prototype workflow; operates in demonstration mode without live WAN clustering).
+* **Purpose**: Monitors disease trends, fever spikes, and communicable outbreak signals (Prototype workflow; operates in demonstration mode without external WAN clustering).
 * **Primary Users**: District Health Officer, Administrator.
 * **Workflow**: Diagnostic codes aggregate into surveillance categories → System models disease pattern clusters → Health officers evaluate response workflows.
 * **Outcome**: Outbreak trend modeling across reporting clinic categories.
@@ -850,7 +850,7 @@ This section provides a structured operational reference for all twenty-one plat
 * **Classification**: Demonstration & Extension Module
 * **Purpose**: Monitors clinical service benchmarks, waiting times, and patient throughput standards (Prototype workflow; operates in demonstration mode).
 * **Primary Users**: Clinic Administrator, District Health Officer.
-* **Workflow**: Track live KPIs → Identify bottlenecks in triage or pharmacy → Implement operational improvements.
+* **Workflow**: Track operational KPIs → Identify bottlenecks in triage or pharmacy → Implement operational improvements.
 * **Outcome**: Objective quality metrics comparing facility performance over time.
 * **Client Value**: Continuous healthcare delivery improvement and accountability to service charters.
 
@@ -900,14 +900,14 @@ This section provides a structured operational reference for all twenty-one plat
 
 ### 21. Security & Audit Logging
 * **Classification**: Cross-Cutting Platform Service (Implemented)
-* **Purpose**: Maintains an immutable chronological audit trail of all logins, record views, and transactions.
+* **Purpose**: Maintains a structured chronological audit trail of all logins, record views, and transactions.
 * **Primary Users**: District Health Officer, System Administrator.
 * **Workflow**: User performs action → Event is recorded with timestamp and role → Auditor reviews logs.
 * **Outcome**: Complete, unalterable accountability for every record accessed or modified.
 * **Client Value**: Supports regulatory audit readiness and ensures clear administrative accountability.
 
 ![Figure 53 — Security Audit Trail Console](../../scratch/ui_audit_screenshots/dho/16_audit.png)
-*Figure 53 — Security Audit Trail Console — Immutable digital event log documenting user authentication, role assumption, clinical records access, and administrative actions.*
+*Figure 53 — Security Audit Trail Console — Structured digital event log documenting user authentication, role assumption, clinical records access, and administrative actions.*
 
 ---
 
@@ -1160,14 +1160,14 @@ The table below provides an exact, verified accounting of the platform's 21 capa
 | **11**| **Specialist Referrals Management** | **Demonstration & Extension** | Database schema and interface prototype implemented; runs in demonstration mode (0 baseline records). |
 | **12**| **Patient Follow-up & Recall Workstation** | **Demonstration & Extension** | Database schema and calendar interface implemented; runs in demonstration mode (0 baseline records). |
 | **13**| **Non-Communicable Diseases (NCD) Registry**| **Demonstration & Extension** | Chronic cohort tracking schema and interface prototype; runs in demonstration mode (0 baseline records). |
-| **14**| **Public Health Surveillance Console** | **Demonstration & Extension** | Disease category tracking prototype; runs in demonstration mode without live WAN clustering. |
+| **14**| **Public Health Surveillance Console** | **Demonstration & Extension** | Disease category tracking prototype; runs in demonstration mode without external WAN clustering. |
 | **15**| **Community Outreach Camp Logging** | **Demonstration & Extension** | Outreach camp event schema and interface prototype; runs in demonstration mode (0 baseline records). |
 | **16**| **Wellness & Health Education Sessions** | **Demonstration & Extension** | Yoga/wellness session logging schema and interface; runs in demonstration mode (0 baseline records). |
 | **17**| **Quality Indicators & Biomedical Waste** | **Demonstration & Extension** | Kayakalpa quality checklist and waste log interface; runs in demonstration mode (0 baseline records). |
 | **18**| **Clinic Infrastructure & Asset Registry** | **Demonstration & Extension** | Facility directory active; maintenance tickets and cold-chain logging are demonstration prototypes. |
 | **19**| **Operational Reporting Engine** | **Cross-Cutting Platform Service (Implemented)**| Facility attendance summaries and daily outpatient visit logs with CSV export. |
-| **20**| **Alerts & Early Warning Notification Hub** | **Cross-Cutting Platform Service (Demonstration)**| Centralized visual warning banners on workstation dashboards; no live WebSocket broker. |
-| **21**| **Security & Immutable Audit Logging** | **Cross-Cutting Platform Service (Implemented)**| Relational audit logging active in backend middleware with 2,260+ verified database records. |
+| **20**| **Alerts & Early Warning Notification Hub** | **Cross-Cutting Platform Service (Demonstration)**| Centralized visual warning banners on workstation dashboards; no external WebSocket server. |
+| **21**| **Security & Audit Logging** | **Cross-Cutting Platform Service (Implemented)**| Relational audit logging active in backend middleware with 2,260+ verified database records. |
 | **—**| **Local Clinic Execution** | **Standard Operational Mode** | Native execution on local clinic workstations/laptops backed by local PostgreSQL 16. |
 | **—**| **Arogya Raksha Samiti (ARS)** | **Administrative Capability** | Untied facility maintenance fund tracking managed under clinic and district administration. |
 | **—**| **Maternal & Child Health (MCH)** | **Explicitly Out of Scope** | Strictly out of scope per Engineering Rule 10 (no ANC, PNC, or child immunization models). |
@@ -1178,9 +1178,9 @@ The table below provides an exact, verified accounting of the platform's 21 capa
 
 To ensure full transparency with stakeholders, the following features are strategically planned for future phases:
 
-* **Planned Phase 29 — Live National Health Gateway Integration (ABDM / ABHA)**:
+* **Planned Phase 29 — National Health Gateway Integration (ABDM / ABHA)**:
   - *Status: Planned / Demonstration Prototype*.
-  - *Capability*: Connecting citizen demographic data to live national digital health servers for automated OTP-based health ID generation and QR code check-in. Current screens provide demonstration/simulation workflows.
+  - *Capability*: Connecting citizen demographic data to national digital health servers for automated OTP-based health ID generation and QR code check-in. Current screens provide demonstration/simulation workflows.
 * **Planned Phase 30 — Telemedicine & Specialist Consultation (e-Sanjeevani)**:
   - *Status: Planned / Architecture Prepared*.
   - *Capability*: Integrated video consultation connecting urban clinic medical officers with hospital specialty consultants.
