@@ -117,6 +117,7 @@ class PublicHealthForecastView(BaseForecastView):
             as_of_date=params['as_of_date'],
             historical_weeks=historical_weeks,
             horizon_weeks=params['horizon_weeks'],
+            months_count=params['months_count'],
             user=request.user
         )
 

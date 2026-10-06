@@ -303,7 +303,7 @@ def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name
             )
         }
 
-    # Group by calendar month
+    # Group actual cases by calendar month inside [seasonal_start, as_of]
     monthly_data = (
         scoped_cases.values('report_date__month')
         .annotate(total_cases=Count('id'))
@@ -311,38 +311,53 @@ def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name
     )
     month_counts_dict = {row['report_date__month']: row['total_cases'] for row in monthly_data}
 
-    # Calculate distinct observation years in range
-    years_spanned = max(1, (as_of.year - seasonal_start.year) + 1)
+    # Determine exact occurrences of each calendar month inside [seasonal_start, as_of]
+    month_occurrences = {}
+    curr_y = start_year
+    curr_m = start_month
+    for _ in range(months_count):
+        month_occurrences[curr_m] = month_occurrences.get(curr_m, 0) + 1
+        curr_m += 1
+        if curr_m > 12:
+            curr_m = 1
+            curr_y += 1
 
+    # Represent ONLY calendar months that actually occur in the requested observation window
     monthly_patterns = []
     month_averages = []
 
-    for m in range(1, 13):
+    for m in sorted(month_occurrences.keys()):
         cnt = month_counts_dict.get(m, 0)
-        avg_cnt = round(cnt / years_spanned, 2)
+        occurrences = month_occurrences[m]
+        avg_cnt = round(cnt / occurrences, 2)
         month_averages.append(avg_cnt)
         monthly_patterns.append({
             'month_number': m,
             'month_name': MONTH_NAMES[m - 1],
             'total_cases': cnt,
+            'occurrences': occurrences,
             'average_cases': avg_cnt
         })
 
-    # Find highest and lowest case months
+    # Find highest and lowest case months strictly from represented months
     sorted_months = sorted(monthly_patterns, key=lambda x: x['average_cases'], reverse=True)
-    highest_month = sorted_months[0]
-    lowest_month = sorted_months[-1]
+    highest_month = sorted_months[0] if sorted_months else None
+    lowest_month = sorted_months[-1] if sorted_months else None
 
-    # Calculate seasonal strength metric via coefficient of variation
-    mean_monthly = sum(month_averages) / 12.0
-    if mean_monthly > 0:
-        variance_m = sum((x - mean_monthly) ** 2 for x in month_averages) / 12.0
-        cv = math.sqrt(variance_m) / mean_monthly
-        seasonal_strength = round(min(1.0, cv), 2)
+    # Calculate seasonal strength metric via coefficient of variation across represented months
+    num_represented = len(monthly_patterns)
+    if num_represented > 0:
+        mean_monthly = sum(month_averages) / float(num_represented)
+        if mean_monthly > 0:
+            variance_m = sum((x - mean_monthly) ** 2 for x in month_averages) / float(num_represented)
+            cv = math.sqrt(variance_m) / mean_monthly
+            seasonal_strength = round(min(1.0, cv), 2)
+        else:
+            seasonal_strength = 0.0
     else:
         seasonal_strength = 0.0
 
-    # Strongest historical periods (top 3 months with > 0 cases)
+    # Strongest historical periods (top 3 represented months with > 0 cases)
     strongest_periods = [
         {
             'period': f"{m['month_name']} (Calendar Month {m['month_number']})",
@@ -353,7 +368,7 @@ def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name
     ]
 
     # Determine status
-    if seasonal_strength >= 0.45 and highest_month['total_cases'] >= 3:
+    if seasonal_strength >= 0.45 and highest_month and highest_month['total_cases'] >= 3:
         status = 'DETECTED'
         explanation = (
             f"Historical surveillance indicates recurrent elevated case clustering in {highest_month['month_name']} "
@@ -385,7 +400,8 @@ def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name
 # ---------------------------------------------------------------------------
 
 def generate_forecast_summary(facility_id=None, district_id=None, disease_name=None,
-                              as_of_date=None, historical_weeks=52, horizon_weeks=4, user=None):
+                              as_of_date=None, historical_weeks=52, horizon_weeks=4,
+                              months_count=None, user=None):
     """
     Unified public health intelligence forecasting & seasonal pattern entry point.
     Combines:
@@ -429,13 +445,14 @@ def generate_forecast_summary(facility_id=None, district_id=None, disease_name=N
         horizon_weeks=horizon_weeks
     )
 
-    # 4. Seasonal pattern analysis (default 12 months lookback)
+    # 4. Seasonal pattern analysis (respecting months_count if provided)
+    seasonal_months = months_count if months_count else max(6, min(12, int(historical_weeks / 4.33)))
     seasonal_data = calculate_seasonal_pattern(
         facility_ids=scope.facility_ids,
         district_id=scope.district_id,
         disease_name=active_disease,
         as_of_date=as_of_date,
-        months_count=12
+        months_count=seasonal_months
     )
 
     # Master explanation synthesizing trend, forecast, and seasonality

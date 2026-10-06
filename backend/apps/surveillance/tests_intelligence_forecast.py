@@ -410,3 +410,132 @@ class PublicHealthForecastingStep2TestCase(TestCase):
         # All 19 cases recorded within the 52-week period
         self.assertEqual(ts['total_cases_in_series'], db_count)
         self.assertEqual(db_count, 19)
+
+    # ---------------------------------------------------------------------------
+    # Step 2 Correction: Seasonal Window & Month-Occurrence Tests (A - E)
+    # ---------------------------------------------------------------------------
+
+    def test_seasonal_window_6_months_only_represented_months(self):
+        """A. 6-month seasonal window: only the six represented calendar months are returned."""
+        seasonal = calculate_seasonal_pattern(
+            facility_ids=[self.fac_hosp1.id],
+            disease_name='Dengue Fever',
+            as_of_date=self.fixed_as_of,
+            months_count=6
+        )
+        patterns = seasonal['monthly_patterns']
+        # Fixed as_of is 2026-10-04. Window is 6 months: May 2026 to Oct 2026.
+        self.assertEqual(len(patterns), 6)
+        represented_month_numbers = [m['month_number'] for m in patterns]
+        self.assertEqual(represented_month_numbers, [5, 6, 7, 8, 9, 10])
+
+        # Months outside window must NOT be present
+        for unrepresented in [1, 2, 3, 4, 11, 12]:
+            self.assertNotIn(unrepresented, represented_month_numbers)
+
+    def test_seasonal_window_12_months_exact_represented_months(self):
+        """B. 12-month seasonal window: exactly the 12 calendar months represented are returned."""
+        seasonal = calculate_seasonal_pattern(
+            facility_ids=[self.fac_hosp1.id],
+            disease_name='Dengue Fever',
+            as_of_date=self.fixed_as_of,
+            months_count=12
+        )
+        patterns = seasonal['monthly_patterns']
+        self.assertEqual(len(patterns), 12)
+        represented_month_numbers = [m['month_number'] for m in patterns]
+        self.assertEqual(represented_month_numbers, list(range(1, 13)))
+        for m in patterns:
+            self.assertEqual(m['occurrences'], 1)
+
+    def test_seasonal_window_24_months_month_occurring_twice(self):
+        """C. 24-month seasonal window: a calendar month occurring twice has average calculated using 2 observations."""
+        # Create cases in July 2025 and July 2026 for a dedicated test disease
+        # July 2025: 6 cases
+        for day in [5, 10, 15, 20, 22, 25]:
+            DiseaseCase.objects.create(
+                disease_name='Typhoid', patient=self.patient_central,
+                facility=self.fac_hosp1, ward=self.ward12,
+                report_date=datetime.date(2025, 7, day)
+            )
+        # July 2026: 4 cases
+        for day in [8, 12, 16, 24]:
+            DiseaseCase.objects.create(
+                disease_name='Typhoid', patient=self.patient_central,
+                facility=self.fac_hosp1, ward=self.ward12,
+                report_date=datetime.date(2026, 7, day)
+            )
+
+        seasonal = calculate_seasonal_pattern(
+            facility_ids=[self.fac_hosp1.id],
+            disease_name='Typhoid',
+            as_of_date=self.fixed_as_of,
+            months_count=24
+        )
+        patterns = seasonal['monthly_patterns']
+        july_pattern = next((m for m in patterns if m['month_number'] == 7), None)
+        self.assertIsNotNone(july_pattern)
+        self.assertEqual(july_pattern['total_cases'], 10)
+        self.assertEqual(july_pattern['occurrences'], 2)
+        # average_cases = 10 / 2 = 5.0
+        self.assertEqual(july_pattern['average_cases'], 5.0)
+
+    def test_highest_lowest_month_cannot_be_outside_window(self):
+        """D. highest/lowest month cannot be selected from a month outside the observation window."""
+        # Create 50 cases in January 2026 (outside 6-month window May-Oct 2026)
+        for i in range(50):
+            DiseaseCase.objects.create(
+                disease_name='Cholera', patient=self.patient_central,
+                facility=self.fac_hosp1, ward=self.ward12,
+                report_date=datetime.date(2026, 1, (i % 25) + 1)
+            )
+        # Create 12 cases in August 2026 (inside 6-month window)
+        for i in range(12):
+            DiseaseCase.objects.create(
+                disease_name='Cholera', patient=self.patient_central,
+                facility=self.fac_hosp1, ward=self.ward12,
+                report_date=datetime.date(2026, 8, (i % 25) + 1)
+            )
+
+        seasonal = calculate_seasonal_pattern(
+            facility_ids=[self.fac_hosp1.id],
+            disease_name='Cholera',
+            as_of_date=self.fixed_as_of,
+            months_count=6
+        )
+        # 6-month window only includes months 5 to 10
+        self.assertIsNotNone(seasonal['highest_case_month'])
+        self.assertNotEqual(seasonal['highest_case_month']['month_number'], 1)
+        self.assertEqual(seasonal['highest_case_month']['month_number'], 8)
+        self.assertIn(seasonal['highest_case_month']['month_number'], [5, 6, 7, 8, 9, 10])
+
+        self.assertIsNotNone(seasonal['lowest_case_month'])
+        self.assertNotEqual(seasonal['lowest_case_month']['month_number'], 1)
+        self.assertIn(seasonal['lowest_case_month']['month_number'], [5, 6, 7, 8, 9, 10])
+
+        for p in seasonal['strongest_historical_periods']:
+            self.assertNotIn('January', p['period'])
+
+    def test_existing_insufficient_data_behavior_unchanged(self):
+        """E. Existing insufficient-data behavior remains unchanged."""
+        # 1. Total cases < 10
+        seasonal_few_cases = calculate_seasonal_pattern(
+            facility_ids=[self.fac_rural.id],
+            disease_name='Malaria',  # only 1 case in DB
+            as_of_date=self.fixed_as_of,
+            months_count=12
+        )
+        self.assertEqual(seasonal_few_cases['seasonal_status'], 'NOT_ENOUGH_DATA')
+        self.assertEqual(seasonal_few_cases['seasonal_strength'], 0.0)
+        self.assertIsNone(seasonal_few_cases['highest_case_month'])
+        self.assertIsNone(seasonal_few_cases['lowest_case_month'])
+
+        # 2. Window < 6 months
+        seasonal_short_window = calculate_seasonal_pattern(
+            facility_ids=[self.fac_hosp1.id],
+            disease_name='Dengue Fever',
+            as_of_date=self.fixed_as_of,
+            months_count=5
+        )
+        self.assertEqual(seasonal_short_window['seasonal_status'], 'NOT_ENOUGH_DATA')
+        self.assertEqual(seasonal_short_window['seasonal_strength'], 0.0)
