@@ -132,59 +132,152 @@ def compute_trend_status(current_count, previous_count):
 # Scope Resolution Helper
 # ---------------------------------------------------------------------------
 
+class ScopeResult:
+    """
+    Structured outcome of facility and district scope resolution.
+    Encapsulates explicit authorization status, resolved facility IDs,
+    resolved district ID, and permission denial explanation.
+    """
+    def __init__(self, is_authorized, facility_ids=None, district_id=None, error=None):
+        self.is_authorized = bool(is_authorized)
+        self.facility_ids = list(facility_ids) if facility_ids else []
+        self.district_id = district_id
+        self.error = error
+
+    def __bool__(self):
+        return self.is_authorized
+
+    def __iter__(self):
+        # Enables tuple unpacking: fac_ids, scoped_dist_id = resolve_facility_scope(...)
+        return iter((self.facility_ids, self.district_id))
+
+    def __repr__(self):
+        return f"<ScopeResult authorized={self.is_authorized} fac_ids={self.facility_ids} dist_id={self.district_id} error={self.error}>"
+
+
 def resolve_facility_scope(user=None, requested_facility_id=None, requested_district_id=None):
     """
-    Enforces strict role-based access control and isolation:
-    - HOSPITAL_ADMIN: Strictly scoped to assigned_facility. Cannot query other hospitals.
-    - DOCTOR: Strictly scoped to assigned_facility.
-    - DISTRICT_OFFICER: Scoped to all facilities inside assigned_district.
-      If a specific facility is requested, it MUST be inside the assigned district.
-    - Superuser: Allowed to query any requested facility or district.
-    """
-    if not user or not user.is_authenticated:
-        # Standalone function invocation (e.g. from service layer/tests with explicit IDs)
-        if requested_facility_id:
-            fac_ids = [int(requested_facility_id)]
-            return fac_ids, None
-        if requested_district_id:
-            dist_id = int(requested_district_id)
-            fac_ids = list(Facility.objects.filter(district_id=dist_id).values_list('id', flat=True))
-            return fac_ids, dist_id
-        return list(Facility.objects.values_list('id', flat=True)), None
+    Authoritative facility and district scope resolution with explicit authorization:
 
+    1. DISTRICT_OFFICER + requested facility inside assigned district:
+       -> return only that requested facility.
+    2. DISTRICT_OFFICER + requested facility outside assigned district:
+       -> explicitly reject the request (is_authorized=False).
+    3. DISTRICT_OFFICER + requested district equal to assigned district:
+       -> return all facilities in that district.
+    4. DISTRICT_OFFICER + requested district different from assigned district:
+       -> explicitly reject the request (is_authorized=False).
+    5. HOSPITAL_ADMIN + requested facility equal to assigned facility:
+       -> allow.
+    6. HOSPITAL_ADMIN + requested facility different from assigned facility:
+       -> explicitly reject the request (is_authorized=False).
+    7. HOSPITAL_ADMIN requesting another district:
+       -> explicitly reject the request (is_authorized=False).
+    """
+    req_fac_id = None
+    if requested_facility_id is not None and str(requested_facility_id).strip() != '':
+        if hasattr(requested_facility_id, 'id'):
+            req_fac_id = requested_facility_id.id
+        else:
+            try:
+                req_fac_id = int(requested_facility_id)
+            except (ValueError, TypeError):
+                return ScopeResult(False, [], None, "Invalid facility identifier.")
+
+    req_dist_id = None
+    if requested_district_id is not None and str(requested_district_id).strip() != '':
+        if hasattr(requested_district_id, 'id'):
+            req_dist_id = requested_district_id.id
+        else:
+            try:
+                req_dist_id = int(requested_district_id)
+            except (ValueError, TypeError):
+                return ScopeResult(False, [], None, "Invalid district identifier.")
+
+    # Standalone or unauthenticated function invocation (e.g. internal service/test helper with user=None)
+    if not user or not user.is_authenticated:
+        if req_fac_id:
+            fac = Facility.objects.filter(id=req_fac_id).first()
+            if not fac:
+                return ScopeResult(False, [], None, "Facility not found.")
+            return ScopeResult(True, [fac.id], fac.district_id, None)
+        if req_dist_id:
+            dist = District.objects.filter(id=req_dist_id).first()
+            if not dist:
+                return ScopeResult(False, [], None, "District not found.")
+            fac_ids = list(Facility.objects.filter(district=dist).values_list('id', flat=True))
+            return ScopeResult(True, fac_ids, dist.id, None)
+        all_fac_ids = list(Facility.objects.values_list('id', flat=True))
+        return ScopeResult(True, all_fac_ids, None, None)
+
+    # Superuser has unrestricted access across facilities and districts
     if getattr(user, 'is_superuser', False):
-        if requested_facility_id:
-            return [int(requested_facility_id)], None
-        if requested_district_id:
-            dist_id = int(requested_district_id)
-            fac_ids = list(Facility.objects.filter(district_id=dist_id).values_list('id', flat=True))
-            return fac_ids, dist_id
-        return list(Facility.objects.values_list('id', flat=True)), None
+        if req_fac_id:
+            fac = Facility.objects.filter(id=req_fac_id).first()
+            if not fac:
+                return ScopeResult(False, [], None, "Facility not found.")
+            return ScopeResult(True, [fac.id], fac.district_id, None)
+        if req_dist_id:
+            dist = District.objects.filter(id=req_dist_id).first()
+            if not dist:
+                return ScopeResult(False, [], None, "District not found.")
+            fac_ids = list(Facility.objects.filter(district=dist).values_list('id', flat=True))
+            return ScopeResult(True, fac_ids, dist.id, None)
+        all_fac_ids = list(Facility.objects.values_list('id', flat=True))
+        return ScopeResult(True, all_fac_ids, None, None)
 
     role = getattr(user, 'role', '')
 
+    # District Officer Scoping Rules
     if role == 'DISTRICT_OFFICER':
-        user_dist = user.assigned_district
-        if user_dist:
-            dist_id = user_dist.id
-            district_fac_qs = Facility.objects.filter(district=user_dist)
-            if requested_facility_id:
-                try:
-                    req_id = int(requested_facility_id)
-                    if district_fac_qs.filter(id=req_id).exists():
-                        return [req_id], dist_id
-                except (ValueError, TypeError):
-                    pass
-            fac_ids = list(district_fac_qs.values_list('id', flat=True))
-            return fac_ids, dist_id
-        return [], None
+        user_dist = getattr(user, 'assigned_district', None)
+        user_dist_id = getattr(user, 'assigned_district_id', None)
+        if not user_dist_id and user_dist:
+            user_dist_id = user_dist.id
+        if not user_dist_id:
+            return ScopeResult(False, [], None, "Permission denied: District Officer has no assigned district.")
 
-    # Operational roles: HOSPITAL_ADMIN, DOCTOR, NURSE
-    assigned_fac_id = getattr(user, 'assigned_facility_id', None)
-    if assigned_fac_id:
-        return [assigned_fac_id], getattr(user.assigned_facility, 'district_id', None)
+        district_fac_qs = Facility.objects.filter(district_id=user_dist_id)
+        district_fac_ids = list(district_fac_qs.values_list('id', flat=True))
 
-    return [], None
+        # Check requested district
+        if req_dist_id is not None and req_dist_id != user_dist_id:
+            return ScopeResult(False, [], user_dist_id, "Permission denied: Requested district is outside assigned district jurisdiction.")
+
+        # Check requested facility
+        if req_fac_id is not None:
+            if not district_fac_qs.filter(id=req_fac_id).exists():
+                return ScopeResult(False, [], user_dist_id, "Permission denied: Requested facility is outside assigned district.")
+            return ScopeResult(True, [req_fac_id], user_dist_id, None)
+
+        # Default to all facilities in assigned district
+        return ScopeResult(True, district_fac_ids, user_dist_id, None)
+
+    # Operational Roles: HOSPITAL_ADMIN, DOCTOR, NURSE
+    if role in ['HOSPITAL_ADMIN', 'DOCTOR', 'NURSE']:
+        assigned_fac = getattr(user, 'assigned_facility', None)
+        assigned_fac_id = getattr(user, 'assigned_facility_id', None)
+        if assigned_fac:
+            assigned_fac_id = assigned_fac.id
+            fac_dist_id = assigned_fac.district_id
+        elif assigned_fac_id:
+            fac = Facility.objects.filter(id=assigned_fac_id).first()
+            fac_dist_id = fac.district_id if fac else None
+        else:
+            return ScopeResult(False, [], None, "Permission denied: User has no assigned hospital facility.")
+
+        # Check requested facility
+        if req_fac_id is not None and req_fac_id != assigned_fac_id:
+            return ScopeResult(False, [], None, "Permission denied: Cannot access facility outside assigned hospital.")
+
+        # Check requested district
+        if req_dist_id is not None and req_dist_id != fac_dist_id:
+            return ScopeResult(False, [], None, "Permission denied: Hospital Admin cannot query outside assigned hospital district.")
+
+        # Strictly locked to assigned facility
+        return ScopeResult(True, [assigned_fac_id], fac_dist_id, None)
+
+    return ScopeResult(False, [], None, "Permission denied: User role is not authorized for health intelligence.")
 
 
 # ---------------------------------------------------------------------------
@@ -561,11 +654,11 @@ def aggregate_hospital_level(facility_id, user=None, start_date=None, end_date=N
     - trend direction
     """
     # Verify authorization
-    fac_ids, _ = resolve_facility_scope(user=user, requested_facility_id=facility_id)
-    if not fac_ids or facility_id not in fac_ids:
+    scope = resolve_facility_scope(user=user, requested_facility_id=facility_id)
+    if not scope.is_authorized or facility_id not in scope.facility_ids:
         # Cross-hospital unauthorized access prevented
         return {
-            'error': 'Permission denied: Cannot access clinical data outside assigned hospital.',
+            'error': scope.error or 'Permission denied: Cannot access clinical data outside assigned hospital.',
             'facility_id': facility_id
         }
 
@@ -628,13 +721,17 @@ def aggregate_district_level(district_id, user=None, start_date=None, end_date=N
     - hospital comparison across the district
     """
     # Authorize user
-    fac_ids, resolved_dist = resolve_facility_scope(user=user, requested_district_id=district_id)
-    if user and user.is_authenticated and user.role == 'DISTRICT_OFFICER':
-        if user.assigned_district_id and user.assigned_district_id != district_id:
-            return {
-                'error': 'Permission denied: Cross-district access is prohibited.',
-                'district_id': district_id
-            }
+    scope = resolve_facility_scope(user=user, requested_district_id=district_id)
+    if not scope.is_authorized:
+        return {
+            'error': scope.error or 'Permission denied: Cross-district access is prohibited.',
+            'district_id': district_id
+        }
+    if user and user.is_authenticated and user.role != 'DISTRICT_OFFICER' and not getattr(user, 'is_superuser', False):
+        return {
+            'error': 'Permission denied: District-level aggregation is restricted to District Officers.',
+            'district_id': district_id
+        }
 
     dist = District.objects.filter(id=district_id).first()
     if not dist:
@@ -703,11 +800,16 @@ def get_public_health_intelligence_summary(facility_id=None, district_id=None, u
     Unified entry point for Step 1 Public Health Intelligence.
     Resolves scope automatically from user role or passed identifiers.
     """
-    fac_ids, scoped_dist_id = resolve_facility_scope(
+    scope = resolve_facility_scope(
         user=user,
         requested_facility_id=facility_id,
         requested_district_id=district_id
     )
+    if not scope.is_authorized:
+        return {'error': scope.error}
+
+    fac_ids = scope.facility_ids
+    scoped_dist_id = scope.district_id
 
     # If single hospital scope
     if fac_ids and len(fac_ids) == 1 and (facility_id or (user and user.role in ['HOSPITAL_ADMIN', 'DOCTOR'])):

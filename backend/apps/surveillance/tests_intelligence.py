@@ -382,3 +382,170 @@ class PublicHealthIntelligenceStep1TestCase(TestCase):
         res_dist = self.client.get(f"{reverse('intelligence_district_aggregation')}?district={self.district_central.id}")
         self.assertEqual(res_dist.status_code, status.HTTP_200_OK)
         self.assertEqual(res_dist.data['district']['id'], self.district_central.id)
+
+    # ---------------------------------------------------------------------------
+    # Step 1 Correction: Explicit Authorization & Scope Tests
+    # ---------------------------------------------------------------------------
+
+    def test_district_officer_requests_own_district_facility(self):
+        """District Officer requests own district facility -> 200."""
+        # Service level
+        scope = resolve_facility_scope(
+            user=self.user_dist_central,
+            requested_facility_id=self.fac_hosp1.id
+        )
+        self.assertTrue(scope.is_authorized)
+        self.assertEqual(scope.facility_ids, [self.fac_hosp1.id])
+        self.assertEqual(scope.district_id, self.district_central.id)
+
+        # API level
+        self.client.force_authenticate(user=self.user_dist_central)
+        res = self.client.get(f"{reverse('intelligence_disease_trends')}?facility={self.fac_hosp1.id}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_district_officer_requests_another_district_facility(self):
+        """District Officer requests another district facility -> 403."""
+        # Service level
+        scope = resolve_facility_scope(
+            user=self.user_dist_central,
+            requested_facility_id=self.fac_rural.id
+        )
+        self.assertFalse(scope.is_authorized)
+        self.assertIn('outside assigned district', scope.error)
+
+        # API level: disease trends
+        self.client.force_authenticate(user=self.user_dist_central)
+        res = self.client.get(f"{reverse('intelligence_disease_trends')}?facility={self.fac_rural.id}")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('error', res.data)
+
+        # API level: hospital aggregation
+        res_hosp = self.client.get(f"{reverse('intelligence_hospital_aggregation')}?facility={self.fac_rural.id}")
+        self.assertEqual(res_hosp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('error', res_hosp.data)
+
+    def test_district_officer_requests_own_district(self):
+        """District Officer requests own district -> 200."""
+        # Service level
+        scope = resolve_facility_scope(
+            user=self.user_dist_central,
+            requested_district_id=self.district_central.id
+        )
+        self.assertTrue(scope.is_authorized)
+        self.assertEqual(set(scope.facility_ids), {self.fac_hosp1.id, self.fac_clinic1.id})
+        self.assertEqual(scope.district_id, self.district_central.id)
+
+        # API level: disease trends
+        self.client.force_authenticate(user=self.user_dist_central)
+        res_trends = self.client.get(f"{reverse('intelligence_disease_trends')}?district={self.district_central.id}")
+        self.assertEqual(res_trends.status_code, status.HTTP_200_OK)
+
+        # API level: district aggregation
+        res_dist = self.client.get(f"{reverse('intelligence_district_aggregation')}?district={self.district_central.id}")
+        self.assertEqual(res_dist.status_code, status.HTTP_200_OK)
+
+    def test_district_officer_requests_another_district(self):
+        """District Officer requests another district -> 403."""
+        # Service level
+        scope = resolve_facility_scope(
+            user=self.user_dist_central,
+            requested_district_id=self.district_rural.id
+        )
+        self.assertFalse(scope.is_authorized)
+        self.assertIn('jurisdiction', scope.error)
+
+        # API level: disease trends
+        self.client.force_authenticate(user=self.user_dist_central)
+        res_trends = self.client.get(f"{reverse('intelligence_disease_trends')}?district={self.district_rural.id}")
+        self.assertEqual(res_trends.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('error', res_trends.data)
+
+        # API level: district aggregation
+        res_dist = self.client.get(f"{reverse('intelligence_district_aggregation')}?district={self.district_rural.id}")
+        self.assertEqual(res_dist.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('error', res_dist.data)
+
+    def test_hospital_admin_requests_own_hospital(self):
+        """Hospital Admin requests own hospital -> 200."""
+        # Service level
+        scope = resolve_facility_scope(
+            user=self.user_hosp_admin,
+            requested_facility_id=self.fac_hosp1.id
+        )
+        self.assertTrue(scope.is_authorized)
+        self.assertEqual(scope.facility_ids, [self.fac_hosp1.id])
+
+        # API level: disease trends
+        self.client.force_authenticate(user=self.user_hosp_admin)
+        res_trends = self.client.get(f"{reverse('intelligence_disease_trends')}?facility={self.fac_hosp1.id}")
+        self.assertEqual(res_trends.status_code, status.HTTP_200_OK)
+
+        # API level: hospital aggregation
+        res_hosp = self.client.get(f"{reverse('intelligence_hospital_aggregation')}?facility={self.fac_hosp1.id}")
+        self.assertEqual(res_hosp.status_code, status.HTTP_200_OK)
+
+    def test_hospital_admin_requests_another_hospital(self):
+        """Hospital Admin requests another hospital -> 403."""
+        # Service level: another hospital in same district
+        scope_same_dist = resolve_facility_scope(
+            user=self.user_hosp_admin,
+            requested_facility_id=self.fac_clinic1.id
+        )
+        self.assertFalse(scope_same_dist.is_authorized)
+        self.assertIn('outside assigned hospital', scope_same_dist.error)
+
+        # Service level: hospital in another district
+        scope_diff_dist = resolve_facility_scope(
+            user=self.user_hosp_admin,
+            requested_facility_id=self.fac_rural.id
+        )
+        self.assertFalse(scope_diff_dist.is_authorized)
+        self.assertIn('outside assigned hospital', scope_diff_dist.error)
+
+        # API level: disease trends requesting another hospital
+        self.client.force_authenticate(user=self.user_hosp_admin)
+        res_trends = self.client.get(f"{reverse('intelligence_disease_trends')}?facility={self.fac_clinic1.id}")
+        self.assertEqual(res_trends.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('error', res_trends.data)
+
+        # API level: hospital aggregation requesting another hospital
+        res_hosp = self.client.get(f"{reverse('intelligence_hospital_aggregation')}?facility={self.fac_clinic1.id}")
+        self.assertEqual(res_hosp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('error', res_hosp.data)
+
+    def test_hospital_admin_requests_another_district(self):
+        """Hospital Admin requesting another district -> 403."""
+        scope = resolve_facility_scope(
+            user=self.user_hosp_admin,
+            requested_district_id=self.district_rural.id
+        )
+        self.assertFalse(scope.is_authorized)
+
+        self.client.force_authenticate(user=self.user_hosp_admin)
+        res = self.client.get(f"{reverse('intelligence_disease_trends')}?district={self.district_rural.id}")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('error', res.data)
+
+    def test_unauthorized_requested_scope_must_not_silently_fallback(self):
+        """
+        Critical security test:
+        Unauthorized requested scope must explicitly return 403 and MUST NOT silently
+        fall back to the user's default/assigned scope.
+        """
+        # 1. District Officer requests a facility in another district
+        self.client.force_authenticate(user=self.user_dist_central)
+        res_officer_fac = self.client.get(f"{reverse('intelligence_disease_trends')}?facility={self.fac_rural.id}")
+        self.assertEqual(res_officer_fac.status_code, status.HTTP_403_FORBIDDEN)
+        # Verify it did not return Central district's data
+        self.assertNotIn('disease_trends', res_officer_fac.data)
+
+        # 2. District Officer requests another district
+        res_officer_dist = self.client.get(f"{reverse('intelligence_disease_trends')}?district={self.district_rural.id}")
+        self.assertEqual(res_officer_dist.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('disease_trends', res_officer_dist.data)
+
+        # 3. Hospital Admin requests another facility in the same or another district
+        self.client.force_authenticate(user=self.user_hosp_admin)
+        res_hosp_admin = self.client.get(f"{reverse('intelligence_disease_trends')}?facility={self.fac_clinic1.id}")
+        self.assertEqual(res_hosp_admin.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('disease_trends', res_hosp_admin.data)

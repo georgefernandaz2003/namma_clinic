@@ -44,15 +44,17 @@ class PublicHealthDiseaseTrendsView(BaseIntelligenceView):
         as_of_date = request.query_params.get('date')
         days = int(request.query_params.get('days', 7))
 
-        fac_ids, scoped_dist_id = resolve_facility_scope(
+        scope = resolve_facility_scope(
             user=request.user,
             requested_facility_id=fac_id,
             requested_district_id=dist_id
         )
+        if not scope.is_authorized:
+            return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
         data = calculate_disease_trends(
-            facility_ids=fac_ids,
-            district_id=scoped_dist_id,
+            facility_ids=scope.facility_ids,
+            district_id=scope.district_id,
             disease_name=disease,
             start_date=start_date,
             end_date=end_date,
@@ -77,15 +79,17 @@ class PublicHealthDiseaseLocalityView(BaseIntelligenceView):
         as_of_date = request.query_params.get('date')
         days = int(request.query_params.get('days', 14))
 
-        fac_ids, scoped_dist_id = resolve_facility_scope(
+        scope = resolve_facility_scope(
             user=request.user,
             requested_facility_id=fac_id,
             requested_district_id=dist_id
         )
+        if not scope.is_authorized:
+            return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
         data = aggregate_disease_by_locality(
-            facility_ids=fac_ids,
-            district_id=scoped_dist_id,
+            facility_ids=scope.facility_ids,
+            district_id=scope.district_id,
             disease_name=disease,
             start_date=start_date,
             end_date=end_date,
@@ -107,15 +111,17 @@ class PublicHealthHistoricalDiseaseView(BaseIntelligenceView):
         months = int(request.query_params.get('months', 6))
         as_of_date = request.query_params.get('date')
 
-        fac_ids, scoped_dist_id = resolve_facility_scope(
+        scope = resolve_facility_scope(
             user=request.user,
             requested_facility_id=fac_id,
             requested_district_id=dist_id
         )
+        if not scope.is_authorized:
+            return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
         data = aggregate_historical_disease(
-            facility_ids=fac_ids,
-            district_id=scoped_dist_id,
+            facility_ids=scope.facility_ids,
+            district_id=scope.district_id,
             disease_name=disease,
             months=months,
             as_of_date=as_of_date
@@ -135,12 +141,16 @@ class PublicHealthHospitalAggregationView(BaseIntelligenceView):
         as_of_date = request.query_params.get('date')
 
         # Determine target hospital ID
-        target_fac_id = int(fac_id) if fac_id and fac_id.isdigit() else getattr(request.user, 'assigned_facility_id', None)
+        target_fac_id = fac_id if (fac_id is not None and str(fac_id).strip() != '') else getattr(request.user, 'assigned_facility_id', None)
         if not target_fac_id:
             return Response({'error': 'Hospital identifier required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        scope = resolve_facility_scope(user=request.user, requested_facility_id=target_fac_id)
+        if not scope.is_authorized:
+            return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
+
         data = aggregate_hospital_level(
-            facility_id=target_fac_id,
+            facility_id=scope.facility_ids[0],
             user=request.user,
             start_date=start_date,
             end_date=end_date,
@@ -162,12 +172,16 @@ class PublicHealthDistrictAggregationView(BaseIntelligenceView):
         end_date = request.query_params.get('end_date')
         as_of_date = request.query_params.get('date')
 
-        target_dist_id = int(dist_id) if dist_id and dist_id.isdigit() else getattr(request.user, 'assigned_district_id', None)
+        target_dist_id = dist_id if (dist_id is not None and str(dist_id).strip() != '') else getattr(request.user, 'assigned_district_id', None)
         if not target_dist_id:
             return Response({'error': 'District identifier required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        scope = resolve_facility_scope(user=request.user, requested_district_id=target_dist_id)
+        if not scope.is_authorized:
+            return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
+
         data = aggregate_district_level(
-            district_id=target_dist_id,
+            district_id=scope.district_id,
             user=request.user,
             start_date=start_date,
             end_date=end_date,
@@ -189,15 +203,22 @@ class PublicHealthIntelligenceSummaryView(BaseIntelligenceView):
         end_date = request.query_params.get('end_date')
         as_of_date = request.query_params.get('date')
 
-        fac_id_int = int(fac_id) if fac_id and fac_id.isdigit() else None
-        dist_id_int = int(dist_id) if dist_id and dist_id.isdigit() else None
+        scope = resolve_facility_scope(
+            user=request.user,
+            requested_facility_id=fac_id,
+            requested_district_id=dist_id
+        )
+        if not scope.is_authorized:
+            return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
         data = get_public_health_intelligence_summary(
-            facility_id=fac_id_int,
-            district_id=dist_id_int,
+            facility_id=scope.facility_ids[0] if (fac_id and len(scope.facility_ids) == 1) else None,
+            district_id=scope.district_id,
             user=request.user,
             start_date=start_date,
             end_date=end_date,
             as_of_date=as_of_date
         )
+        if 'error' in data:
+            return Response(data, status=status.HTTP_403_FORBIDDEN)
         return Response(data)
