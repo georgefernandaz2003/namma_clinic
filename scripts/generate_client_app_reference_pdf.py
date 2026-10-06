@@ -80,7 +80,8 @@ def build_pdf():
     MUTED_TEXT = colors.HexColor("#475569")
     BORDER_COLOR = colors.HexColor("#CBD5E1")
     BG_LIGHT = colors.HexColor("#F8FAFC")
-    ACCENT_TEAL = colors.HexColor("#0D9488")
+    BG_CALLOUT = colors.HexColor("#F0FDF4")
+    BORDER_CALLOUT = colors.HexColor("#A7F3D0")
 
     styles = getSampleStyleSheet()
 
@@ -143,15 +144,15 @@ def build_pdf():
     story.append(Spacer(1, 20))
     story.append(Paragraph("NAMMA CLINIC", title_style))
     story.append(Paragraph("Digital Healthcare & Clinic Management Platform", subtitle_style))
-    story.append(Paragraph("Comprehensive Client Application Reference Manual", ParagraphStyle('CoverSub2', parent=subtitle_style, fontSize=10, textColor=MUTED_TEXT, spaceAfter=14)))
+    story.append(Paragraph("Comprehensive Operational Reference Manual &bull; 21 Platform Capabilities Across 8 Clinic Roles", ParagraphStyle('CoverSub2', parent=subtitle_style, fontSize=10, textColor=MUTED_TEXT, spaceAfter=14)))
     story.append(HRFlowable(width="100%", thickness=2, color=PRIMARY, spaceBefore=2, spaceAfter=14))
 
     # Metadata Card Table
     meta_table_data = [
-        [Paragraph("<b>Target Audience:</b> DHO, Health Dept Management, Administrators, Doctors, Nurses, Front Desk, Pharmacists, Lab Techs", body_style),
+        [Paragraph("<b>Target Audience:</b> DHO, Health Dept Management, Administrators, Doctors, Nurses, Front Desk Officers, Pharmacists, Lab Techs, Inventory Officers", body_style),
          Paragraph("<b>Operational Scope:</b> Primary Healthcare Centers (PHCs), Urban Health Centers, Namma Clinics", body_style)],
         [Paragraph("<b>Deployment Mode:</b> Local Clinic Workstations & Laptops (Zero Cloud Dependency)", body_style),
-         Paragraph("<b>Document Version:</b> Release 2026.1 (Phase DOC-02 Client Reference)", body_style)]
+         Paragraph("<b>Capability Framework:</b> 21 Platform Capabilities (10 Implemented, 8 Demonstration, 3 Platform Services)", body_style)]
     ]
     t_meta = Table(meta_table_data, colWidths=[270, 270])
     t_meta.setStyle(TableStyle([
@@ -218,7 +219,6 @@ def build_pdf():
             if in_code_block:
                 in_code_block = False
                 code_text = '\n'.join(code_buffer)
-                # Keep box drawings legible
                 clean_code = code_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 story.append(Preformatted(clean_code, code_style))
                 story.append(Spacer(1, 4))
@@ -243,41 +243,49 @@ def build_pdf():
             # Process buffered table
             rows = []
             for t_line in table_buffer:
-                if re.match(r'^\|[\s\-:]+\|$', t_line):
-                    continue  # Separator line
                 cols = [c.strip() for c in t_line.strip('|').split('|')]
+                if all(re.match(r'^[\s\-:]*$', col) for col in cols):
+                    continue  # Separator line
                 rows.append(cols)
 
             if rows:
                 col_count = len(rows[0])
-                col_width = 540 / col_count
+                if col_count == 4:
+                    col_widths = [30, 135, 145, 230]
+                elif col_count == 3:
+                    col_widths = [160, 190, 190]
+                elif col_count == 2:
+                    col_widths = [270, 270]
+                else:
+                    col_widths = [540 / col_count] * col_count
+
                 table_flow_data = []
                 for r_idx, r in enumerate(rows):
                     row_cells = []
-                    for c in r:
-                        # Clean cell text (handle br tags)
+                    for c_idx, c in enumerate(r):
                         cell_clean = c.replace('<br>', '\n')
                         cell_clean = clean_text(cell_clean)
+                        is_header = (r_idx == 0)
                         p_style = ParagraphStyle(
-                            'TCellH' if r_idx == 0 else 'TCellB',
+                            'TCellH' if is_header else f'TCellB_{c_idx}',
                             parent=body_style,
-                            fontName='Helvetica-Bold' if r_idx == 0 else 'Helvetica',
-                            fontSize=7.5 if col_count > 2 else 8,
-                            leading=10 if col_count > 2 else 11,
-                            textColor=PRIMARY if r_idx == 0 else DARK_TEXT
+                            fontName='Helvetica-Bold' if is_header else 'Helvetica',
+                            fontSize=7 if col_count >= 4 else (7.5 if col_count == 3 else 8),
+                            leading=9.5 if col_count >= 4 else (10 if col_count == 3 else 11),
+                            textColor=PRIMARY if is_header else DARK_TEXT
                         )
                         row_cells.append(Paragraph(cell_clean.replace('\n', '<br/>'), p_style))
                     table_flow_data.append(row_cells)
 
-                t_table = Table(table_flow_data, colWidths=[col_width]*col_count)
+                t_table = Table(table_flow_data, colWidths=col_widths)
                 t_table.setStyle(TableStyle([
                     ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#E2E8F0")),
                     ('BOX', (0,0), (-1,-1), 0.5, BORDER_COLOR),
                     ('INNERGRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
-                    ('TOPPADDING', (0,0), (-1,-1), 4),
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-                    ('LEFTPADDING', (0,0), (-1,-1), 5),
-                    ('RIGHTPADDING', (0,0), (-1,-1), 5),
+                    ('TOPPADDING', (0,0), (-1,-1), 3),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+                    ('LEFTPADDING', (0,0), (-1,-1), 4),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 4),
                 ]))
                 story.append(t_table)
                 story.append(Spacer(1, 6))
@@ -286,6 +294,36 @@ def build_pdf():
         # Empty line
         if not line:
             i += 1
+            continue
+
+        # Handle Callout blocks (> [!NOTE] or > ...)
+        if line.startswith('>'):
+            callout_lines = []
+            while i < len(lines) and lines[i].strip().startswith('>'):
+                c_line = lines[i].strip().lstrip('>').strip()
+                if c_line:
+                    callout_lines.append(c_line)
+                i += 1
+            if callout_lines:
+                callout_text = '<br/>'.join([clean_text(cl) for cl in callout_lines])
+                callout_text = re.sub(r'\[!NOTE\]', '<b>NOTE:</b>', callout_text)
+                callout_text = re.sub(r'\[!IMPORTANT\]', '<b>IMPORTANT:</b>', callout_text)
+                callout_p = Paragraph(callout_text, ParagraphStyle(
+                    'CalloutText', parent=body_style,
+                    fontSize=8, leading=11, textColor=DARK_TEXT
+                ))
+                t_callout = Table([[callout_p]], colWidths=[540])
+                t_callout.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,-1), BG_CALLOUT),
+                    ('BOX', (0,0), (-1,-1), 0.5, BORDER_CALLOUT),
+                    ('LINELEFT', (0,0), (0,0), 3, PRIMARY),
+                    ('TOPPADDING', (0,0), (-1,-1), 5),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                    ('LEFTPADDING', (0,0), (-1,-1), 8),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 8),
+                ]))
+                story.append(t_callout)
+                story.append(Spacer(1, 6))
             continue
 
         # Check for images: ![Alt](path)
