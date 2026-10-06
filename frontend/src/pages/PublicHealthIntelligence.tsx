@@ -21,6 +21,16 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { hasPermission } from '../utils/permissions';
 import intelligenceService from '../services/intelligenceService';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend
+} from 'recharts';
 import type {
   TrendDirection,
   DiseaseTrendsResponse,
@@ -31,18 +41,6 @@ import type {
   DistrictAggregationResponse,
   IntelligenceFilterParams
 } from '../types/intelligence';
-
-// Common Monitored Disease Options in Primary Health System
-const COMMON_DISEASES = [
-  'All Monitored Conditions',
-  'Dengue Fever',
-  'Acute Pyrexia / Suspected Viral Fever',
-  'Acute Gastroenteritis',
-  'Malaria',
-  'Typhoid',
-  'Chikungunya',
-  'Respiratory Infection (ARI)'
-];
 
 export const PublicHealthIntelligence: React.FC = () => {
   const { user, allFacilities } = useAuth();
@@ -270,6 +268,40 @@ export const PublicHealthIntelligence: React.FC = () => {
     return list.filter(l => l.locality.name.toLowerCase().includes(localitySearch.toLowerCase()));
   }, [localityData, localitySearch]);
 
+  // Dynamic disease options derived strictly from backend response
+  const diseaseOptions = useMemo(() => {
+    const list: string[] = ['All Monitored Conditions'];
+    const seen = new Set<string>(['All Monitored Conditions']);
+
+    if (trendsData?.disease_trends) {
+      for (const item of trendsData.disease_trends) {
+        if (item.disease && !seen.has(item.disease)) {
+          seen.add(item.disease);
+          list.push(item.disease);
+        }
+      }
+    }
+
+    // Preserve active selection if not yet in list
+    if (selectedDisease && !seen.has(selectedDisease)) {
+      list.push(selectedDisease);
+    }
+
+    return list;
+  }, [trendsData, selectedDisease]);
+
+  // Historical chart data mapped directly from backend historical_series
+  const historicalChartData = useMemo(() => {
+    if (!historicalData?.historical_series) return [];
+    return historicalData.historical_series.map(pt => ({
+      period_label: pt.period_label,
+      total_cases: pt.total_cases,
+      MILD: pt.severity_breakdown?.MILD ?? 0,
+      MODERATE: pt.severity_breakdown?.MODERATE ?? 0,
+      SEVERE: pt.severity_breakdown?.SEVERE ?? 0,
+    }));
+  }, [historicalData]);
+
   // Unauthorized page guard
   if (!canViewDashboard) {
     return (
@@ -383,7 +415,7 @@ export const PublicHealthIntelligence: React.FC = () => {
               onChange={e => setSelectedDisease(e.target.value)}
               className="w-full text-xs font-medium bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             >
-              {COMMON_DISEASES.map(d => (
+              {diseaseOptions.map(d => (
                 <option key={d} value={d}>
                   {d}
                 </option>
@@ -797,6 +829,58 @@ export const PublicHealthIntelligence: React.FC = () => {
                 </div>
               </div>
 
+              {/* Historical Trend Chart */}
+              <div
+                className="h-64 sm:h-72 w-full pt-2"
+                data-testid="historical-chart-container"
+                role="region"
+                aria-label="Historical Disease Trend Chart"
+              >
+                <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={260}>
+                  <BarChart
+                    data={historicalChartData}
+                    margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="period_label"
+                      tick={{ fontSize: 11, fill: '#64748b' }}
+                      axisLine={{ stroke: '#cbd5e1' }}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 11, fill: '#64748b' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#0f172a',
+                        borderRadius: '0.75rem',
+                        border: 'none',
+                        color: '#f8fafc',
+                        fontSize: '12px',
+                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                      }}
+                      formatter={(value: any, name: any) => [
+                        `${value} cases`,
+                        name === 'MILD' ? 'Mild Severity' : name === 'MODERATE' ? 'Moderate Severity' : name === 'SEVERE' ? 'Severe Case' : name
+                      ]}
+                      labelStyle={{ fontWeight: 'bold', color: '#cbd5e1', marginBottom: '4px' }}
+                    />
+                    <Legend
+                      verticalAlign="top"
+                      align="right"
+                      wrapperStyle={{ paddingBottom: '10px', fontSize: '11px', fontWeight: 600 }}
+                    />
+                    <Bar dataKey="MILD" name="MILD" stackId="severity" fill="#10b981" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="MODERATE" name="MODERATE" stackId="severity" fill="#f59e0b" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="SEVERE" name="SEVERE" stackId="severity" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
               {/* Monthly Severity Breakdown Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 {historicalData.historical_series.map((item, idx) => (
@@ -837,7 +921,7 @@ export const PublicHealthIntelligence: React.FC = () => {
                 </div>
                 <h3 className="text-lg font-black tracking-tight flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-indigo-400" />
-                  Primary Health Epidemiological Forecast ({forecastData?.disease || 'Selected Condition'})
+                  Public Health Epidemiological Forecast ({forecastData?.disease || 'Selected Condition'})
                 </h3>
                 <p className="text-xs text-slate-300 mt-1 max-w-xl">
                   Baseline statistical projection for health resource planning and surveillance monitoring. Not a confirmed outbreak prediction.

@@ -582,4 +582,123 @@ describe('PublicHealthIntelligence Component', () => {
     expect(options.some(t => t.includes('Rural Clinic'))).toBe(false);
     expect(options.some(t => t.includes('City Hospital'))).toBe(true);
   });
+
+  it('16. verifies historical chart renders from backend historical_series', async () => {
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('historical-chart-container')).toBeDefined();
+      expect(screen.getByRole('region', { name: /Historical Disease Trend Chart/i })).toBeDefined();
+    });
+  });
+
+  it('17. verifies disease selector uses backend-returned disease names', async () => {
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      const selectElem = screen.getByRole('combobox', { name: /Disease Condition/i }) as HTMLSelectElement;
+      const options = Array.from(selectElem.options).map(o => o.text);
+      expect(options).toContain('All Monitored Conditions');
+      expect(options).toContain('Dengue Fever');
+    });
+  });
+
+  it('18. verifies unknown/backend-added disease can appear in the selector', async () => {
+    vi.mocked(intelligenceService.getDiseaseTrends).mockResolvedValue({
+      ...mockTrends,
+      disease_trends: [
+        {
+          disease: 'Novel Respiratory Illness',
+          current_cases: 10,
+          previous_period_cases: 2,
+          cases_7d: 5,
+          cases_30d: 15,
+          cases_90d: 20,
+          percentage_change: 400.0,
+          trend_direction: 'INCREASING',
+          explanation: 'Emerging cluster',
+        },
+      ],
+    });
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      const selectElem = screen.getByRole('combobox', { name: /Disease Condition/i }) as HTMLSelectElement;
+      const options = Array.from(selectElem.options).map(o => o.text);
+      expect(options).toContain('Novel Respiratory Illness');
+    });
+  });
+
+  it('19. verifies no duplicate disease options are rendered', async () => {
+    vi.mocked(intelligenceService.getDiseaseTrends).mockResolvedValue({
+      ...mockTrends,
+      disease_trends: [
+        {
+          disease: 'Dengue Fever',
+          current_cases: 25,
+          previous_period_cases: 15,
+          cases_7d: 12,
+          cases_30d: 40,
+          cases_90d: 80,
+          percentage_change: 66.7,
+          trend_direction: 'INCREASING',
+          explanation: 'Recent cluster',
+        },
+        {
+          disease: 'Dengue Fever',
+          current_cases: 10,
+          previous_period_cases: 5,
+          cases_7d: 8,
+          cases_30d: 20,
+          cases_90d: 30,
+          percentage_change: 100.0,
+          trend_direction: 'INCREASING',
+          explanation: 'Secondary cluster',
+        },
+      ],
+    });
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      const selectElem = screen.getByRole('combobox', { name: /Disease Condition/i }) as HTMLSelectElement;
+      const options = Array.from(selectElem.options).map(o => o.value);
+      const uniqueOptions = Array.from(new Set(options));
+      expect(options.length).toBe(uniqueOptions.length);
+    });
+  });
+
+  it('20. verifies selecting a backend-returned disease sends that disease in API params', async () => {
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: /Disease Condition/i })).toBeDefined();
+    });
+
+    const selectElem = screen.getByRole('combobox', { name: /Disease Condition/i });
+    fireEvent.change(selectElem, { target: { value: 'Dengue Fever' } });
+
+    await waitFor(() => {
+      expect(intelligenceService.getDiseaseTrends).toHaveBeenCalledWith(
+        expect.objectContaining({
+          disease: 'Dengue Fever',
+        })
+      );
+    });
+  });
+
+  it('21. verifies forecast heading says "Public Health Epidemiological Forecast"', async () => {
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /Public Health Epidemiological Forecast/i })
+      ).toBeDefined();
+    });
+  });
 });
