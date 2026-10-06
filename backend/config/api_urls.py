@@ -25,17 +25,12 @@ from apps.referrals.views import ReferralViewSet, FollowUpViewSet
 from apps.ncd.views import NCDRecordViewSet
 from apps.surveillance.views import DiseaseCaseViewSet
 from apps.surveillance.intelligence_views import (
-    PublicHealthIntelligenceOverviewView,
-    DiseaseTrendsView,
-    DiseaseByLocalityView,
-    HistoricalDiseaseView,
-    EmergingPatternsView,
-    LocalityRiskView,
-    DiseaseForecastView,
-    LocalityForecastView,
-    SeasonalPatternsView,
-    FutureHealthDemandView,
-    ResourcePlanningView
+    PublicHealthDiseaseTrendsView,
+    PublicHealthDiseaseLocalityView,
+    PublicHealthHistoricalDiseaseView,
+    PublicHealthHospitalAggregationView,
+    PublicHealthDistrictAggregationView,
+    PublicHealthIntelligenceSummaryView
 )
 from apps.telemedicine.views import TeleconsultationViewSet
 from apps.outreach.views import OutreachActivityViewSet
@@ -120,31 +115,23 @@ urlpatterns = [
     path('reports/export/', CSVExportView.as_view(), name='csv_export'),
     path('admin/reset-demo/', ResetDemoView.as_view(), name='reset_demo'),
 
-    # Public Health Intelligence & Forecasting Module
-    path('surveillance/intelligence/overview/', PublicHealthIntelligenceOverviewView.as_view(), name='intelligence_overview'),
-    path('surveillance/intelligence/disease-trends/', DiseaseTrendsView.as_view(), name='intelligence_disease_trends'),
-    path('surveillance/intelligence/disease-by-locality/', DiseaseByLocalityView.as_view(), name='intelligence_disease_by_locality'),
-    path('surveillance/intelligence/historical-disease/', HistoricalDiseaseView.as_view(), name='intelligence_historical_disease'),
-    path('surveillance/intelligence/emerging-patterns/', EmergingPatternsView.as_view(), name='intelligence_emerging_patterns'),
-    path('surveillance/intelligence/locality-risk/', LocalityRiskView.as_view(), name='intelligence_locality_risk'),
-    path('surveillance/intelligence/disease-forecast/', DiseaseForecastView.as_view(), name='intelligence_disease_forecast'),
-    path('surveillance/intelligence/locality-forecast/', LocalityForecastView.as_view(), name='intelligence_locality_forecast'),
-    path('surveillance/intelligence/seasonal-patterns/', SeasonalPatternsView.as_view(), name='intelligence_seasonal_patterns'),
-    path('surveillance/intelligence/future-health-demand/', FutureHealthDemandView.as_view(), name='intelligence_future_health_demand'),
-    path('surveillance/intelligence/resource-planning/', ResourcePlanningView.as_view(), name='intelligence_resource_planning'),
+    # Public Health Intelligence & Forecasting - Step 1 Foundation
+    path('surveillance/intelligence/summary/', PublicHealthIntelligenceSummaryView.as_view(), name='intelligence_summary'),
+    path('surveillance/intelligence/overview/', PublicHealthIntelligenceSummaryView.as_view(), name='intelligence_overview'),
+    path('surveillance/intelligence/disease-trends/', PublicHealthDiseaseTrendsView.as_view(), name='intelligence_disease_trends'),
+    path('surveillance/intelligence/disease-by-locality/', PublicHealthDiseaseLocalityView.as_view(), name='intelligence_disease_by_locality'),
+    path('surveillance/intelligence/historical-disease/', PublicHealthHistoricalDiseaseView.as_view(), name='intelligence_historical_disease'),
+    path('surveillance/intelligence/hospital-aggregation/', PublicHealthHospitalAggregationView.as_view(), name='intelligence_hospital_aggregation'),
+    path('surveillance/intelligence/district-aggregation/', PublicHealthDistrictAggregationView.as_view(), name='intelligence_district_aggregation'),
 
     # Direct Alias /api/intelligence/...
-    path('intelligence/overview/', PublicHealthIntelligenceOverviewView.as_view(), name='intelligence_overview_alias'),
-    path('intelligence/disease-trends/', DiseaseTrendsView.as_view(), name='intelligence_disease_trends_alias'),
-    path('intelligence/disease-by-locality/', DiseaseByLocalityView.as_view(), name='intelligence_disease_by_locality_alias'),
-    path('intelligence/historical-disease/', HistoricalDiseaseView.as_view(), name='intelligence_historical_disease_alias'),
-    path('intelligence/emerging-patterns/', EmergingPatternsView.as_view(), name='intelligence_emerging_patterns_alias'),
-    path('intelligence/locality-risk/', LocalityRiskView.as_view(), name='intelligence_locality_risk_alias'),
-    path('intelligence/disease-forecast/', DiseaseForecastView.as_view(), name='intelligence_disease_forecast_alias'),
-    path('intelligence/locality-forecast/', LocalityForecastView.as_view(), name='intelligence_locality_forecast_alias'),
-    path('intelligence/seasonal-patterns/', SeasonalPatternsView.as_view(), name='intelligence_seasonal_patterns_alias'),
-    path('intelligence/future-health-demand/', FutureHealthDemandView.as_view(), name='intelligence_future_health_demand_alias'),
-    path('intelligence/resource-planning/', ResourcePlanningView.as_view(), name='intelligence_resource_planning_alias'),
+    path('intelligence/summary/', PublicHealthIntelligenceSummaryView.as_view(), name='intelligence_summary_alias'),
+    path('intelligence/overview/', PublicHealthIntelligenceSummaryView.as_view(), name='intelligence_overview_alias'),
+    path('intelligence/disease-trends/', PublicHealthDiseaseTrendsView.as_view(), name='intelligence_disease_trends_alias'),
+    path('intelligence/disease-by-locality/', PublicHealthDiseaseLocalityView.as_view(), name='intelligence_disease_by_locality_alias'),
+    path('intelligence/historical-disease/', PublicHealthHistoricalDiseaseView.as_view(), name='intelligence_historical_disease_alias'),
+    path('intelligence/hospital-aggregation/', PublicHealthHospitalAggregationView.as_view(), name='intelligence_hospital_aggregation_alias'),
+    path('intelligence/district-aggregation/', PublicHealthDistrictAggregationView.as_view(), name='intelligence_district_aggregation_alias'),
 
     # Router URLs
     path('', include(router.urls)),
