@@ -1,0 +1,225 @@
+/**
+ * Type definitions for Public Health Intelligence & Forecasting Module
+ * Strictly matches Step 1 and Step 2 backend API contract.
+ */
+
+export type TrendDirection =
+  | 'NORMAL'
+  | 'INCREASING'
+  | 'DECREASING'
+  | 'POSSIBLE_INCREASE'
+  | 'INSUFFICIENT_DATA';
+
+export type ForecastStatus = 'AVAILABLE' | 'INSUFFICIENT_DATA';
+export type SeasonalStatus = 'DETECTED' | 'WEAK' | 'NOT_ENOUGH_DATA';
+
+export interface IntelligenceFilterParams {
+  facility?: number | string;
+  district?: number | string;
+  disease?: string;
+  date?: string; // YYYY-MM-DD
+  days?: number;
+  weeks?: number;
+  months?: number;
+}
+
+export interface SummaryKPIs {
+  total_current_cases: number;
+  total_previous_cases: number;
+  total_7d_cases: number;
+  total_30d_cases: number;
+  total_90d_cases: number;
+  percentage_change: number | null;
+  overall_trend_direction: TrendDirection;
+  diseases_monitored_count: number;
+  observation_period: {
+    start_date: string;
+    end_date: string;
+    duration_days: number;
+  };
+}
+
+export interface DiseaseTrendItem {
+  disease: string;
+  current_cases: number;
+  previous_period_cases: number;
+  cases_7d: number;
+  cases_30d: number;
+  cases_90d: number;
+  percentage_change: number | null;
+  trend_direction: TrendDirection;
+  explanation: string;
+  monthly_history?: Array<{
+    period_label: string;
+    year: number;
+    month: number;
+    cases: number;
+  }>;
+}
+
+export interface DiseaseTrendsResponse {
+  summary: SummaryKPIs;
+  disease_trends: DiseaseTrendItem[];
+}
+
+export interface ReportingHospital {
+  hospital_id: number;
+  hospital_name: string;
+  hospital_code: string;
+  cases_reported: number;
+}
+
+export interface LocalityAggregationItem {
+  locality: {
+    ward_id: number | null;
+    ward_number: number | null;
+    name: string;
+    zone: string | null;
+    population: number | null;
+    slum_population: number | null;
+  };
+  disease: string;
+  current_cases: number;
+  previous_period_cases: number;
+  percentage_change: number | null;
+  locality_share_pct: number;
+  trend_direction: TrendDirection;
+  reporting_hospitals_count: number;
+  reporting_hospitals: ReportingHospital[];
+  explanation: string;
+  observation_period: {
+    start_date: string;
+    end_date: string;
+    duration_days: number;
+  };
+}
+
+export interface DiseaseLocalityResponse {
+  total_cases_in_period: number;
+  localities_count: number;
+  locality_aggregations: LocalityAggregationItem[];
+}
+
+export interface HistoricalSeriesPoint {
+  period_label: string;
+  year: number;
+  month: number;
+  total_cases: number;
+  severity_breakdown: {
+    MILD: number;
+    MODERATE: number;
+    SEVERE: number;
+  };
+}
+
+export interface HistoricalDiseaseResponse {
+  disease: string;
+  months_analyzed: number;
+  total_cases_in_history: number;
+  monthly_average: number;
+  current_month_cases: number;
+  previous_month_cases: number;
+  percentage_change: number | null;
+  trend_direction: TrendDirection;
+  explanation: string;
+  historical_series: HistoricalSeriesPoint[];
+}
+
+export interface ForecastPoint {
+  forecast_week_start: string;
+  forecast_week_end: string;
+  predicted_cases: number;
+  lower_bound: number;
+  upper_bound: number;
+}
+
+export interface ForecastData {
+  status: ForecastStatus;
+  horizon_weeks: number;
+  method: string;
+  historical_window_weeks?: number;
+  points: ForecastPoint[];
+  explanation: string;
+}
+
+export interface MonthlyPatternItem {
+  month_number: number;
+  month_name: string;
+  total_cases: number;
+  occurrences: number;
+  average_cases: number;
+}
+
+export interface StrongestPeriodItem {
+  period: string;
+  average_cases: number;
+  total_cases: number;
+}
+
+export interface SeasonalityData {
+  disease: string;
+  seasonal_status: SeasonalStatus;
+  seasonal_strength: number;
+  total_cases_analyzed: number;
+  months_analyzed: number;
+  highest_case_month: MonthlyPatternItem | null;
+  lowest_case_month: MonthlyPatternItem | null;
+  strongest_historical_periods: StrongestPeriodItem[];
+  monthly_patterns: MonthlyPatternItem[];
+  explanation: string;
+}
+
+export interface WeeklyTimeSeriesPoint {
+  week_number: number;
+  week_start: string;
+  week_end: string;
+  cases: number;
+}
+
+export interface ForecastSummaryResponse {
+  is_authorized: boolean;
+  disease: string;
+  scope: {
+    facility_ids: number[];
+    district_id: number | null;
+  };
+  observation_period: {
+    start_date: string | null;
+    end_date: string | null;
+    weeks_count: number;
+    total_cases: number;
+  };
+  historical_series: WeeklyTimeSeriesPoint[];
+  trend: {
+    direction: TrendDirection;
+    percentage_change: number | null;
+    current_week_cases: number;
+    previous_week_cases: number;
+    explanation: string;
+  };
+  forecast: ForecastData;
+  seasonality: SeasonalityData;
+  explanation: string;
+}
+
+export interface HospitalComparisonItem {
+  hospital_id: number;
+  hospital_name: string;
+  hospital_code: string;
+  facility_type: string;
+  cases_reported: number;
+}
+
+export interface DistrictAggregationResponse {
+  district: {
+    id: number;
+    name: string;
+    code: string;
+    state: string | null;
+    total_facilities: number;
+  };
+  summary: SummaryKPIs;
+  diseases: DiseaseTrendItem[];
+  localities: LocalityAggregationItem[];
+  hospital_comparison: HospitalComparisonItem[];
+}

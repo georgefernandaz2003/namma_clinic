@@ -66,22 +66,22 @@ export const getHumanRoleLabel = (role: Role | string | undefined): string => {
 
 export const ROLE_ALLOWED_PATHS: Record<Role, string[]> = {
   DISTRICT_OFFICER: [
-    '/', '/network', '/facilities', '/queue', '/referrals', '/pharmacy', '/reports', '/alerts', '/compliance', '/audit'
+    '/', '/intelligence', '/network', '/facilities', '/queue', '/referrals', '/pharmacy', '/reports', '/alerts', '/compliance', '/audit'
   ],
   HOSPITAL_ADMIN: [
-    '/', '/patients', '/queue', '/facilities', '/pharmacy', '/referrals', '/followups', '/infrastructure', '/reports', '/alerts'
+    '/', '/intelligence', '/patients', '/queue', '/facilities', '/pharmacy', '/referrals', '/followups', '/infrastructure', '/reports', '/alerts'
   ],
   DOCTOR: [
-    '/', '/patients', '/queue', '/consultation', '/referrals', '/followups', '/teleconsultation', '/alerts'
+    '/', '/intelligence', '/patients', '/queue', '/consultation', '/referrals', '/followups', '/teleconsultation', '/alerts'
   ],
   NURSE: [
-    '/', '/patients', '/triage', '/queue', '/followups', '/ncd', '/maternal-child', '/outreach', '/wellness', '/alerts'
+    '/', '/intelligence', '/patients', '/triage', '/queue', '/followups', '/ncd', '/maternal-child', '/outreach', '/wellness', '/alerts'
   ],
   LAB_TECHNICIAN: [
-    '/', '/lab', '/alerts'
+    '/', '/intelligence', '/lab', '/alerts'
   ],
   PHARMACIST: [
-    '/', '/pharmacy', '/infrastructure', '/alerts'
+    '/', '/intelligence', '/pharmacy', '/infrastructure', '/alerts'
   ]
 };
 

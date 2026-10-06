@@ -27,6 +27,7 @@ import { ARS } from './pages/ARS';
 import { Quality } from './pages/Quality';
 import { Infrastructure } from './pages/Infrastructure';
 import { Reports } from './pages/Reports';
+import { PublicHealthIntelligence } from './pages/PublicHealthIntelligence';
 import { Alerts } from './pages/Alerts';
 import { Integrations } from './pages/Integrations';
 import { Compliance } from './pages/Compliance';
@@ -98,6 +99,7 @@ export const App: React.FC = () => {
             <Route path="/quality" element={<ProtectedRoute><Quality /></ProtectedRoute>} />
             <Route path="/infrastructure" element={<ProtectedRoute><Infrastructure /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+            <Route path="/intelligence" element={<ProtectedRoute><PublicHealthIntelligence /></ProtectedRoute>} />
             <Route path="/alerts" element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
             <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
             <Route path="/compliance" element={<ProtectedRoute><Compliance /></ProtectedRoute>} />

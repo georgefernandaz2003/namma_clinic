@@ -56,6 +56,7 @@ const navItems: NavItem[] = [
   { name: 'NCD Management', path: '/ncd', icon: <Activity className="w-5 h-5" /> },
   { name: 'Maternal & Child', path: '/maternal-child', icon: <HeartPulse className="w-5 h-5" /> },
   { name: 'Disease Surveillance', path: '/surveillance', icon: <Radio className="w-5 h-5 text-red-600" /> },
+  { name: 'Public Health Intelligence', path: '/intelligence', icon: <Activity className="w-5 h-5 text-indigo-600" /> },
   { name: 'Teleconsultation', path: '/teleconsultation', icon: <Video className="w-5 h-5" /> },
   { name: 'Outreach & Camps', path: '/outreach', icon: <MapPin className="w-5 h-5" /> },
   { name: 'Wellness Sessions', path: '/wellness', icon: <Smile className="w-5 h-5" /> },
