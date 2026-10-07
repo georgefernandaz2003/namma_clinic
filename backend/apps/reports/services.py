@@ -616,7 +616,7 @@ def calculate_inventory_kpis(target_fac_ids, as_of_date=None):
 
         for b, qty in reconstructed_batches:
             days_left = (b.expiry_date - as_of_date).days
-            is_exp = b.expiry_date <= as_of_date or b.status == 'EXPIRED'
+            is_exp = b.expiry_date <= as_of_date
             if is_exp:
                 expired_batches_count += 1
                 cat = 'EXPIRED'

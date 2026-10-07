@@ -1353,12 +1353,14 @@ class ReconciledDashboardAndReportsTests(APITestCase):
         )
         med = MedicineMaster.objects.create(generic_name='ExpiryTestMed-S', minimum_stock=5)
 
-        # Batch expires today - 5 days (so it IS expired as of today)
+        # Batch expires today - 5 days (so it IS expired as of today, status is EXPIRED)
         exp_date = self.today - datetime.timedelta(days=5)
         batch = MedicineBatch.objects.create(
             facility=fac_exp, medicine=med, batch_number='B-EXP-ISO-S',
-            quantity=50, expiry_date=exp_date
+            quantity=50, expiry_date=exp_date, status='EXPIRED'
         )
+        self.assertEqual(batch.status, 'EXPIRED')
+
         # Complete transaction record received on past_date - 15 days
         tx = InventoryTransaction.objects.create(
             facility=fac_exp, medicine=med, batch=batch,
@@ -1370,15 +1372,32 @@ class ReconciledDashboardAndReportsTests(APITestCase):
         )
 
         self.client.force_authenticate(user=ha_exp)
-        # When querying historical date (20 days ago)
+        # When querying historical date (20 days ago): today - 20 days < expiry_date (today - 5 days)
+        # Therefore expired_batches == 0, and batch is classified in EXPIRES_30_DAYS window
         rep_hist = self.client.get(f'/api/reports/hospital/?period=day&date={query_date.isoformat()}').data
-        # At query_date, expiry_date (today - 5) was 15 days in the future! Not expired!
         self.assertEqual(rep_hist['pharmacy']['inventory']['expired_batches'], 0)
+        self.assertEqual(rep_hist['pharmacy']['expiry_monitoring']['categories']['expired'], 0)
+        self.assertEqual(rep_hist['pharmacy']['expiry_monitoring']['categories']['expires_within_30_days'], 1)
         self.assertEqual(rep_hist['pharmacy']['inventory']['expiring_soon_batches'], 1)
+        # Batch in monitoring list should not be marked EXPIRED historically
+        mon_batch = next(b for b in rep_hist['pharmacy']['expiry_monitoring']['batches'] if b['batch_id'] == batch.id)
+        self.assertNotEqual(mon_batch['status'], 'EXPIRED')
+        self.assertEqual(mon_batch['category'], 'EXPIRES_30_DAYS')
 
-        # When querying today: it IS expired!
+        # When querying today: current report still sees the batch as expired
         rep_today = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}').data
         self.assertEqual(rep_today['pharmacy']['inventory']['expired_batches'], 1)
+        self.assertEqual(rep_today['pharmacy']['expiry_monitoring']['categories']['expired'], 1)
+
+        # Also verify dashboard summary reflects identical historical vs current distinction
+        dash_hist = self.client.get(f'/api/dashboard/summary/?date={query_date.isoformat()}').data
+        self.assertEqual(dash_hist['pharmacy']['expired_batches'], 0)
+        self.assertEqual(dash_hist['pharmacy']['expiry_breakdown']['expired'], 0)
+        self.assertEqual(dash_hist['pharmacy']['expiry_breakdown']['expires_within_30_days'], 1)
+
+        dash_today = self.client.get(f'/api/dashboard/summary/?date={self.today.isoformat()}').data
+        self.assertEqual(dash_today['pharmacy']['expired_batches'], 1)
+        self.assertEqual(dash_today['pharmacy']['expiry_breakdown']['expired'], 1)
 
     # T. No negative reconstructed balances are accepted.
     def test_t_no_negative_reconstructed_balances_accepted(self):
