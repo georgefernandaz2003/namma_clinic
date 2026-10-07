@@ -35,6 +35,27 @@ from apps.surveillance.models import DiseaseCase
 from apps.consultations.models import Consultation
 from apps.facilities.models import Facility
 from apps.geography.models import Ward, District
+from apps.surveillance.demographic_services import (
+    AGE_GROUPS,
+    AGE_GROUP_0_5,
+    AGE_GROUP_6_14,
+    AGE_GROUP_15_24,
+    AGE_GROUP_25_44,
+    AGE_GROUP_45_59,
+    AGE_GROUP_60_PLUS,
+    AGE_GROUP_UNKNOWN,
+    GENDER_CHOICES,
+    GENDER_MALE,
+    GENDER_FEMALE,
+    GENDER_OTHER,
+    GENDER_UNKNOWN,
+    calculate_age,
+    get_age_group,
+    normalize_gender,
+    resolve_patient_demographics,
+    aggregate_demographics,
+    get_demographic_intelligence,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -361,6 +382,9 @@ def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=N
         total_curr += curr_cnt
         total_prev += prev_cnt
 
+        curr_window_cases = d_qs.filter(report_date__range=[c_start, c_end])
+        d_demographics = aggregate_demographics(curr_window_cases, reference_date=as_of)
+
         results.append({
             'disease': clean_name,
             'current_cases': curr_cnt,
@@ -372,6 +396,7 @@ def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=N
             'percentage_change': pct_change,
             'trend_direction': status_str,
             'explanation': explanation,
+            'demographics': d_demographics,
             'observation_period': {
                 'start_date': str(c_start),
                 'end_date': str(c_end),
@@ -385,6 +410,8 @@ def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=N
     results.sort(key=lambda x: x['current_cases'], reverse=True)
     overall_status, overall_pct, overall_expl = compute_trend_status(total_curr, total_prev)
 
+    overall_demographics = aggregate_demographics(qs.filter(report_date__range=[c_start, c_end]), reference_date=as_of)
+
     return {
         'summary': {
             'total_current_cases': total_curr,
@@ -392,6 +419,7 @@ def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=N
             'overall_percentage_change': overall_pct,
             'overall_trend_direction': overall_status,
             'diseases_monitored_count': len(results),
+            'demographics': overall_demographics,
             'observation_period': {
                 'start_date': str(c_start),
                 'end_date': str(c_end),

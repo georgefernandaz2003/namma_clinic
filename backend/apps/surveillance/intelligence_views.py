@@ -20,6 +20,7 @@ from apps.surveillance.intelligence_services import (
     aggregate_hospital_level,
     aggregate_district_level,
     get_public_health_intelligence_summary,
+    get_demographic_intelligence,
     resolve_facility_scope
 )
 
@@ -221,4 +222,36 @@ class PublicHealthIntelligenceSummaryView(BaseIntelligenceView):
         )
         if 'error' in data:
             return Response(data, status=status.HTTP_403_FORBIDDEN)
+        return Response(data)
+
+
+class PublicHealthDemographicsView(BaseIntelligenceView):
+    """
+    Authoritative Demographic Breakdown Endpoint for Public Health Intelligence.
+    Returns age, age group, and gender distributions from real database records.
+    """
+    def get(self, request):
+        fac_id = request.query_params.get('facility')
+        dist_id = request.query_params.get('district')
+        disease = request.query_params.get('disease')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        as_of_date = request.query_params.get('date')
+
+        scope = resolve_facility_scope(
+            user=request.user,
+            requested_facility_id=fac_id,
+            requested_district_id=dist_id
+        )
+        if not scope.is_authorized:
+            return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
+
+        data = get_demographic_intelligence(
+            facility_ids=scope.facility_ids,
+            district_id=scope.district_id,
+            disease_name=disease,
+            start_date=start_date,
+            end_date=end_date,
+            as_of_date=as_of_date
+        )
         return Response(data)

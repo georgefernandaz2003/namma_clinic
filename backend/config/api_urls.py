@@ -30,7 +30,8 @@ from apps.surveillance.intelligence_views import (
     PublicHealthHistoricalDiseaseView,
     PublicHealthHospitalAggregationView,
     PublicHealthDistrictAggregationView,
-    PublicHealthIntelligenceSummaryView
+    PublicHealthIntelligenceSummaryView,
+    PublicHealthDemographicsView
 )
 from apps.surveillance.intelligence_forecast_views import (
     PublicHealthForecastView,
@@ -134,6 +135,7 @@ urlpatterns = [
     path('surveillance/intelligence/historical-disease/', PublicHealthHistoricalDiseaseView.as_view(), name='intelligence_historical_disease'),
     path('surveillance/intelligence/hospital-aggregation/', PublicHealthHospitalAggregationView.as_view(), name='intelligence_hospital_aggregation'),
     path('surveillance/intelligence/district-aggregation/', PublicHealthDistrictAggregationView.as_view(), name='intelligence_district_aggregation'),
+    path('surveillance/intelligence/demographics/', PublicHealthDemographicsView.as_view(), name='intelligence_demographics'),
 
     # Public Health Intelligence & Forecasting - Step 2 Forecasting & Seasonality
     path('surveillance/intelligence/forecast/', PublicHealthForecastView.as_view(), name='intelligence_forecast'),
@@ -154,6 +156,7 @@ urlpatterns = [
     path('intelligence/historical-disease/', PublicHealthHistoricalDiseaseView.as_view(), name='intelligence_historical_disease_alias'),
     path('intelligence/hospital-aggregation/', PublicHealthHospitalAggregationView.as_view(), name='intelligence_hospital_aggregation_alias'),
     path('intelligence/district-aggregation/', PublicHealthDistrictAggregationView.as_view(), name='intelligence_district_aggregation_alias'),
+    path('intelligence/demographics/', PublicHealthDemographicsView.as_view(), name='intelligence_demographics_alias'),
     path('intelligence/forecast/', PublicHealthForecastView.as_view(), name='intelligence_forecast_alias'),
     path('intelligence/seasonality/', PublicHealthSeasonalityView.as_view(), name='intelligence_seasonality_alias'),
     path('intelligence/alerts/', PublicHealthIntelligenceAlertsView.as_view(), name='intelligence_alerts_alias'),
