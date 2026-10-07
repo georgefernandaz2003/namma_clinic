@@ -20,20 +20,12 @@ Whether you are a District Health Officer reviewing network performance, a Medic
 
 The platform connects all primary healthcare disciplines within a clinic—reception, nursing vitals, clinical examination, laboratory diagnostics, and pharmacy dispensing—into an orderly, sequential workflow. Every action recorded by a staff member updates the operational clinic queue and creates an audit-ready record for continuity of care.
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        NAMMA CLINIC PLATFORM                           │
-│                                                                        │
-│   Front Desk       Nursing        Medical Officer    Diagnostics & Rx  │
-│  Registration  ──► Triage &   ──►  Consultation  ──►  Lab Testing &    │
-│    & Tokens         Vitals         & Diagnoses        Med Dispensing   │
-│                                                                        │
-│  ────────────────────────────────────────────────────────────────────  │
-│          District Oversight • Clinical Safety • Inventory Control      │
-└────────────────────────────────────────────────────────────────────────┘
-```
+| Stage 1: Reception & Registration | Stage 2: Nursing Triage & Vitals | Stage 3: Doctor Consultation | Stage 4: Diagnostics & Dispensing |
+| :--- | :--- | :--- | :--- |
+| **Front Desk Officer**<br>&bull; Citizen verification<br>&bull; Demographic registration<br>&bull; Sequential OPD tokens | **Staff Nurse**<br>&bull; Physiological vitals<br>&bull; Automated BMI scoring<br>&bull; Triage acuity assignment | **Medical Officer**<br>&bull; Clinical examination<br>&bull; ICD-10 diagnoses<br>&bull; Electronic prescriptions | **Lab & Pharmacy**<br>&bull; Diagnostic lab results<br>&bull; FEFO stock allocation<br>&bull; Patient dispensing |
+| **District Oversight**<br>Aggregated reporting & public health visibility | **Clinical Safety**<br>Standardized vital ranges & triage acuity checks | **Role Governance**<br>Strict separation of duties & role-based access | **Inventory Control**<br>FEFO batch dispensing & automated ledger audit |
 
-The system is designed to run directly on standard clinic workstations and laptops at the clinic facility itself. It does not require continuous high-speed internet to perform routine clinic tasks, ensuring that citizen care continues smoothly even during local internet disruptions.
+The system is designed to run directly on standard clinic workstations and laptops at the clinic facility itself. Routine local clinic workflows operate against the on-premises database instance, allowing clinic intake, triage, consultation, and dispensing to remain locally accessible even when external WAN or internet connectivity is intermittent.
 
 ---
 
@@ -71,25 +63,9 @@ The platform provides dedicated, custom-tailored workstations for eight operatio
 
 Namma Clinic organizes primary healthcare workflows, facility operations, supply chain logistics, and district governance into 21 structured platform capabilities. To ensure complete clarity for procurement officers, clinical leadership, and administrative stakeholders, these 21 capabilities are formally classified into three operational categories:
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                   21 PLATFORM CAPABILITIES FRAMEWORK                    │
-├──────────────────────────┬──────────────────────────┬──────────────────┤
-│ 10 IMPLEMENTED &         │ 8 DEMONSTRATION &        │ 3 CROSS-CUTTING  │
-│    VERIFIED CORE         │    EXTENSION MODULES     │   PLATFORM SVCS  │
-├──────────────────────────┼──────────────────────────┼──────────────────┤
-│ 1. Patient Demographics  │ 11. Specialist Referrals │ 19. Operational  │
-│ 2. OPD Tokens & Queues   │ 12. Patient Follow-up    │     Reporting    │
-│ 3. Nursing Vitals/Triage │ 13. NCD Chronic Registry │ 20. Alerts Hub   │
-│ 4. Doctor Consultation   │ 14. Disease Surveillance │ 21. Security &   │
-│ 5. Diagnostic Lab        │ 15. Outreach Camp Logs   │     Audit Logs   │
-│ 6. Pharmacy Dispensing   │ 16. Wellness Sessions    │                  │
-│ 7. Warehouse Inventory   │ 17. Quality Indicators   │                  │
-│ 8. Purchase Orders (PO)  │ 18. Infrastructure/Assets│                  │
-│ 9. Goods Receipts (GRN)  │                          │                  │
-│ 10. Staff Administration │                          │                  │
-└──────────────────────────┴──────────────────────────┴──────────────────┘
-```
+| 10 Implemented & Verified Core | 8 Demonstration & Extension Modules | 3 Cross-Cutting Platform Services |
+| :--- | :--- | :--- |
+| 1. Patient Demographics Registry<br>2. OPD Tokens & Queue Routing<br>3. Nursing Vitals & Clinical Triage<br>4. Doctor Clinical Consultation<br>5. Diagnostic Laboratory Orders<br>6. Pharmacy Dispensing & Stock<br>7. Warehouse Inventory Management<br>8. Purchase Orders & Procurement<br>9. Goods Receipt Notes (GRN)<br>10. Staff Administration & Multi-Role IAM | 11. Specialist Referrals<br>12. Patient Follow-up & Recalls<br>13. NCD Chronic Disease Registry<br>14. Syndromic Disease Surveillance<br>15. Outreach Camp Activity Logs<br>16. Community Wellness Sessions<br>17. Quality & Accreditation KPIs<br>18. Facility Infrastructure & Assets | 19. Operational Reporting Engine<br>20. Clinical & Supply Alerts Hub<br>21. Security & Audit Logging |
 
 > [!NOTE]
 > **Authoritative Capability Scope Breakdown**:
@@ -443,23 +419,10 @@ Rather than compromising administrative controls by creating informal or combine
 
 In a neighborhood clinic without a dedicated reception clerk, the Staff Nurse holds two distinct role assignments: `NURSE` and `FRONT_DESK_OFFICER`.
 
-```
-┌────────────────────────────────────────────────────────┐
-│      NURSE + FRONT DESK OFFICER DUAL ASSIGNMENT        │
-│                                                        │
-│  STEP 1: RECEPTION INTAKE (Front Desk Duty)            │
-│  • Nurse sits at reception console                     │
-│  • Searches citizen registry & enters new walk-ins     │
-│  • Issues daily sequential OPD token (e.g., T-101)     │
-│                           │                            │
-│                           ▼                            │
-│  STEP 2: CLINICAL TRIAGE (Nursing Duty)                │
-│  • Nurse moves to clinical triage station              │
-│  • Calls token T-101 into triage workstation           │
-│  • Measures vitals, calculates BMI & assigns acuity    │
-│  • Hands off triaged patient to doctor consultation    │
-└────────────────────────────────────────────────────────┘
-```
+| Operational Phase | Active Role & Station | Role-Governed Workflow Steps |
+| :--- | :--- | :--- |
+| **Phase 1: Reception Intake** | **Front Desk Officer**<br>*(Reception Console)* | &bull; Nurse switches active role context to Front Desk Officer.<br>&bull; Searches citizen registry by phone, name, or UHID to prevent duplicate records.<br>&bull; Enters new walk-in demographic details or verifies returning patient profile.<br>&bull; Issues daily sequential OPD queue token (e.g., `T-101`) routed to General OPD. |
+| **Phase 2: Clinical Triage** | **Staff Nurse**<br>*(Triage Station)* | &bull; Nurse switches active role context back to Staff Nurse.<br>&bull; Calls token `T-101` from the waiting queue into the triage workstation.<br>&bull; Records physiological vitals (BP, Pulse, Temperature, SpO2, Respiratory Rate).<br>&bull; System calculates BMI; nurse records triage acuity and hands off to Doctor queue. |
 
 ### Operational Separation of Responsibilities
 * **Strict Privacy Boundaries**: When greeting citizens and issuing tokens at reception, the nurse uses front-desk screens and cannot see confidential clinical consultation notes or diagnostic history of past visits. This prevents accidental exposure of sensitive diagnoses in the public reception area.
@@ -479,22 +442,10 @@ In a neighborhood clinic without a dedicated reception clerk, the Staff Nurse ho
 
 In clinics where a single pharmacy professional manages both the warehouse drug stockroom and the outpatient dispensing counter, the employee holds both `PHARMACIST` and `INVENTORY` role assignments.
 
-```
-┌────────────────────────────────────────────────────────┐
-│      PHARMACIST + INVENTORY DUAL ASSIGNMENT            │
-│                                                        │
-│  WAREHOUSE RESPONSIBILITY (Inventory Duty)             │
-│  • Generates supplier Purchase Orders (PO)             │
-│  • Inspects supplier shipments upon physical delivery  │
-│  • Issues Goods Receipt Notes (GRN) with batch/expiry  │
-│                           │                            │
-│                           ▼                            │
-│  DISPENSARY RESPONSIBILITY (Pharmacist Duty)           │
-│  • Reviews doctor electronic prescriptions             │
-│  • Inspects system-recommended FEFO batches            │
-│  • Dispenses medicines to patients and counsels them   │
-└────────────────────────────────────────────────────────┘
-```
+| Operational Domain | Active Role & Station | Workflow Responsibilities & Governance Rules |
+| :--- | :--- | :--- |
+| **Warehouse Procurement & Receipt** | **Inventory Officer**<br>*(Store Room)* | &bull; Creates and manages Purchase Orders (PO) for pharmaceutical vendors.<br>&bull; Inspects physical supplier deliveries against authorized purchase orders.<br>&bull; Receives items via Goods Receipt Note (GRN), logging batch numbers, expiry dates, and unit costs into the central InventoryLedger. |
+| **Dispensary & Patient Dispensing** | **Pharmacist**<br>*(Pharmacy Counter)* | &bull; Accesses doctor e-prescriptions for queued consultation visits.<br>&bull; Verifies prescribed dosages, durations, and potential interactions.<br>&bull; System allocates stock strictly using First-Expired, First-Out (FEFO) batches.<br>&bull; Confirms dispensing, automatically writing decrement transactions to the InventoryLedger. |
 
 ### Operational Separation of Responsibilities
 * **Inventory Intake Before Dispensing**: The professional cannot dispense medicines directly out of shipping boxes. When a shipment arrives from the district warehouse, they must log into the Inventory workstation and record a verified Goods Receipt Note (GRN) capturing batch numbers, expiry dates, and unit quantities.
@@ -514,20 +465,15 @@ In clinics where a single pharmacy professional manages both the warehouse drug 
 
 Every patient visit follows a standardized, chronological clinical lifecycle. This section traces a citizen through all seven operational stages, detailing who acts, what data is recorded, and what happens next.
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       COMPLETE PATIENT JOURNEY                                         │
-│                                                                                                        │
-│   [Stage 1]          [Stage 2]         [Stage 3]           [Stage 4]          [Stage 5]     [Stage 6]  │
-│ Patient Arrival   Token Issuance &   Nurse Triage &    Doctor Consultation   Laboratory     Pharmacy   │
-│ & Registration  ──► Queue Routing  ──► Vitals Entry  ──► & e-Prescription  ──► Testing  ──► Dispensing │
-│   (Front Desk)       (Front Desk)       (Nurse)             (Doctor)           (Lab Tech)   (Pharmacist│
-│                                                                                                        │
-│                                                 [Stage 7]                                              │
-│                                        Visit Completion & Recall                                       │
-│                                          (Longitudinal Record)                                         │
-└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-```
+| Stage | Operational Role | Care Setting | Workflow Steps & Clinical Outputs |
+| :---: | :--- | :--- | :--- |
+| **1** | **Front Desk Officer** | Reception Desk | Citizen arrival, demographic search, duplicate prevention, and UHID assignment. |
+| **2** | **Front Desk Officer** | Reception Queue | Sequential OPD token generated, patient routed to nurse triage waiting queue. |
+| **3** | **Staff Nurse** | Triage Station | Vitals measurement (BP, pulse, temp, SpO2, BMI), triage acuity classification. |
+| **4** | **Medical Officer** | Consultation Room | Clinical examination, chief complaints, ICD-10 diagnosis, Rx & lab orders. |
+| **5** | **Lab Technician** | Laboratory Station | Specimen collection, diagnostic test execution, result entry & validation. |
+| **6** | **Pharmacist** | Pharmacy Counter | e-Prescription validation, FEFO batch allocation, medicine dispensing & counseling. |
+| **7** | **System & Care Team** | Longitudinal EHR | Visit record sealed, inventory ledger updated, patient recall scheduled. |
 
 ### Stage-by-Stage Operational Walkthrough
 
@@ -618,23 +564,11 @@ Every patient visit follows a standardized, chronological clinical lifecycle. Th
 
 This section provides a structured operational reference for all twenty-one platform capabilities supporting primary healthcare workflows. Capabilities are classified into **Implemented & Verified Core Modules** (Items 1–10), **Demonstration & Extension Modules** (Items 11–18), and **Cross-Cutting Platform Services** (Items 19–21).
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                 21 PLATFORM CAPABILITIES ARCHITECTURE                                  │
-│                                                                                                        │
-│  IMPLEMENTED &       1. Demographic Registry   2. OPD Token & Queue     3. Clinical Triage             │
-│  VERIFIED CORE:      4. Doctor Consultation    5. Diagnostic Lab        6. Pharmacy Dispensing         │
-│                      7. Warehouse Inventory    8. Procurement & POs     9. Goods Receipt Notes (GRN)   │
-│                     10. Staff Administration & Multi-Role Governance                                    │
-│                                                                                                        │
-│  DEMONSTRATION &    11. Specialist Referrals  12. Patient Follow-ups   13. NCD Chronic Registry        │
-│  EXTENSIONS:        14. Public Surveillance   15. Community Outreach   16. Wellness & Education        │
-│                     17. Quality Indicators    18. Infrastructure & Maintenance                         │
-│                                                                                                        │
-│  CROSS-CUTTING      19. Reporting Engine      20. Alerts Hub           21. Security & Audit Logging    │
-│  PLATFORM SVCS:         (Implemented)             (Demonstration)          (Implemented)               │
-└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-```
+| Capability Category | Count | Module Scope & Capabilities | Operational Implementation Status |
+| :--- | :---: | :--- | :--- |
+| **Implemented & Verified Core** | 10 | 1. Demographic Registry<br>2. OPD Tokens & Queue Management<br>3. Clinical Triage & Physiological Vitals<br>4. Doctor Clinical Consultation & Diagnoses<br>5. Diagnostic Laboratory Workflow<br>6. Pharmacy Dispensing & FEFO Allocation<br>7. Warehouse Inventory & Stock Levels<br>8. Procurement & Purchase Orders (PO)<br>9. Goods Receipt Notes (GRN)<br>10. Staff Administration & Multi-Role Governance | **Production Ready & Verified**<br>Full Browser &rarr; API &rarr; PostgreSQL verification. Backed by automated regression tests and audit logging. |
+| **Demonstration & Extension Modules** | 8 | 11. Specialist Referrals<br>12. Patient Follow-up & Recalls<br>13. NCD Chronic Disease Registry<br>14. Syndromic Public Disease Surveillance<br>15. Community Outreach Camp Activity Logs<br>16. Health Wellness & Education Sessions<br>17. Quality & Accreditation Indicators<br>18. Facility Infrastructure & Maintenance | **Demonstration Mode**<br>Functional UI prototypes and database schemas designed for future state expansion. Operates with mock/empty baselines. |
+| **Cross-Cutting Platform Services** | 3 | 19. Operational Reporting Engine<br>20. Clinical & Supply Alerts Hub<br>21. Security, RBAC & Audit Logging | **Platform Foundational**<br>Reporting Engine (Implemented), Alerts Hub (Demonstration), Security & Audit Logging (Implemented). |
 
 ---
 
@@ -915,21 +849,14 @@ This section provides a structured operational reference for all twenty-one plat
 
 Health Department Leadership and District Health Officers need clear, actionable visibility into healthcare delivery across their network. Namma Clinic translates frontline clinic data into executive intelligence.
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                   EXECUTIVE MONITORING DIMENSIONS                      │
-├──────────────────────────┬──────────────────────────┬──────────────────┤
-│ PATIENT SERVICES & FLOW  │ CLINICAL WORKLOAD        │ MEDICINE SUPPLY  │
-│ • Daily OPD Volume       │ • Consultations per Doc  │ • Warehouse Stock│
-│ • Average Wait Times     │ • Diagnostic Test Volume │ • Expiry Risk    │
-│ • Triage Acuity Ratio    │ • Antibiotic Usage Rate  │ • Stockout Flags │
-├──────────────────────────┼──────────────────────────┼──────────────────┤
-│ PUBLIC HEALTH TRENDS     │ WORKFORCE & POSTINGS     │ GOVERNANCE & ARS │
-│ • Disease Outbreak Maps  │ • Doctor Attendance      │ • Fund Balances  │
-│ • Chronic NCD Screening  │ • Single-Nurse Staffing  │ • Audit Activity │
-│ • Slum Outreach Coverage │ • Vacant Clinic Roles    │ • Quality Scores │
-└──────────────────────────┴──────────────────────────┴──────────────────┘
-```
+| Executive Monitoring Dimension | Key Operational Metrics | Leadership Value & Actionable Insight |
+| :--- | :--- | :--- |
+| **Patient Services & Flow** | Daily OPD volume, average wait times, triage acuity ratios, token cancellation rates. | Identifies peak clinic congestion hours and patient throughput bottlenecks. |
+| **Clinical Workload** | Consultations per doctor, diagnostic test volume, antibiotic prescription rates. | Evaluates physician workload distribution and rational antibiotic prescribing compliance. |
+| **Medicine Supply & Pharmacy** | Warehouse stock balances, near-expiry batch counts, stockout warnings. | Guides procurement reorders and prevents wastage via proactive FEFO tracking. |
+| **Public Health & Surveillance** | Syndromic disease trends, fever/diarrhea clusters, chronic NCD screening rates. | Provides early warning indicators for local disease outbreaks and seasonal spikes. |
+| **Workforce Governance** | Staff attendance, active role assignments, dual-role coverage, facility postings. | Ensures adequate staffing coverage and enforces separation of duties. |
+| **Administrative & ARS Oversight** | Untied fund balances, maintenance expenditures, compliance audit frequency. | Supports facility management committee governance and statutory audit compliance. |
 
 ### What Management Monitors & What it Tells Leadership
 
@@ -958,17 +885,14 @@ Health Department Leadership and District Health Officers need clear, actionable
 
 Information security in Namma Clinic is designed around real healthcare operations, protecting patient privacy while ensuring clinical staff have immediate access to necessary medical data.
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        ROLE-BASED SECURITY & PRIVACY ENFORCEMENT                       │
-│                                                                                        │
-│  [FRONT DESK OFFICER]      [STAFF NURSE]         [MEDICAL OFFICER]      [PHARMACIST]   │
-│  • Demographics only       • Physiological Vitals • Clinical History    • e-Prescriptions│
-│  • Token Queue             • Triage Acuity        • Diagnoses           • FEFO Allocation│
-│  ✖ No Clinical Notes       ✖ No Prescribing       • Lab Orders & Meds   ✖ No Consultation│
-│  ✖ No Prescriptions        ✖ No Consultations     • Clinical Notes      ✖ No Lab Ordering│
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
+| Operational Role | Authorized Capabilities (ALLOW) | Strictly Denied Boundaries (DENY) |
+| :--- | :--- | :--- |
+| **Front Desk Officer** | Patient search, demographic updates, OPD token issuance, queue cancellation. | Medical history, clinical notes, diagnoses, prescriptions, lab ordering. |
+| **Staff Nurse** | Physiological vitals entry, triage acuity assignment, nursing assessment, queue calls. | Electronic prescribing, medical diagnosis confirmation, drug dispensing. |
+| **Medical Officer (Doctor)** | Clinical consultation, ICD-10 diagnosis, lab order generation, e-prescription creation. | Direct pharmacy stock removal, facility infrastructure decommissioning. |
+| **Pharmacist** | Prescription verification, batch allocation by FEFO, medicine dispensing, batch lookup. | Clinical consultation, medical diagnosis, diagnostic lab ordering. |
+| **Inventory Officer** | Warehouse purchase orders, Goods Receipt Notes (GRN), inventory ledger adjustments. | Patient clinical records, direct medication dispensing to citizens. |
+| **Lab Technician** | Laboratory order review, specimen collection, test result recording and amendment. | Clinical consultation, prescription creation, pharmacy stock mutations. |
 
 ### Key Principles of Platform Security:
 
@@ -1071,17 +995,11 @@ Meenakshi returns home with verified medicines, a structured care plan, and a re
 
 Namma Clinic delivers concrete operational and clinical benefits across all stakeholder tiers:
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                      STAKEHOLDER VALUE MATRIX                          │
-├──────────────────────────┬──────────────────────────┬──────────────────┤
-│ CITIZENS & PATIENTS      │ CLINICAL TEAMS           │ HEALTH LEADERSHIP│
-│ • Fair queue numbers     │ • Legible e-prescriptions│ • District       │
-│ • Vitals safety checks   │ • Automatic BMI scoring  │   dashboards     │
-│ • FEFO fresh medicines   │ • Immediate lab reports  │ • Outbreak alerts│
-│ • Complete health record │ • Reduced paperwork load │ • Drug traceability│
-└──────────────────────────┴──────────────────────────┴──────────────────┘
-```
+| Stakeholder Tier | Direct Operational Value | Long-Term Health Impact |
+| :--- | :--- | :--- |
+| **Citizens & Patients** | Fair token-based queue numbers; standardized vital signs safety check; guaranteed First-Expired, First-Out fresh medicines; unified longitudinal medical record across clinic visits. | Eliminates queue confusion, prevents dispensing of degraded or expired medicines, and ensures personal health continuity. |
+| **Clinical & Facility Staff** | Legible typed e-prescriptions; automated BMI calculations; direct digital laboratory result delivery; automated inventory deductions; reduced manual register paperwork. | Minimizes diagnostic turnaround times, eliminates handwriting transcription errors, and protects staff through verifiable audit trails. |
+| **Health Leadership (DHO)** | Transparent real-time facility dashboards; early syndromic outbreak alerts; automated daily OPD and morbidity reporting; complete medicine ledger traceability. | Replaces delayed paper summaries with actionable operational visibility, strengthening primary healthcare governance. |
 
 ### Detailed Value Breakdown by Role
 
