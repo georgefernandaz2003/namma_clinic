@@ -4,7 +4,8 @@ Namma Clinic — Client Application Reference PDF Generator
 Authoritative generator compiling docs/client/NAMMA_CLINIC_CLIENT_APPLICATION_REFERENCE.md
 into docs/client/NAMMA_CLINIC_CLIENT_APPLICATION_REFERENCE.pdf using ReportLab.
 Produces clean, publication-quality 45-page document aligned to a 540 pt grid,
-with zero black-square artifacts, zero broken entities, and 59 verified screenshots.
+with Kushagramati Analytics corporate branding in the top-right header,
+zero black-square artifacts, zero broken entities, and 59 verified screenshots.
 """
 
 import os
@@ -12,6 +13,7 @@ import re
 import sys
 import html
 import shutil
+import subprocess
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -24,6 +26,7 @@ BASE_DIR = 'D:/project/namma_clinic'
 MD_PATH = os.path.join(BASE_DIR, 'docs', 'client', 'NAMMA_CLINIC_CLIENT_APPLICATION_REFERENCE.md')
 OUTPUT_PDF = os.path.join(BASE_DIR, 'docs', 'client', 'NAMMA_CLINIC_CLIENT_APPLICATION_REFERENCE.pdf')
 MIRROR_PDF = 'D:/project/namma-clinic/docs/client/NAMMA_CLINIC_CLIENT_APPLICATION_REFERENCE.pdf'
+LOGO_PATH = os.path.join(BASE_DIR, 'docs', 'client', 'kushagramati_logo.png')
 
 
 class NumberedCanvas(canvas.Canvas):
@@ -45,19 +48,31 @@ class NumberedCanvas(canvas.Canvas):
 
     def draw_header_footer(self, page_count):
         self.saveState()
-        if self._pageNumber > 1:
-            # Top Header (Aligned to 540 pt grid from x=36 to x=576)
-            self.setFont("Helvetica-Bold", 8)
-            self.setFillColor(colors.HexColor("#065F46"))
-            self.drawString(36, 762, "NAMMA CLINIC DIGITAL HEALTHCARE PLATFORM")
-            self.setFont("Helvetica", 8)
-            self.setFillColor(colors.HexColor("#64748B"))
-            self.drawRightString(576, 762, "Client Application Reference Manual")
-            self.setStrokeColor(colors.HexColor("#CBD5E1"))
-            self.setLineWidth(0.5)
-            self.line(36, 756, 576, 756)
+        # Top Header (Aligned to 540 pt grid from x=36 to x=576 across all pages)
+        self.setFont("Helvetica-Bold", 8)
+        self.setFillColor(colors.HexColor("#065F46"))
+        self.drawString(36, 762, "NAMMA CLINIC DIGITAL HEALTHCARE PLATFORM")
+        self.setFont("Helvetica", 8)
+        self.setFillColor(colors.HexColor("#64748B"))
+        self.drawRightString(490, 762, "Client Application Reference Manual")
 
-            # Bottom Footer (Aligned to 540 pt grid from x=36 to x=576)
+        # Kushagramati Analytics Logo in Top-Right Corner
+        # Exact aspect ratio: 462 / 112 = 4.125
+        # Preserves original artwork, typography, and purple/orange colors
+        # Width: 70.125 pt, Height: 17.0 pt, Right-aligned to 576.0 pt
+        if os.path.exists(LOGO_PATH):
+            logo_h = 17.0
+            logo_w = logo_h * (462.0 / 112.0)  # 70.125 pt
+            logo_x = 576.0 - logo_w             # 505.875 pt
+            logo_y = 758.5                      # 758.5 pt
+            self.drawImage(LOGO_PATH, logo_x, logo_y, width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
+
+        self.setStrokeColor(colors.HexColor("#CBD5E1"))
+        self.setLineWidth(0.5)
+        self.line(36, 756, 576, 756)
+
+        # Bottom Footer (Pages 2+)
+        if self._pageNumber > 1:
             self.line(36, 36, 576, 36)
             self.setFont("Helvetica", 8)
             self.setFillColor(colors.HexColor("#64748B"))
@@ -68,6 +83,12 @@ class NumberedCanvas(canvas.Canvas):
 
 
 def build_pdf():
+    # If Acrobat is locking the target files, terminate it gracefully
+    try:
+        subprocess.run(["powershell", "-Command", "Stop-Process -Name Acrobat -ErrorAction SilentlyContinue"], capture_output=True)
+    except Exception:
+        pass
+
     os.makedirs(os.path.dirname(OUTPUT_PDF), exist_ok=True)
     doc = SimpleDocTemplate(
         OUTPUT_PDF,

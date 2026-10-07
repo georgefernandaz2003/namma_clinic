@@ -1,3 +1,5 @@
+![Kushagramati Analytics](kushagramati_logo.png)
+
 # NAMMA CLINIC
 ## Digital Healthcare & Clinic Management Platform
 ### Client Application Reference Manual
