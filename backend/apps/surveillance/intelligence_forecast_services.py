@@ -24,6 +24,7 @@ from django.utils import timezone
 from apps.surveillance.models import DiseaseCase
 from apps.facilities.models import Facility
 from apps.geography.models import District, Ward
+from apps.surveillance.demographic_services import filter_cases_by_demographics
 from apps.surveillance.intelligence_services import (
     resolve_date,
     compute_trend_status,
@@ -42,7 +43,7 @@ MONTH_NAMES = [
 # ---------------------------------------------------------------------------
 
 def build_disease_time_series(facility_ids=None, district_id=None, disease_name=None,
-                              as_of_date=None, weeks_count=52):
+                              as_of_date=None, weeks_count=52, age_group=None, gender=None):
     """
     Builds a continuous weekly disease time series ending at as_of_date.
     
@@ -52,6 +53,7 @@ def build_disease_time_series(facility_ids=None, district_id=None, disease_name=
     - Preserves zero-case weeks without omitting any intervals
     - Uses real database DiseaseCase counts exclusively
     - Fully deterministic based on as_of_date
+    - Supports optional demographic filtering (age_group, gender)
     """
     as_of = resolve_date(as_of_date)
     weeks_count = max(1, int(weeks_count or 52))
@@ -76,9 +78,13 @@ def build_disease_time_series(facility_ids=None, district_id=None, disease_name=
         if top_d and top_d['disease_name']:
             qs = qs.filter(disease_name=top_d['disease_name'])
 
-    # Single aggregation query across the entire date range
+    # Single aggregation query across the entire date range, respecting demographic filters
+    scoped_cases = qs.filter(report_date__range=[series_start, as_of])
+    if age_group or gender:
+        scoped_cases = filter_cases_by_demographics(scoped_cases, age_groups=age_group, genders=gender)
+
     cases_by_date = dict(
-        qs.filter(report_date__range=[series_start, as_of])
+        scoped_cases
         .values('report_date')
         .annotate(cnt=Count('id'))
         .values_list('report_date', 'cnt')
@@ -243,7 +249,7 @@ def generate_disease_forecast(time_series, horizon_weeks=4):
 # ---------------------------------------------------------------------------
 
 def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name=None,
-                               as_of_date=None, months_count=12):
+                               as_of_date=None, months_count=12, age_group=None, gender=None):
     """
     Analyzes historical surveillance records across calendar months to identify
     potential seasonal clustering without inferring causality.
@@ -255,6 +261,7 @@ def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name
     - strongest historical periods
     - seasonal_strength: normalized index [0.0 - 1.0]
     - seasonal_status: 'DETECTED', 'WEAK', or 'NOT_ENOUGH_DATA'
+    - supports optional demographic filtering (age_group, gender)
     """
     as_of = resolve_date(as_of_date)
     months_count = max(1, min(60, int(months_count or 12)))
@@ -283,6 +290,8 @@ def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name
             qs = qs.filter(disease_name=top_d['disease_name'])
 
     scoped_cases = qs.filter(report_date__range=[seasonal_start, as_of])
+    if age_group or gender:
+        scoped_cases = filter_cases_by_demographics(scoped_cases, age_groups=age_group, genders=gender)
     total_seasonal_cases = scoped_cases.count()
 
     # Rule: Minimum volume required to detect seasonal variation
@@ -401,7 +410,7 @@ def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name
 
 def generate_forecast_summary(facility_id=None, district_id=None, disease_name=None,
                               as_of_date=None, historical_weeks=52, horizon_weeks=4,
-                              months_count=None, user=None):
+                              months_count=None, user=None, age_group=None, gender=None):
     """
     Unified public health intelligence forecasting & seasonal pattern entry point.
     Combines:
@@ -410,6 +419,7 @@ def generate_forecast_summary(facility_id=None, district_id=None, disease_name=N
     - Step 1 trend direction & percentage change
     - Explainable WMA forecast
     - Seasonal pattern analysis
+    - Optional demographic filtering (age_group, gender)
     """
     scope = resolve_facility_scope(
         user=user,
@@ -428,7 +438,9 @@ def generate_forecast_summary(facility_id=None, district_id=None, disease_name=N
         district_id=scope.district_id,
         disease_name=disease_name,
         as_of_date=as_of_date,
-        weeks_count=historical_weeks
+        weeks_count=historical_weeks,
+        age_group=age_group,
+        gender=gender
     )
 
     series = ts_data['series']
@@ -452,7 +464,9 @@ def generate_forecast_summary(facility_id=None, district_id=None, disease_name=N
         district_id=scope.district_id,
         disease_name=active_disease,
         as_of_date=as_of_date,
-        months_count=seasonal_months
+        months_count=seasonal_months,
+        age_group=age_group,
+        gender=gender
     )
 
     # Master explanation synthesizing trend, forecast, and seasonality

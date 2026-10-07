@@ -369,12 +369,46 @@ def aggregate_demographics(disease_cases_qs, reference_date=None, allow_stored_a
     }
 
 
+def validate_demographic_params(age_group=None, gender=None):
+    """
+    Validates optional demographic query parameters for Public Health Intelligence.
+
+    Supported age_group values:
+    '0-5', '6-14', '15-24', '25-44', '45-59', '60+'
+
+    Supported gender values:
+    'MALE', 'FEMALE', 'OTHER'
+
+    Validation:
+    - invalid age_group -> error message (HTTP 400)
+    - invalid gender -> error message (HTTP 400)
+    - empty/None demographic filters -> returns None without error
+    """
+    cleaned_ag = None
+    if age_group is not None and str(age_group).strip() != '':
+        ag_str = str(age_group).strip()
+        if ag_str not in AGE_GROUPS:
+            return None, None, f"Invalid age_group '{age_group}'. Supported values are: {', '.join(AGE_GROUPS)}."
+        cleaned_ag = ag_str
+
+    cleaned_g = None
+    if gender is not None and str(gender).strip() != '':
+        g_str = str(gender).strip().upper()
+        if g_str not in GENDER_CHOICES:
+            return None, None, f"Invalid gender '{gender}'. Supported values are: {', '.join(GENDER_CHOICES)}."
+        cleaned_g = g_str
+
+    return cleaned_ag, cleaned_g, None
+
+
 def get_demographic_intelligence(facility_ids=None, district_id=None, disease_name=None,
-                                 start_date=None, end_date=None, as_of_date=None):
+                                 start_date=None, end_date=None, as_of_date=None,
+                                 age_group=None, gender=None):
     """
     Public Health Intelligence Demographic Analysis Service.
     Derives strictly from real database records across DiseaseCase and Patient.
-    Supports filtering by facility_ids, district_id, disease_name, and date window.
+    Supports filtering by facility_ids, district_id, disease_name, date window,
+    and optional demographic criteria (age_group, gender).
     """
     from apps.surveillance.models import DiseaseCase
     from apps.surveillance.intelligence_services import get_period_dates
@@ -392,6 +426,9 @@ def get_demographic_intelligence(facility_ids=None, district_id=None, disease_na
 
     if disease_name and disease_name != 'All Monitored Conditions':
         qs = qs.filter(disease_name__iexact=disease_name)
+
+    if age_group or gender:
+        qs = filter_cases_by_demographics(qs, age_groups=age_group, genders=gender)
 
     # Overall demographic summary
     overall_demographics = aggregate_demographics(qs, reference_date=as_of)

@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework import permissions, status
 
 from apps.accounts.permissions import HasPermission
+from apps.surveillance.demographic_services import validate_demographic_params
 from apps.surveillance.intelligence_services import resolve_facility_scope
 from apps.surveillance.intelligence_forecast_services import (
     generate_forecast_summary,
@@ -77,13 +78,22 @@ class BaseForecastView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+        # Validate demographic parameters
+        age_group = request.query_params.get('age_group')
+        gender = request.query_params.get('gender')
+        clean_ag, clean_g, err_demo = validate_demographic_params(age_group=age_group, gender=gender)
+        if err_demo:
+            return None, Response({'error': err_demo}, status=status.HTTP_400_BAD_REQUEST)
+
         return {
             'facility': fac_id,
             'district': dist_id,
             'disease': disease,
             'as_of_date': as_of_date,
             'horizon_weeks': horizon_weeks,
-            'months_count': months_count
+            'months_count': months_count,
+            'age_group': clean_ag,
+            'gender': clean_g,
         }, None
 
 
@@ -92,20 +102,24 @@ class PublicHealthForecastView(BaseForecastView):
     1. Disease Forecasting Endpoint
     Returns continuous weekly time series, Step 1 trend indicator,
     and Weighted Moving Average forecast with confidence bounds.
+    Supports optional age_group and gender demographic filtering.
     """
     def get(self, request):
-        params, err_resp = self.parse_and_validate_params(request)
-        if err_resp:
-            return err_resp
+        fac_id = request.query_params.get('facility')
+        dist_id = request.query_params.get('district')
 
         # Strict authorization scope check
         scope = resolve_facility_scope(
             user=request.user,
-            requested_facility_id=params['facility'],
-            requested_district_id=params['district']
+            requested_facility_id=fac_id,
+            requested_district_id=dist_id
         )
         if not scope.is_authorized:
             return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
+
+        params, err_resp = self.parse_and_validate_params(request)
+        if err_resp:
+            return err_resp
 
         # Historical weeks = approximately 4.3 weeks per month
         historical_weeks = max(4, int(params['months_count'] * 4.33))
@@ -118,7 +132,9 @@ class PublicHealthForecastView(BaseForecastView):
             historical_weeks=historical_weeks,
             horizon_weeks=params['horizon_weeks'],
             months_count=params['months_count'],
-            user=request.user
+            user=request.user,
+            age_group=params['age_group'],
+            gender=params['gender']
         )
 
         if not data.get('is_authorized', True):
@@ -132,27 +148,34 @@ class PublicHealthSeasonalityView(BaseForecastView):
     2. Seasonal Pattern Analysis Endpoint
     Returns monthly case distribution, highest/lowest case months,
     strongest historical periods, and seasonal strength index.
+    Supports optional age_group and gender demographic filtering.
     """
     def get(self, request):
-        params, err_resp = self.parse_and_validate_params(request)
-        if err_resp:
-            return err_resp
+        fac_id = request.query_params.get('facility')
+        dist_id = request.query_params.get('district')
 
         # Strict authorization scope check
         scope = resolve_facility_scope(
             user=request.user,
-            requested_facility_id=params['facility'],
-            requested_district_id=params['district']
+            requested_facility_id=fac_id,
+            requested_district_id=dist_id
         )
         if not scope.is_authorized:
             return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
+
+        params, err_resp = self.parse_and_validate_params(request)
+        if err_resp:
+            return err_resp
 
         data = calculate_seasonal_pattern(
             facility_ids=scope.facility_ids,
             district_id=scope.district_id,
             disease_name=params['disease'],
             as_of_date=params['as_of_date'],
-            months_count=params['months_count']
+            months_count=params['months_count'],
+            age_group=params['age_group'],
+            gender=params['gender']
         )
 
         return Response(data)
+

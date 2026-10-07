@@ -55,6 +55,8 @@ from apps.surveillance.demographic_services import (
     resolve_patient_demographics,
     aggregate_demographics,
     get_demographic_intelligence,
+    filter_cases_by_demographics,
+    validate_demographic_params,
 )
 
 
@@ -306,7 +308,8 @@ def resolve_facility_scope(user=None, requested_facility_id=None, requested_dist
 # ---------------------------------------------------------------------------
 
 def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=None,
-                             start_date=None, end_date=None, as_of_date=None, window_days=7):
+                             start_date=None, end_date=None, as_of_date=None, window_days=7,
+                             age_group=None, gender=None):
     """
     Computes disease metrics:
     - current cases (within observation window)
@@ -317,6 +320,7 @@ def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=N
     - historical monthly counts (past 6 months)
     - percentage change
     - trend direction (NORMAL, INCREASING, DECREASING, POSSIBLE_INCREASE, INSUFFICIENT_DATA)
+    - demographic breakdowns
     """
     periods = get_period_dates(start_date=start_date, end_date=end_date, as_of_date=as_of_date, window_days=window_days)
     c_start = periods['current_start']
@@ -333,6 +337,9 @@ def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=N
 
     if disease_name:
         qs = qs.filter(disease_name__iexact=disease_name)
+
+    if age_group or gender:
+        qs = filter_cases_by_demographics(qs, age_groups=age_group, genders=gender)
 
     # Fixed time intervals relative to as_of date
     d7_start = as_of - datetime.timedelta(days=6)
@@ -435,7 +442,8 @@ def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=N
 # ---------------------------------------------------------------------------
 
 def aggregate_disease_by_locality(facility_ids=None, district_id=None, disease_name=None,
-                                  start_date=None, end_date=None, as_of_date=None, window_days=14):
+                                  start_date=None, end_date=None, as_of_date=None, window_days=14,
+                                  age_group=None, gender=None):
     """
     Computes disease distribution by locality/ward:
     - disease cases by locality/ward
@@ -460,6 +468,9 @@ def aggregate_disease_by_locality(facility_ids=None, district_id=None, disease_n
 
     if disease_name:
         qs = qs.filter(disease_name__iexact=disease_name)
+
+    if age_group or gender:
+        qs = filter_cases_by_demographics(qs, age_groups=age_group, genders=gender)
 
     total_cases_in_scope = qs.filter(report_date__range=[c_start, c_end]).count()
 
@@ -591,7 +602,7 @@ def aggregate_disease_by_locality(facility_ids=None, district_id=None, disease_n
 # ---------------------------------------------------------------------------
 
 def aggregate_historical_disease(facility_ids=None, district_id=None, disease_name=None,
-                                 months=6, as_of_date=None):
+                                 months=6, as_of_date=None, age_group=None, gender=None):
     """
     Computes multi-month historical disease aggregation series:
     - monthly counts
@@ -614,6 +625,9 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
         active_disease = top_d['disease_name'] if top_d and top_d['disease_name'] else 'All Monitored Diseases'
         if top_d and top_d['disease_name']:
             qs = qs.filter(disease_name=active_disease)
+
+    if age_group or gender:
+        qs = filter_cases_by_demographics(qs, age_groups=age_group, genders=gender)
 
     series = []
     case_counts = []
@@ -668,7 +682,8 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
 # 4. Hospital-Level Aggregation
 # ---------------------------------------------------------------------------
 
-def aggregate_hospital_level(facility_id, user=None, start_date=None, end_date=None, as_of_date=None):
+def aggregate_hospital_level(facility_id, user=None, start_date=None, end_date=None, as_of_date=None,
+                             age_group=None, gender=None):
     """
     Hospital Admin scope:
     - Only their assigned hospital
@@ -698,20 +713,28 @@ def aggregate_hospital_level(facility_id, user=None, start_date=None, end_date=N
         facility_ids=[fac.id],
         start_date=start_date,
         end_date=end_date,
-        as_of_date=as_of_date
+        as_of_date=as_of_date,
+        age_group=age_group,
+        gender=gender
     )
 
     localities = aggregate_disease_by_locality(
         facility_ids=[fac.id],
         start_date=start_date,
         end_date=end_date,
-        as_of_date=as_of_date
+        as_of_date=as_of_date,
+        age_group=age_group,
+        gender=gender
     )
 
     as_of = resolve_date(as_of_date)
-    d7_cases = DiseaseCase.objects.filter(facility=fac, report_date__range=[as_of - datetime.timedelta(days=6), as_of]).count()
-    d30_cases = DiseaseCase.objects.filter(facility=fac, report_date__range=[as_of - datetime.timedelta(days=29), as_of]).count()
-    d90_cases = DiseaseCase.objects.filter(facility=fac, report_date__range=[as_of - datetime.timedelta(days=89), as_of]).count()
+    hosp_cases = DiseaseCase.objects.filter(facility=fac)
+    if age_group or gender:
+        hosp_cases = filter_cases_by_demographics(hosp_cases, age_groups=age_group, genders=gender)
+
+    d7_cases = hosp_cases.filter(report_date__range=[as_of - datetime.timedelta(days=6), as_of]).count()
+    d30_cases = hosp_cases.filter(report_date__range=[as_of - datetime.timedelta(days=29), as_of]).count()
+    d90_cases = hosp_cases.filter(report_date__range=[as_of - datetime.timedelta(days=89), as_of]).count()
 
     return {
         'hospital': {
@@ -736,7 +759,8 @@ def aggregate_hospital_level(facility_id, user=None, start_date=None, end_date=N
 # 5. District-Level Aggregation
 # ---------------------------------------------------------------------------
 
-def aggregate_district_level(district_id, user=None, start_date=None, end_date=None, as_of_date=None):
+def aggregate_district_level(district_id, user=None, start_date=None, end_date=None, as_of_date=None,
+                             age_group=None, gender=None):
     """
     District Officer scope:
     - All hospitals/facilities inside assigned district
@@ -774,7 +798,9 @@ def aggregate_district_level(district_id, user=None, start_date=None, end_date=N
         district_id=dist.id,
         start_date=start_date,
         end_date=end_date,
-        as_of_date=as_of_date
+        as_of_date=as_of_date,
+        age_group=age_group,
+        gender=gender
     )
 
     localities = aggregate_disease_by_locality(
@@ -782,7 +808,9 @@ def aggregate_district_level(district_id, user=None, start_date=None, end_date=N
         district_id=dist.id,
         start_date=start_date,
         end_date=end_date,
-        as_of_date=as_of_date
+        as_of_date=as_of_date,
+        age_group=age_group,
+        gender=gender
     )
 
     # Hospital comparison within the district
@@ -790,9 +818,13 @@ def aggregate_district_level(district_id, user=None, start_date=None, end_date=N
     c_start = periods['current_start']
     c_end = periods['current_end']
 
+    dist_cases = DiseaseCase.objects.filter(facility__in=district_facs, report_date__range=[c_start, c_end])
+    if age_group or gender:
+        dist_cases = filter_cases_by_demographics(dist_cases, age_groups=age_group, genders=gender)
+
     hospital_comparison = []
     for f in district_facs:
-        f_cases = DiseaseCase.objects.filter(facility=f, report_date__range=[c_start, c_end]).count()
+        f_cases = dist_cases.filter(facility=f).count()
         hospital_comparison.append({
             'hospital_id': f.id,
             'hospital_name': f.facility_name,
@@ -823,7 +855,8 @@ def aggregate_district_level(district_id, user=None, start_date=None, end_date=N
 # ---------------------------------------------------------------------------
 
 def get_public_health_intelligence_summary(facility_id=None, district_id=None, user=None,
-                                            start_date=None, end_date=None, as_of_date=None):
+                                            start_date=None, end_date=None, as_of_date=None,
+                                            age_group=None, gender=None):
     """
     Unified entry point for Step 1 Public Health Intelligence.
     Resolves scope automatically from user role or passed identifiers.
@@ -846,7 +879,9 @@ def get_public_health_intelligence_summary(facility_id=None, district_id=None, u
             user=user,
             start_date=start_date,
             end_date=end_date,
-            as_of_date=as_of_date
+            as_of_date=as_of_date,
+            age_group=age_group,
+            gender=gender
         )
 
     # District scope
@@ -857,7 +892,9 @@ def get_public_health_intelligence_summary(facility_id=None, district_id=None, u
             user=user,
             start_date=start_date,
             end_date=end_date,
-            as_of_date=as_of_date
+            as_of_date=as_of_date,
+            age_group=age_group,
+            gender=gender
         )
 
     # District-wide fallback across all accessible facilities
@@ -865,13 +902,17 @@ def get_public_health_intelligence_summary(facility_id=None, district_id=None, u
         facility_ids=fac_ids,
         start_date=start_date,
         end_date=end_date,
-        as_of_date=as_of_date
+        as_of_date=as_of_date,
+        age_group=age_group,
+        gender=gender
     )
     localities = aggregate_disease_by_locality(
         facility_ids=fac_ids,
         start_date=start_date,
         end_date=end_date,
-        as_of_date=as_of_date
+        as_of_date=as_of_date,
+        age_group=age_group,
+        gender=gender
     )
 
     return {

@@ -23,6 +23,7 @@ Validates:
 import datetime
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 
@@ -780,4 +781,536 @@ class DemographicSurveillanceIntegrationTestCase(TestCase):
         demo = get_case_demographics(case)
         self.assertEqual(demo['age_group'], AGE_GROUP_6_14)
         self.assertNotEqual(demo['age_group'], AGE_GROUP_45_59)
+
+
+class PublicHealthIntelligenceDemographicAPIsTestCase(TestCase):
+    """
+    Comprehensive tests for demographic filtering across Public Health Intelligence APIs:
+    - disease trends
+    - historical disease analysis
+    - disease/locality analysis
+    - summary
+    - forecast
+    - seasonality
+
+    Covers:
+    1. disease + age_group
+    2. disease + gender
+    3. disease + age_group + gender (AND logic)
+    4. invalid age_group -> 400
+    5. invalid gender -> 400
+    6. no demographic filters -> existing behavior
+    7. Hospital Admin scope + demographic filters
+    8. District Officer scope + demographic filters
+    9. cross-facility request remains 403
+    10. cross-district request remains 403
+    11. dynamic age calculation relative to DiseaseCase.report_date
+    """
+    @classmethod
+    def setUpTestData(cls):
+        cls.state = State.objects.create(name='Karnataka', code='KA')
+        cls.district_central = District.objects.create(state=cls.state, name='BBMP Central', code='KA-BU')
+        cls.district_rural = District.objects.create(state=cls.state, name='Bengaluru Rural', code='KA-BR')
+
+        cls.zone_central = Zone.objects.create(district=cls.district_central, name='Central Zone', code='Z-CEN')
+        cls.zone_rural = Zone.objects.create(district=cls.district_rural, name='Rural Zone', code='Z-RUR')
+
+        cls.ward_central = Ward.objects.create(zone=cls.zone_central, ward_number=10, name='Indiranagar', population=20000)
+        cls.ward_rural = Ward.objects.create(zone=cls.zone_rural, ward_number=20, name='Varthur', population=15000)
+
+        # Central Facilities
+        cls.fac_central = Facility.objects.create(
+            facility_code='FAC-CEN', facility_name='Central Hospital', facility_type='MAIN_HOSPITAL',
+            district=cls.district_central, ward=cls.ward_central, state=cls.state
+        )
+        cls.fac_other = Facility.objects.create(
+            facility_code='FAC-OTH', facility_name='Other Central Clinic', facility_type='NAMMA_CLINIC',
+            district=cls.district_central, ward=cls.ward_central, state=cls.state
+        )
+
+        # Rural Facility
+        cls.fac_rural = Facility.objects.create(
+            facility_code='FAC-RUR', facility_name='Rural Health Centre', facility_type='RURAL_CLINIC',
+            district=cls.district_rural, ward=cls.ward_rural, state=cls.state
+        )
+
+        # Users
+        cls.user_hosp_admin = User.objects.create_user(
+            username='api_admin_cen', password='Password123!', role='HOSPITAL_ADMIN',
+            assigned_facility=cls.fac_central
+        )
+        cls.user_dist_officer = User.objects.create_user(
+            username='api_officer_cen', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_central
+        )
+        cls.user_rural_officer = User.objects.create_user(
+            username='api_officer_rur', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_rural
+        )
+
+        cls.ref_date = datetime.date(2026, 10, 4)
+
+        # Patients with exact DOBs relative to 2026-10-04
+        # P1: 0-5 MALE (2 yo)
+        cls.p1 = Patient.objects.create(
+            patient_id='PID-01', name='Patient Infant',
+            date_of_birth=datetime.date(2024, 10, 4), age=2, gender='MALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central
+        )
+        # P2: 6-14 FEMALE (10 yo)
+        cls.p2 = Patient.objects.create(
+            patient_id='PID-02', name='Patient Child',
+            date_of_birth=datetime.date(2016, 10, 4), age=10, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central
+        )
+        # P3: 15-24 FEMALE (20 yo)
+        cls.p3 = Patient.objects.create(
+            patient_id='PID-03', name='Patient Youth',
+            date_of_birth=datetime.date(2006, 10, 4), age=20, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central
+        )
+        # P4: 25-44 FEMALE (30 yo)
+        cls.p4 = Patient.objects.create(
+            patient_id='PID-04', name='Patient Adult Female',
+            date_of_birth=datetime.date(1996, 10, 4), age=30, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central
+        )
+        # P5: 25-44 MALE (35 yo)
+        cls.p5 = Patient.objects.create(
+            patient_id='PID-05', name='Patient Adult Male',
+            date_of_birth=datetime.date(1991, 10, 4), age=35, gender='MALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central
+        )
+        # P6: 45-59 OTHER (50 yo)
+        cls.p6 = Patient.objects.create(
+            patient_id='PID-06', name='Patient Middle Other',
+            date_of_birth=datetime.date(1976, 10, 4), age=50, gender='OTHER',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central
+        )
+        # P7: 60+ MALE (70 yo)
+        cls.p7 = Patient.objects.create(
+            patient_id='PID-07', name='Patient Senior Male',
+            date_of_birth=datetime.date(1956, 10, 4), age=70, gender='MALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central
+        )
+
+        # 7 Dengue Cases at fac_central on cls.ref_date
+        cls.case1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p1, facility=cls.fac_central,
+            ward=cls.ward_central, report_date=cls.ref_date, severity='MILD'
+        )
+        cls.case2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p2, facility=cls.fac_central,
+            ward=cls.ward_central, report_date=cls.ref_date, severity='MILD'
+        )
+        cls.case3 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p3, facility=cls.fac_central,
+            ward=cls.ward_central, report_date=cls.ref_date, severity='MODERATE'
+        )
+        cls.case4 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p4, facility=cls.fac_central,
+            ward=cls.ward_central, report_date=cls.ref_date, severity='SEVERE'
+        )
+        cls.case5 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p5, facility=cls.fac_central,
+            ward=cls.ward_central, report_date=cls.ref_date, severity='SEVERE'
+        )
+        cls.case6 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p6, facility=cls.fac_central,
+            ward=cls.ward_central, report_date=cls.ref_date, severity='MODERATE'
+        )
+        cls.case7 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p7, facility=cls.fac_central,
+            ward=cls.ward_central, report_date=cls.ref_date, severity='MILD'
+        )
+
+        # Rural case (in district_rural)
+        cls.p_rural = Patient.objects.create(
+            patient_id='PID-RUR', name='Patient Rural',
+            date_of_birth=datetime.date(2000, 1, 1), age=26, gender='FEMALE',
+            district=cls.district_rural, ward=cls.ward_rural, registered_at_facility=cls.fac_rural
+        )
+        cls.case_rural = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_rural, facility=cls.fac_rural,
+            ward=cls.ward_rural, report_date=cls.ref_date, severity='MILD'
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user_hosp_admin)
+
+    # 1. disease + age_group
+    def test_disease_and_age_group_filter(self):
+        """
+        Filters by ?disease=Dengue&age_group=15-24.
+        Only Patient 3 (20 yo female) matches among the 7 Central cases.
+        """
+        # Disease trends
+        res_trends = self.client.get(
+            f"{reverse('intelligence_disease_trends')}?disease=Dengue&age_group=15-24&date={self.ref_date}"
+        )
+        self.assertEqual(res_trends.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_trends.data['summary']['total_current_cases'], 1)
+
+        # Historical disease
+        res_hist = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&age_group=15-24&date={self.ref_date}"
+        )
+        self.assertEqual(res_hist.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_hist.data['total_cases_in_history'], 1)
+
+        # Disease by locality
+        res_loc = self.client.get(
+            f"{reverse('intelligence_disease_by_locality')}?disease=Dengue&age_group=15-24&date={self.ref_date}"
+        )
+        self.assertEqual(res_loc.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_loc.data['total_cases_in_period'], 1)
+
+        # Summary
+        res_sum = self.client.get(
+            f"{reverse('intelligence_summary')}?disease=Dengue&age_group=15-24&date={self.ref_date}"
+        )
+        self.assertEqual(res_sum.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_sum.data['summary']['total_current_cases'], 1)
+
+        # Forecast
+        res_fc = self.client.get(
+            f"{reverse('intelligence_forecast')}?disease=Dengue&age_group=15-24&date={self.ref_date}"
+        )
+        self.assertEqual(res_fc.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_fc.data['observation_period']['total_cases'], 1)
+
+        # Seasonality
+        res_seas = self.client.get(
+            f"{reverse('intelligence_seasonality')}?disease=Dengue&age_group=15-24&date={self.ref_date}"
+        )
+        self.assertEqual(res_seas.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_seas.data['total_cases_analyzed'], 1)
+
+    # 2. disease + gender
+    def test_disease_and_gender_filter(self):
+        """
+        Filters by ?disease=Dengue&gender=FEMALE.
+        Patients 2 (10 yo F), 3 (20 yo F), and 4 (30 yo F) match -> 3 cases.
+        """
+        # Disease trends
+        res_trends = self.client.get(
+            f"{reverse('intelligence_disease_trends')}?disease=Dengue&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_trends.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_trends.data['summary']['total_current_cases'], 3)
+
+        # Historical disease
+        res_hist = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_hist.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_hist.data['total_cases_in_history'], 3)
+
+        # Locality
+        res_loc = self.client.get(
+            f"{reverse('intelligence_disease_by_locality')}?disease=Dengue&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_loc.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_loc.data['total_cases_in_period'], 3)
+
+        # Summary
+        res_sum = self.client.get(
+            f"{reverse('intelligence_summary')}?disease=Dengue&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_sum.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_sum.data['summary']['total_current_cases'], 3)
+
+        # Forecast
+        res_fc = self.client.get(
+            f"{reverse('intelligence_forecast')}?disease=Dengue&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_fc.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_fc.data['observation_period']['total_cases'], 3)
+
+        # Seasonality
+        res_seas = self.client.get(
+            f"{reverse('intelligence_seasonality')}?disease=Dengue&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_seas.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_seas.data['total_cases_analyzed'], 3)
+
+    # 3. disease + age_group + gender (AND logic)
+    def test_disease_and_age_group_and_gender_and_logic(self):
+        """
+        Filters by ?disease=Dengue&age_group=25-44&gender=FEMALE.
+        Only Patient 4 (30 yo F) matches. Patient 5 (35 yo M) is excluded by gender.
+        """
+        # Disease trends
+        res_trends = self.client.get(
+            f"{reverse('intelligence_disease_trends')}?disease=Dengue&age_group=25-44&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_trends.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_trends.data['summary']['total_current_cases'], 1)
+
+        # Historical disease
+        res_hist = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&age_group=25-44&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_hist.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_hist.data['total_cases_in_history'], 1)
+
+        # Locality
+        res_loc = self.client.get(
+            f"{reverse('intelligence_disease_by_locality')}?disease=Dengue&age_group=25-44&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_loc.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_loc.data['total_cases_in_period'], 1)
+
+        # Summary
+        res_sum = self.client.get(
+            f"{reverse('intelligence_summary')}?disease=Dengue&age_group=25-44&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_sum.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_sum.data['summary']['total_current_cases'], 1)
+
+        # Forecast
+        res_fc = self.client.get(
+            f"{reverse('intelligence_forecast')}?disease=Dengue&age_group=25-44&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_fc.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_fc.data['observation_period']['total_cases'], 1)
+
+        # Seasonality
+        res_seas = self.client.get(
+            f"{reverse('intelligence_seasonality')}?disease=Dengue&age_group=25-44&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res_seas.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_seas.data['total_cases_analyzed'], 1)
+
+    # 4. invalid age_group -> 400
+    def test_invalid_age_group_bad_request(self):
+        """
+        Invalid age_group returns HTTP 400 Bad Request across all endpoints.
+        """
+        invalid_groups = ['10-20', 'invalid_group', 'senior', '0-10']
+        endpoints = [
+            'intelligence_disease_trends',
+            'intelligence_historical_disease',
+            'intelligence_disease_by_locality',
+            'intelligence_summary',
+            'intelligence_forecast',
+            'intelligence_seasonality',
+        ]
+        for ep in endpoints:
+            for bad_ag in invalid_groups:
+                res = self.client.get(f"{reverse(ep)}?disease=Dengue&age_group={bad_ag}")
+                self.assertEqual(
+                    res.status_code, status.HTTP_400_BAD_REQUEST,
+                    f"Endpoint {ep} did not return 400 for age_group={bad_ag}"
+                )
+                self.assertIn('age_group', str(res.data))
+
+    # 5. invalid gender -> 400
+    def test_invalid_gender_bad_request(self):
+        """
+        Invalid gender values (not in MALE, FEMALE, OTHER) return HTTP 400 Bad Request.
+        """
+        invalid_genders = ['UNKNOWN', 'RANDOM', 'NON_BINARY', 'M']
+        endpoints = [
+            'intelligence_disease_trends',
+            'intelligence_historical_disease',
+            'intelligence_disease_by_locality',
+            'intelligence_summary',
+            'intelligence_forecast',
+            'intelligence_seasonality',
+        ]
+        for ep in endpoints:
+            for bad_g in invalid_genders:
+                res = self.client.get(f"{reverse(ep)}?disease=Dengue&gender={bad_g}")
+                self.assertEqual(
+                    res.status_code, status.HTTP_400_BAD_REQUEST,
+                    f"Endpoint {ep} did not return 400 for gender={bad_g}"
+                )
+                self.assertIn('gender', str(res.data))
+
+    # 6. no demographic filters -> existing behavior
+    def test_no_demographic_filters_existing_behavior(self):
+        """
+        Existing API requests without demographic filters behave exactly as before.
+        All 7 central cases are returned without demographic restriction.
+        """
+        res_trends = self.client.get(
+            f"{reverse('intelligence_disease_trends')}?disease=Dengue&date={self.ref_date}"
+        )
+        self.assertEqual(res_trends.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_trends.data['summary']['total_current_cases'], 7)
+
+        res_hist = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.ref_date}"
+        )
+        self.assertEqual(res_hist.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_hist.data['total_cases_in_history'], 7)
+
+
+        res_loc = self.client.get(
+            f"{reverse('intelligence_disease_by_locality')}?disease=Dengue&date={self.ref_date}"
+        )
+        self.assertEqual(res_loc.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_loc.data['total_cases_in_period'], 7)
+
+
+        res_sum = self.client.get(
+            f"{reverse('intelligence_summary')}?disease=Dengue&date={self.ref_date}"
+        )
+        self.assertEqual(res_sum.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_sum.data['summary']['total_current_cases'], 7)
+
+        res_fc = self.client.get(
+            f"{reverse('intelligence_forecast')}?disease=Dengue&date={self.ref_date}"
+        )
+        self.assertEqual(res_fc.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_fc.data['observation_period']['total_cases'], 7)
+
+        res_seas = self.client.get(
+            f"{reverse('intelligence_seasonality')}?disease=Dengue&date={self.ref_date}"
+        )
+        self.assertEqual(res_seas.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_seas.data['total_cases_analyzed'], 7)
+
+
+    # 7. Hospital Admin scope + demographic filters
+    def test_hospital_admin_scope_with_demographic_filters(self):
+        """
+        Hospital Admin querying assigned facility with demographic filters succeeds.
+        ?disease=Dengue&facility=<authorized_id>&age_group=15-24&gender=FEMALE
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_disease_trends')}?disease=Dengue&facility={self.fac_central.id}&age_group=15-24&gender=FEMALE&date={self.ref_date}"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['summary']['total_current_cases'], 1)
+
+    # 8. District Officer scope + demographic filters
+    def test_district_officer_scope_with_demographic_filters(self):
+        """
+        District Officer querying assigned district with demographic filters succeeds.
+        ?disease=Dengue&district=<authorized_id>&age_group=25-44&gender=MALE
+        """
+        self.client.force_authenticate(user=self.user_dist_officer)
+        res = self.client.get(
+            f"{reverse('intelligence_disease_trends')}?disease=Dengue&district={self.district_central.id}&age_group=25-44&gender=MALE&date={self.ref_date}"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # Matches Patient 5 (35 yo M)
+        self.assertEqual(res.data['summary']['total_current_cases'], 1)
+
+    # 9. cross-facility request remains 403
+    def test_cross_facility_request_forbidden(self):
+        """
+        Hospital Admin requesting unauthorized facility returns HTTP 403 Forbidden.
+        Demographic filters must NEVER bypass facility authorization.
+        """
+        endpoints = [
+            'intelligence_disease_trends',
+            'intelligence_historical_disease',
+            'intelligence_disease_by_locality',
+            'intelligence_summary',
+            'intelligence_forecast',
+            'intelligence_seasonality',
+        ]
+        for ep in endpoints:
+            # Valid demographic filter but unauthorized facility
+            res1 = self.client.get(
+                f"{reverse(ep)}?facility={self.fac_other.id}&disease=Dengue&age_group=15-24&gender=FEMALE"
+            )
+            self.assertEqual(
+                res1.status_code, status.HTTP_403_FORBIDDEN,
+                f"Endpoint {ep} did not return 403 for unauthorized facility"
+            )
+
+            # Invalid demographic filter on unauthorized facility MUST still return 403
+            res2 = self.client.get(
+                f"{reverse(ep)}?facility={self.fac_other.id}&disease=Dengue&age_group=INVALID"
+            )
+            self.assertEqual(
+                res2.status_code, status.HTTP_403_FORBIDDEN,
+                f"Endpoint {ep} allowed bypass of 403 with invalid demographic parameter"
+            )
+
+    # 10. cross-district request remains 403
+    def test_cross_district_request_forbidden(self):
+        """
+        District Officer requesting unauthorized district returns HTTP 403 Forbidden.
+        Demographic filters must NEVER bypass district authorization.
+        """
+        self.client.force_authenticate(user=self.user_dist_officer)
+        endpoints = [
+            'intelligence_disease_trends',
+            'intelligence_historical_disease',
+            'intelligence_disease_by_locality',
+            'intelligence_summary',
+            'intelligence_forecast',
+            'intelligence_seasonality',
+        ]
+        for ep in endpoints:
+            # Valid demographic filter but unauthorized district
+            res1 = self.client.get(
+                f"{reverse(ep)}?district={self.district_rural.id}&disease=Dengue&age_group=15-24&gender=FEMALE"
+            )
+            self.assertEqual(
+                res1.status_code, status.HTTP_403_FORBIDDEN,
+                f"Endpoint {ep} did not return 403 for unauthorized district"
+            )
+
+            # Invalid demographic filter on unauthorized district MUST still return 403
+            res2 = self.client.get(
+                f"{reverse(ep)}?district={self.district_rural.id}&disease=Dengue&gender=INVALID"
+            )
+            self.assertEqual(
+                res2.status_code, status.HTTP_403_FORBIDDEN,
+                f"Endpoint {ep} allowed bypass of 403 with invalid gender parameter"
+            )
+
+    # 11. Dynamic age calculation relative to DiseaseCase.report_date
+    def test_dynamic_age_calculation_relative_to_case_report_date_in_api(self):
+        """
+        CRITICAL: Age must be calculated relative to each DiseaseCase.report_date.
+        Patient born on 2010-10-04:
+        - Case reported on 2024-10-04: Age is 14 -> Age group 6-14
+        - Case reported on 2026-10-04: Age is 16 -> Age group 15-24
+        """
+        p_aging = Patient.objects.create(
+            patient_id='P-AGING-01', name='Aging Patient',
+            date_of_birth=datetime.date(2010, 10, 4), age=50, # Deliberately stale DB age
+            gender='FEMALE', district=self.district_central, ward=self.ward_central,
+            registered_at_facility=self.fac_central
+        )
+        # Case in 2024: age 14 (6-14)
+        DiseaseCase.objects.create(
+            disease_name='Typhoid', patient=p_aging, facility=self.fac_central,
+            ward=self.ward_central, report_date=datetime.date(2024, 10, 4), severity='MILD'
+        )
+        # Case in 2026: age 16 (15-24)
+        DiseaseCase.objects.create(
+            disease_name='Typhoid', patient=p_aging, facility=self.fac_central,
+            ward=self.ward_central, report_date=datetime.date(2026, 10, 4), severity='MILD'
+        )
+
+        # Filtering by 15-24 on 2026-10-04 reflects the 2026 case (16 yo)
+        res_15_24 = self.client.get(
+            f"{reverse('intelligence_disease_trends')}?disease=Typhoid&age_group=15-24&date=2026-10-04&days=7"
+        )
+        self.assertEqual(res_15_24.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_15_24.data['summary']['total_current_cases'], 1)
+
+        # Filtering by 6-14 on 2026-10-04 does not match the 2026 case (since it's age 16)
+        res_6_14_recent = self.client.get(
+            f"{reverse('intelligence_disease_trends')}?disease=Typhoid&age_group=6-14&date=2026-10-04&days=7"
+        )
+        self.assertEqual(res_6_14_recent.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_6_14_recent.data['summary']['total_current_cases'], 0)
+
+        # Stale Patient.age (50) is never used: filtering by 45-59 returns 0 cases
+        res_45_59 = self.client.get(
+            f"{reverse('intelligence_disease_trends')}?disease=Typhoid&age_group=45-59&date=2026-10-04&days=7"
+        )
+        self.assertEqual(res_45_59.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_45_59.data['summary']['total_current_cases'], 0)
+
 

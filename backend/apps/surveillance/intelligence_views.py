@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework import permissions, status
 
 from apps.accounts.permissions import HasPermission
+from apps.surveillance.demographic_services import validate_demographic_params
 from apps.surveillance.intelligence_services import (
     calculate_disease_trends,
     aggregate_disease_by_locality,
@@ -29,12 +30,18 @@ class BaseIntelligenceView(APIView):
     permission_classes = [permissions.IsAuthenticated, HasPermission]
     required_permission = 'dashboard.view'
 
+    def get_demographic_filters(self, request):
+        age_group = request.query_params.get('age_group')
+        gender = request.query_params.get('gender')
+        return validate_demographic_params(age_group=age_group, gender=gender)
+
 
 class PublicHealthDiseaseTrendsView(BaseIntelligenceView):
     """
     1. Disease Trend Analysis Endpoint
     Computes current, previous, 7d, 30d, 90d cases, monthly counts,
     percentage change, and trend direction.
+    Supports optional age_group and gender demographic filtering.
     """
     def get(self, request):
         fac_id = request.query_params.get('facility')
@@ -53,6 +60,10 @@ class PublicHealthDiseaseTrendsView(BaseIntelligenceView):
         if not scope.is_authorized:
             return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
+        clean_ag, clean_g, err_demo = self.get_demographic_filters(request)
+        if err_demo:
+            return Response({'error': err_demo}, status=status.HTTP_400_BAD_REQUEST)
+
         data = calculate_disease_trends(
             facility_ids=scope.facility_ids,
             district_id=scope.district_id,
@@ -60,7 +71,9 @@ class PublicHealthDiseaseTrendsView(BaseIntelligenceView):
             start_date=start_date,
             end_date=end_date,
             as_of_date=as_of_date,
-            window_days=days
+            window_days=days,
+            age_group=clean_ag,
+            gender=clean_g
         )
         return Response(data)
 
@@ -70,6 +83,7 @@ class PublicHealthDiseaseLocalityView(BaseIntelligenceView):
     2. Disease-by-Locality Aggregation Endpoint
     Computes cases by locality/ward, reporting hospitals, locality share %,
     and trend direction.
+    Supports optional age_group and gender demographic filtering.
     """
     def get(self, request):
         fac_id = request.query_params.get('facility')
@@ -88,6 +102,10 @@ class PublicHealthDiseaseLocalityView(BaseIntelligenceView):
         if not scope.is_authorized:
             return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
+        clean_ag, clean_g, err_demo = self.get_demographic_filters(request)
+        if err_demo:
+            return Response({'error': err_demo}, status=status.HTTP_400_BAD_REQUEST)
+
         data = aggregate_disease_by_locality(
             facility_ids=scope.facility_ids,
             district_id=scope.district_id,
@@ -95,7 +113,9 @@ class PublicHealthDiseaseLocalityView(BaseIntelligenceView):
             start_date=start_date,
             end_date=end_date,
             as_of_date=as_of_date,
-            window_days=days
+            window_days=days,
+            age_group=clean_ag,
+            gender=clean_g
         )
         return Response(data)
 
@@ -104,6 +124,7 @@ class PublicHealthHistoricalDiseaseView(BaseIntelligenceView):
     """
     3. Historical Disease Aggregation Endpoint
     Multi-month sequential series with severity breakdowns.
+    Supports optional age_group and gender demographic filtering.
     """
     def get(self, request):
         fac_id = request.query_params.get('facility')
@@ -120,12 +141,18 @@ class PublicHealthHistoricalDiseaseView(BaseIntelligenceView):
         if not scope.is_authorized:
             return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
+        clean_ag, clean_g, err_demo = self.get_demographic_filters(request)
+        if err_demo:
+            return Response({'error': err_demo}, status=status.HTTP_400_BAD_REQUEST)
+
         data = aggregate_historical_disease(
             facility_ids=scope.facility_ids,
             district_id=scope.district_id,
             disease_name=disease,
             months=months,
-            as_of_date=as_of_date
+            as_of_date=as_of_date,
+            age_group=clean_ag,
+            gender=clean_g
         )
         return Response(data)
 
@@ -134,6 +161,7 @@ class PublicHealthHospitalAggregationView(BaseIntelligenceView):
     """
     4. Hospital-Level Aggregation Endpoint
     Strictly locked to assigned hospital for Hospital Admin / Doctor.
+    Supports optional age_group and gender demographic filtering.
     """
     def get(self, request):
         fac_id = request.query_params.get('facility')
@@ -150,12 +178,18 @@ class PublicHealthHospitalAggregationView(BaseIntelligenceView):
         if not scope.is_authorized:
             return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
+        clean_ag, clean_g, err_demo = self.get_demographic_filters(request)
+        if err_demo:
+            return Response({'error': err_demo}, status=status.HTTP_400_BAD_REQUEST)
+
         data = aggregate_hospital_level(
             facility_id=scope.facility_ids[0],
             user=request.user,
             start_date=start_date,
             end_date=end_date,
-            as_of_date=as_of_date
+            as_of_date=as_of_date,
+            age_group=clean_ag,
+            gender=clean_g
         )
         if 'error' in data:
             return Response(data, status=status.HTTP_403_FORBIDDEN)
@@ -166,6 +200,7 @@ class PublicHealthDistrictAggregationView(BaseIntelligenceView):
     """
     5. District-Level Aggregation Endpoint
     Scoped to assigned district with strict cross-district isolation.
+    Supports optional age_group and gender demographic filtering.
     """
     def get(self, request):
         dist_id = request.query_params.get('district')
@@ -181,12 +216,18 @@ class PublicHealthDistrictAggregationView(BaseIntelligenceView):
         if not scope.is_authorized:
             return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
+        clean_ag, clean_g, err_demo = self.get_demographic_filters(request)
+        if err_demo:
+            return Response({'error': err_demo}, status=status.HTTP_400_BAD_REQUEST)
+
         data = aggregate_district_level(
             district_id=scope.district_id,
             user=request.user,
             start_date=start_date,
             end_date=end_date,
-            as_of_date=as_of_date
+            as_of_date=as_of_date,
+            age_group=clean_ag,
+            gender=clean_g
         )
         if 'error' in data:
             return Response(data, status=status.HTTP_403_FORBIDDEN)
@@ -196,6 +237,7 @@ class PublicHealthDistrictAggregationView(BaseIntelligenceView):
 class PublicHealthIntelligenceSummaryView(BaseIntelligenceView):
     """
     Unified Public Health Intelligence Summary Endpoint (Step 1 Foundation)
+    Supports optional age_group and gender demographic filtering.
     """
     def get(self, request):
         fac_id = request.query_params.get('facility')
@@ -212,13 +254,19 @@ class PublicHealthIntelligenceSummaryView(BaseIntelligenceView):
         if not scope.is_authorized:
             return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
+        clean_ag, clean_g, err_demo = self.get_demographic_filters(request)
+        if err_demo:
+            return Response({'error': err_demo}, status=status.HTTP_400_BAD_REQUEST)
+
         data = get_public_health_intelligence_summary(
             facility_id=scope.facility_ids[0] if (fac_id and len(scope.facility_ids) == 1) else None,
             district_id=scope.district_id,
             user=request.user,
             start_date=start_date,
             end_date=end_date,
-            as_of_date=as_of_date
+            as_of_date=as_of_date,
+            age_group=clean_ag,
+            gender=clean_g
         )
         if 'error' in data:
             return Response(data, status=status.HTTP_403_FORBIDDEN)
@@ -229,6 +277,7 @@ class PublicHealthDemographicsView(BaseIntelligenceView):
     """
     Authoritative Demographic Breakdown Endpoint for Public Health Intelligence.
     Returns age, age group, and gender distributions from real database records.
+    Supports optional age_group and gender filtering.
     """
     def get(self, request):
         fac_id = request.query_params.get('facility')
@@ -246,12 +295,18 @@ class PublicHealthDemographicsView(BaseIntelligenceView):
         if not scope.is_authorized:
             return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
+        clean_ag, clean_g, err_demo = self.get_demographic_filters(request)
+        if err_demo:
+            return Response({'error': err_demo}, status=status.HTTP_400_BAD_REQUEST)
+
         data = get_demographic_intelligence(
             facility_ids=scope.facility_ids,
             district_id=scope.district_id,
             disease_name=disease,
             start_date=start_date,
             end_date=end_date,
-            as_of_date=as_of_date
+            as_of_date=as_of_date,
+            age_group=clean_ag,
+            gender=clean_g
         )
         return Response(data)
