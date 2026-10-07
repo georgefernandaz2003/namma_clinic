@@ -144,6 +144,7 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="staff-detail-title"
+        data-testid="staff-detail-modal"
       >
         <div className="relative bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl border border-slate-100 max-h-[92vh] overflow-y-auto">
           {/* Header */}

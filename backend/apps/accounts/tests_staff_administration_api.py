@@ -411,3 +411,145 @@ class StaffAdministrationApiTests(TestCase):
         """NURSE_COMPOUNDER or NURSE_FRONT_DESK_OFFICER does not exist as a composite role definition."""
         self.assertFalse(RoleMaster.objects.filter(code="NURSE_COMPOUNDER").exists())
         self.assertFalse(RoleMaster.objects.filter(code="NURSE_FRONT_DESK_OFFICER").exists())
+
+    # --- PHASE 31: Hospital Administrator Appointment & Lifecycle Tests ---
+
+    def test_21_hospital_admin_cannot_invite_hospital_admin(self):
+        """SEC-01: Hospital Admin must NOT be able to invite another HOSPITAL_ADMIN (403 Forbidden)."""
+        self.client.force_authenticate(user=self.user_admin)
+        payload = {
+            "first_name": "Ramesh",
+            "last_name": "Kumar",
+            "gender": "MALE",
+            "date_of_birth": "1985-05-15",
+            "employee_id": "EMP-HA-PEER",
+            "designation": "Hospital Administrator",
+            "role_code": "HOSPITAL_ADMIN",
+            "facility_id": self.clinic_a1.id,
+            "temporary_password": "PeerAdmin@123"
+        }
+        res = self.client.post("/api/v1/accounts/staff-profiles/invite/", payload, format="json")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn("Clinic Admin cannot assign privileged role", str(res.data.get("error", "")))
+
+    def test_22_hospital_admin_cannot_assign_hospital_admin(self):
+        """SEC-01: Hospital Admin must NOT be able to assign HOSPITAL_ADMIN role (403 Forbidden)."""
+        self.client.force_authenticate(user=self.user_admin)
+        res = self.client.post(
+            f"/api/v1/accounts/staff-profiles/{self.staff_nurse.id}/assign-role/",
+            {"role_code": "HOSPITAL_ADMIN", "facility_id": self.clinic_a1.id},
+            format="json"
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn("Clinic Admin cannot assign privileged role", str(res.data.get("error", "")))
+
+    def test_23_dho_can_appoint_hospital_admin_in_district(self):
+        """DHO possesses authoritative authority to appoint HOSPITAL_ADMIN within own district."""
+        self.client.force_authenticate(user=self.user_dho)
+        payload = {
+            "first_name": "Ananya",
+            "last_name": "Desai",
+            "gender": "FEMALE",
+            "date_of_birth": "1988-08-20",
+            "employee_id": "EMP-HA-DESAI",
+            "designation": "Hospital Administrator",
+            "role_code": "HOSPITAL_ADMIN",
+            "facility_id": self.clinic_a1.id,
+            "temporary_password": "InitialPass@2026"
+        }
+        res = self.client.post("/api/v1/accounts/staff-profiles/invite/", payload, format="json")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data["status"], "INVITED")
+        # Ensure password is NOT leaked in API response
+        self.assertNotIn("password", res.data)
+        self.assertNotIn("temporary_password", res.data)
+
+        # Check PostgreSQL state
+        from apps.accounts.models import StaffProfile, StaffRoleAssignment, User
+        sp = StaffProfile.objects.get(employee_id="EMP-HA-DESAI")
+        self.assertEqual(sp.status, "INVITED")
+        sra = StaffRoleAssignment.objects.filter(staff=sp, role__code="HOSPITAL_ADMIN", is_active=True).first()
+        self.assertIsNotNone(sra)
+        self.assertEqual(sra.facility_id, self.clinic_a1.id)
+
+        # User is created but inactive
+        user = sp.user_account
+        self.assertFalse(user.is_active)
+        self.assertTrue(user.check_password("InitialPass@2026"))
+
+    def test_24_dho_cannot_appoint_hospital_admin_cross_district(self):
+        """DHO attempting cross-district appointment is denied (403 Forbidden)."""
+        self.client.force_authenticate(user=self.user_dho)
+        payload = {
+            "first_name": "Vikram",
+            "last_name": "Patel",
+            "gender": "MALE",
+            "date_of_birth": "1982-03-12",
+            "employee_id": "EMP-HA-FOREIGN",
+            "designation": "Hospital Administrator",
+            "role_code": "HOSPITAL_ADMIN",
+            "facility_id": self.clinic_b1.id,
+            "temporary_password": "ForeignPass@123"
+        }
+        res = self.client.post("/api/v1/accounts/staff-profiles/invite/", payload, format="json")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_25_credential_lifecycle_invite_and_login(self):
+        """Full credential lifecycle: invite -> activate -> login with username or employee ID."""
+        self.client.force_authenticate(user=self.user_dho)
+        emp_id = "EMP-HA-LIFECYCLE"
+        temp_pwd = "SecureLoginPass@123"
+
+        # 1. Invite
+        invite_res = self.client.post("/api/v1/accounts/staff-profiles/invite/", {
+            "first_name": "Siddharth",
+            "last_name": "Mehta",
+            "gender": "MALE",
+            "date_of_birth": "1991-01-15",
+            "employee_id": emp_id,
+            "designation": "Hospital Administrator",
+            "role_code": "HOSPITAL_ADMIN",
+            "facility_id": self.clinic_a1.id,
+            "temporary_password": temp_pwd
+        }, format="json")
+        self.assertEqual(invite_res.status_code, status.HTTP_201_CREATED)
+        profile_id = invite_res.data["id"]
+
+        # 2. Activate
+        act_res = self.client.post(f"/api/v1/accounts/staff-profiles/{profile_id}/activate/", format="json")
+        self.assertEqual(act_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(act_res.data["status"], "ACTIVE")
+
+        # 3. Log in via SimpleJWT using username
+        self.client.logout()
+        username = emp_id.lower().replace("-", "_")
+        login_res_1 = self.client.post("/api/auth/token/", {"username": username, "password": temp_pwd}, format="json")
+        self.assertEqual(login_res_1.status_code, status.HTTP_200_OK)
+        self.assertIn("access", login_res_1.data)
+
+        # 4. Log in via SimpleJWT using employee_id
+        login_res_2 = self.client.post("/api/auth/token/", {"username": emp_id, "password": temp_pwd}, format="json")
+        self.assertEqual(login_res_2.status_code, status.HTTP_200_OK)
+        self.assertIn("access", login_res_2.data)
+
+    def test_26_set_credentials_action_and_audit(self):
+        """Admin can update staff credentials via set-credentials endpoint without leaking secrets."""
+        self.client.force_authenticate(user=self.user_admin)
+        new_pwd = "UpdatedCredential@2026"
+        res = self.client.post(
+            f"/api/v1/accounts/staff-profiles/{self.staff_doc.id}/set-credentials/",
+            {"password": new_pwd},
+            format="json"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["status"], "SUCCESS")
+        self.assertNotIn(new_pwd, str(res.data))
+
+        # Check DB & audit log
+        user = self.staff_doc.user_account
+        user.refresh_from_db()
+        self.assertTrue(user.check_password(new_pwd))
+
+        audit = AuditLogEntry.objects.filter(action_type="SET_CREDENTIALS", table_name="users").last()
+        self.assertIsNotNone(audit)
+        self.assertNotIn(new_pwd, str(audit.payload_after))

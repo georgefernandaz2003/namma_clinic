@@ -82,6 +82,7 @@ export interface InviteStaffPayload {
   medical_council_reg_number?: string;
   email?: string;
   username?: string;
+  temporary_password?: string;
 }
 
 export interface AssignRolePayload {

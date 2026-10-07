@@ -25,6 +25,30 @@ class FacilitySerializer(serializers.ModelSerializer):
     incoming_relationships = FacilityRelationshipSerializer(many=True, read_only=True)
     state = serializers.PrimaryKeyRelatedField(queryset=State.objects.all(), required=False)
     district = serializers.PrimaryKeyRelatedField(queryset=District.objects.all(), required=False)
+    has_hospital_admin = serializers.SerializerMethodField()
+    hospital_admin_name = serializers.SerializerMethodField()
+
+    def get_has_hospital_admin(self, obj):
+        from apps.accounts.models import StaffRoleAssignment
+        return StaffRoleAssignment.objects.filter(
+            facility=obj,
+            role__code='HOSPITAL_ADMIN',
+            is_active=True,
+            staff__status='ACTIVE'
+        ).exists()
+
+    def get_hospital_admin_name(self, obj):
+        from apps.accounts.models import StaffRoleAssignment
+        assignment = StaffRoleAssignment.objects.filter(
+            facility=obj,
+            role__code='HOSPITAL_ADMIN',
+            is_active=True,
+            staff__status='ACTIVE'
+        ).select_related('staff__person').first()
+        if assignment and assignment.staff and assignment.staff.person:
+            p = assignment.staff.person
+            return f"{p.first_name} {p.last_name}".strip()
+        return None
 
     class Meta:
         model = Facility

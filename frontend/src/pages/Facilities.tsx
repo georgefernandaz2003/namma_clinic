@@ -2,11 +2,13 @@
 import api from '../services/api';
 import type { Facility } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { FacilityModal } from '../components/facilities/FacilityModal';
-import { Building2, Search, Plus, Pencil, CheckCircle2, XCircle, AlertCircle, Phone, Clock, Users, X } from 'lucide-react';
+import { Building2, Search, Plus, Pencil, CheckCircle2, XCircle, AlertCircle, Phone, Clock, Users, X, UserCheck, UserPlus } from 'lucide-react';
 
 export const Facilities: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
@@ -202,21 +204,53 @@ export const Facilities: React.FC = () => {
                 </div>
                 <h3 className="font-bold text-slate-900 text-sm mt-1">{f.facility_name}</h3>
                 <p className="text-[11px] text-slate-500 font-semibold">{f.district_name || 'BBMP Central'}</p>
+                <div className="pt-1">
+                  {f.has_hospital_admin ? (
+                    <span
+                      className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded inline-flex items-center gap-1"
+                      data-testid={`facility-admin-badge-${f.facility_code}`}
+                    >
+                      <UserCheck className="w-3 h-3 text-emerald-600" />
+                      Admin: <strong className="text-emerald-950 font-bold">{f.hospital_admin_name || 'Assigned'}</strong>
+                    </span>
+                  ) : (
+                    <span
+                      className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded inline-flex items-center gap-1"
+                      data-testid={`facility-unassigned-admin-badge-${f.facility_code}`}
+                    >
+                      <AlertCircle className="w-3 h-3 text-amber-600" />
+                      No Administrator Assigned
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-col items-end gap-2 shrink-0">
                 <span className="text-[10px] font-mono text-slate-400 font-semibold">{f.facility_code}</span>
-                {isDHO && (
-                  <button
-                    onClick={() => handleOpenEdit(f)}
-                    className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 inline-flex items-center gap-1 transition"
-                    data-testid={`edit-facility-btn-${f.facility_code}`}
-                    aria-label={`Edit ${f.facility_name}`}
-                  >
-                    <Pencil className="w-3.5 h-3.5 text-slate-500" />
-                    Edit
-                  </button>
-                )}
+                <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                  {isDHO && !f.has_hospital_admin && (
+                    <button
+                      onClick={() => navigate(`/admin/staff?facilityId=${f.id}&appointAdmin=true`)}
+                      className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 inline-flex items-center gap-1 transition shadow-2xs"
+                      data-testid={`appoint-admin-btn-${f.facility_code}`}
+                      aria-label={`Appoint Administrator for ${f.facility_name}`}
+                    >
+                      <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
+                      Appoint Admin
+                    </button>
+                  )}
+                  {isDHO && (
+                    <button
+                      onClick={() => handleOpenEdit(f)}
+                      className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 inline-flex items-center gap-1 transition"
+                      data-testid={`edit-facility-btn-${f.facility_code}`}
+                      aria-label={`Edit ${f.facility_name}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                      Edit
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 

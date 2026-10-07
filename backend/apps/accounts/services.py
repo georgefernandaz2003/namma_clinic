@@ -145,10 +145,10 @@ def validate_admin_actor(actor, target_facility=None, target_staff=None, target_
                     f"Clinic Admin cannot administer staff '{target_staff.employee_id}' outside assigned facility."
                 )
 
-        # Target role scope check: Clinic Admin cannot grant DHO or system roles
+        # Target role scope check: Clinic Admin cannot grant Hospital Admin, DHO, or system roles
         if target_role:
             target_role_code = target_role.code if hasattr(target_role, 'code') else str(target_role)
-            restricted_roles = ['DISTRICT_OFFICER', 'DHO', 'SYSTEM_ADMIN', 'SUPERUSER']
+            restricted_roles = ['HOSPITAL_ADMIN', 'ADMIN', 'DISTRICT_OFFICER', 'DHO', 'SYSTEM_ADMIN', 'SUPERUSER']
             if target_role_code in restricted_roles:
                 raise UnauthorizedDomainAction(
                     f"Clinic Admin cannot assign privileged role '{target_role_code}'."
@@ -240,7 +240,8 @@ def invite_staff(
     role_code=None,
     phone_number=None,
     department=None,
-    actor=None
+    actor=None,
+    password=None
 ):
     """
     Onboards a new staff member in INVITED lifecycle state.
@@ -255,6 +256,8 @@ def invite_staff(
 
     if not employee_id:
         raise DomainValidationError("employee_id is required.", code="MISSING_EMPLOYEE_ID")
+    if password and len(password) < 8:
+        raise DomainValidationError("Password must be at least 8 characters.", code="INVALID_PASSWORD")
     if StaffProfile.objects.filter(employee_id=employee_id).exists():
         raise DomainValidationError(f"StaffProfile '{employee_id}' already exists.", code="DUPLICATE_EMPLOYEE_ID")
 
@@ -284,7 +287,7 @@ def invite_staff(
         user = User.objects.create_user(
             username=username,
             email=email,
-            password=None,
+            password=password,
             first_name=first_name,
             last_name=last_name or '',
             role=user_role,
@@ -337,9 +340,10 @@ def invite_staff(
         return profile, user
 
 
-def activate_staff(staff_profile, actor=None):
+def activate_staff(staff_profile, actor=None, password=None):
     """
     Activates an invited staff profile and activates their associated user account.
+    Optional password parameter sets initial credentials without shell intervention.
     """
     primary_fa = staff_profile.facility_assignments.filter(is_primary=True, is_active=True).first()
     facility = primary_fa.facility if primary_fa else None
@@ -353,6 +357,9 @@ def activate_staff(staff_profile, actor=None):
     if staff_profile.status not in [StaffStatusChoices.INVITED, StaffStatusChoices.SUSPENDED]:
         raise InvalidStateTransition("StaffProfile", staff_profile.status, StaffStatusChoices.ACTIVE)
 
+    if password and len(password) < 8:
+        raise DomainValidationError("Password must be at least 8 characters.", code="INVALID_PASSWORD")
+
     old_status = staff_profile.status
     with transaction.atomic():
         staff_profile.status = StaffStatusChoices.ACTIVE
@@ -361,7 +368,11 @@ def activate_staff(staff_profile, actor=None):
         user = getattr(staff_profile, 'user_account', None)
         if user:
             user.is_active = True
-            user.save(update_fields=["is_active"])
+            update_fields = ["is_active"]
+            if password:
+                user.set_password(password)
+                update_fields.append("password")
+            user.save(update_fields=update_fields)
 
         record_audit_event(
             actor_staff=actor_staff,
@@ -375,6 +386,45 @@ def activate_staff(staff_profile, actor=None):
             payload_after={"status": StaffStatusChoices.ACTIVE}
         )
 
+    return staff_profile
+
+
+def set_staff_credentials(staff_profile, password, actor=None):
+    """
+    Provisions or updates credentials for an active/invited staff profile.
+    Enforces scope checks, minimum complexity, and never stores/logs plaintext credentials.
+    """
+    primary_fa = staff_profile.facility_assignments.filter(is_primary=True, is_active=True).first()
+    facility = primary_fa.facility if primary_fa else None
+
+    actor_user, actor_staff, actor_role = validate_admin_actor(
+        actor=actor,
+        target_facility=facility,
+        target_staff=staff_profile,
+        action="set_credentials"
+    )
+
+    if not password or len(password) < 8:
+        raise DomainValidationError("Password must be at least 8 characters.", code="INVALID_PASSWORD")
+
+    user = getattr(staff_profile, 'user_account', None)
+    if not user:
+        raise DomainValidationError(f"StaffProfile '{staff_profile.employee_id}' has no associated user account.", code="USER_NOT_FOUND")
+
+    with transaction.atomic():
+        user.set_password(password)
+        user.save(update_fields=["password"])
+
+        record_audit_event(
+            actor_staff=actor_staff,
+            actor_user_id=actor_user.id if actor_user else None,
+            actor_role_snapshot=actor_role,
+            facility=facility,
+            action_type="SET_CREDENTIALS",
+            table_name="users",
+            record_id=user.id,
+            payload_after={"employee_id": staff_profile.employee_id, "credentials_configured": True}
+        )
     return staff_profile
 
 

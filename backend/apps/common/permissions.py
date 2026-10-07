@@ -38,10 +38,18 @@ def get_user_permitted_facilities(staff_profile, user=None):
     if user and user.is_superuser:
         return None
     if staff_profile and is_administrative_staff(staff_profile):
-        if staff_profile.designation == "District Health Officer" and user and user.assigned_district_id:
-            from apps.facilities.models import Facility
-            return list(Facility.objects.filter(district_id=user.assigned_district_id).values_list("id", flat=True))
-        if staff_profile.designation in ["System Administrator", "State Health Director"]:
+        from apps.accounts.models import StaffRoleAssignment
+        active_role_codes = set(StaffRoleAssignment.objects.filter(
+            staff=staff_profile,
+            is_active=True
+        ).values_list("role__code", flat=True))
+
+        district_id = (user.assigned_district_id if user else None) or getattr(staff_profile, 'assigned_district_id', None)
+        if any(r in active_role_codes for r in ["DISTRICT_OFFICER", "DHO"]) or staff_profile.designation == "District Health Officer":
+            if district_id:
+                from apps.facilities.models import Facility
+                return list(Facility.objects.filter(district_id=district_id).values_list("id", flat=True))
+        if any(r in active_role_codes for r in ["SYSTEM_ADMIN", "SUPERUSER"]) or staff_profile.designation in ["System Administrator", "State Health Director"]:
             return None
 
     facility_ids = set()

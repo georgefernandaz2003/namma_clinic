@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ForbiddenCard } from '../components/common/ForbiddenCard';
 import { ErrorAlert } from '../components/common/ErrorAlert';
@@ -33,6 +34,9 @@ import { Users, Shield, Building2 } from 'lucide-react';
 
 export const StaffAdministration: React.FC = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const facilityParam = searchParams.get('facilityId');
+  const appointAdminParam = searchParams.get('appointAdmin') === 'true';
   const currentRole = user?.role as Role | undefined;
 
   // Authorization check: Only DISTRICT_OFFICER and HOSPITAL_ADMIN may access this console
@@ -121,7 +125,16 @@ export const StaffAdministration: React.FC = () => {
     }
   }, [isAuthorized, searchQuery, roleFilter, statusFilter, facilityFilter]);
 
-  // Initial load
+  // Initial load & search param context handling
+  useEffect(() => {
+    if (facilityParam) {
+      setFacilityFilter(facilityParam);
+    }
+    if (appointAdminParam) {
+      setIsInviteOpen(true);
+    }
+  }, [facilityParam, appointAdminParam]);
+
   useEffect(() => {
     if (isAuthorized) {
       loadFacilities();
@@ -384,10 +397,17 @@ export const StaffAdministration: React.FC = () => {
         isOpen={isInviteOpen}
         userRole={currentRole}
         userFacilityId={user?.assigned_facility}
+        initialFacilityId={facilityParam ? Number(facilityParam) : null}
+        initialRoleCode={appointAdminParam ? 'HOSPITAL_ADMIN' : null}
         facilities={facilities}
         isLoading={actionLoading}
         onInvite={handleInvite}
-        onClose={() => setIsInviteOpen(false)}
+        onClose={() => {
+          setIsInviteOpen(false);
+          if (appointAdminParam) {
+            setSearchParams({});
+          }
+        }}
       />
 
       {/* Assign Role Modal */}

@@ -79,9 +79,10 @@ export const inviteStaff = async (payload: InviteStaffPayload): Promise<StaffPro
 /**
  * Activate a staff member, enabling operational authorization.
  */
-export const activateStaff = async (id: number): Promise<StaffProfile> => {
+export const activateStaff = async (id: number, temporary_password?: string): Promise<StaffProfile> => {
   try {
-    const res = await apiClient.post<StaffProfile>(`v1/accounts/staff-profiles/${id}/activate/`);
+    const payload = temporary_password ? { temporary_password } : {};
+    const res = await apiClient.post<StaffProfile>(`v1/accounts/staff-profiles/${id}/activate/`, payload);
     return res.data;
   } catch (err: unknown) {
     throw new Error(parseApiError(err));

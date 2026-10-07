@@ -225,6 +225,11 @@ else:
 # Custom User Model
 AUTH_USER_MODEL = 'accounts.User'
 
+AUTHENTICATION_BACKENDS = [
+    'apps.accounts.backends.EmployeeIdOrUsernameBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 # -----------------------------------------------------------------------------
 # 4. PASSWORD VALIDATION
 # -----------------------------------------------------------------------------

@@ -25,7 +25,7 @@ from apps.accounts.services import (
     create_staff_profile, update_staff_status, assign_role,
     end_role_assignment, assign_facility, transfer_staff,
     invite_staff, activate_staff, suspend_staff, deactivate_staff,
-    is_administrative_staff
+    set_staff_credentials, is_administrative_staff
 )
 from apps.accounts.permissions import get_user_active_role_codes
 from apps.common.permissions import get_request_staff
@@ -201,6 +201,20 @@ class InviteStaffSerializer(serializers.Serializer):
     medical_council_reg_number = serializers.CharField(max_length=50, required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
     username = serializers.CharField(max_length=150, required=False)
+    password = serializers.CharField(max_length=128, required=False, allow_blank=True, write_only=True)
+    temporary_password = serializers.CharField(max_length=128, required=False, allow_blank=True, write_only=True)
+
+class ActivateStaffActionSerializer(serializers.Serializer):
+    password = serializers.CharField(max_length=128, required=False, allow_blank=True, write_only=True)
+    temporary_password = serializers.CharField(max_length=128, required=False, allow_blank=True, write_only=True)
+
+class SetStaffCredentialsSerializer(serializers.Serializer):
+    password = serializers.CharField(max_length=128, required=True, write_only=True)
+
+    def validate_password(self, value):
+        if len(value) < 8:
+            raise serializers.ValidationError("Password must be at least 8 characters.")
+        return value
 
 
 class StaffStatusUpdateSerializer(serializers.Serializer):
@@ -267,48 +281,61 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return StaffProfile.objects.none()
 
-        # Django Superuser: Global scope
-        if user.is_superuser:
-            return StaffProfile.objects.all().select_related(
-                'person', 'department'
-            ).prefetch_related(
-                'role_assignments__role', 'facility_assignments__facility'
-            )
-
         active_roles = get_user_active_role_codes(user)
 
+        # Django Superuser: Global scope
+        if user.is_superuser:
+            qs = StaffProfile.objects.all()
         # DISTRICT_OFFICER (DHO): Scoped strictly to assigned district
-        if 'DISTRICT_OFFICER' in active_roles or getattr(user, 'role', None) == 'DISTRICT_OFFICER':
+        elif 'DISTRICT_OFFICER' in active_roles or getattr(user, 'role', None) == 'DISTRICT_OFFICER':
             dist_id = getattr(user, 'assigned_district_id', None)
             if not dist_id:
                 return StaffProfile.objects.none()  # Fails closed on NULL district
-            return StaffProfile.objects.filter(
+            qs = StaffProfile.objects.filter(
                 Q(facility_assignments__facility__district_id=dist_id, facility_assignments__is_active=True) |
                 Q(department__facility__district_id=dist_id)
-            ).distinct().select_related(
-                'person', 'department'
-            ).prefetch_related(
-                'role_assignments__role', 'facility_assignments__facility'
             )
-
         # HOSPITAL_ADMIN (Clinic Admin): Scoped strictly to own facility
-        if 'HOSPITAL_ADMIN' in active_roles or getattr(user, 'role', None) == 'HOSPITAL_ADMIN':
+        elif 'HOSPITAL_ADMIN' in active_roles or getattr(user, 'role', None) == 'HOSPITAL_ADMIN':
             fac_id = getattr(user, 'assigned_facility_id', None)
             if not fac_id and getattr(user, 'staff_profile', None):
                 p_fa = user.staff_profile.facility_assignments.filter(is_primary=True, is_active=True).first()
                 fac_id = p_fa.facility_id if p_fa else None
             if not fac_id:
                 return StaffProfile.objects.none()
-            return StaffProfile.objects.filter(
+            qs = StaffProfile.objects.filter(
                 Q(facility_assignments__facility_id=fac_id, facility_assignments__is_active=True) |
                 Q(department__facility_id=fac_id)
-            ).distinct().select_related(
-                'person', 'department'
-            ).prefetch_related(
-                'role_assignments__role', 'facility_assignments__facility'
+            )
+        else:
+            return StaffProfile.objects.none()
+
+        # Query parameter filters
+        facility_param = self.request.query_params.get('facility')
+        if facility_param:
+            qs = qs.filter(facility_assignments__facility_id=facility_param, facility_assignments__is_active=True)
+
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            qs = qs.filter(status=status_param)
+
+        role_param = self.request.query_params.get('role')
+        if role_param:
+            qs = qs.filter(role_assignments__role__code=role_param, role_assignments__is_active=True)
+
+        search_param = self.request.query_params.get('search')
+        if search_param:
+            qs = qs.filter(
+                Q(employee_id__icontains=search_param) |
+                Q(person__first_name__icontains=search_param) |
+                Q(person__last_name__icontains=search_param)
             )
 
-        return StaffProfile.objects.none()
+        return qs.distinct().select_related(
+            'person', 'department'
+        ).prefetch_related(
+            'role_assignments__role', 'facility_assignments__facility'
+        ).order_by('-id')
 
     def create(self, request, *args, **kwargs):
         """Legacy create action delegating to create_staff_profile."""
@@ -343,6 +370,7 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
         facility = Facility.objects.get(pk=d['facility_id'])
         department = Department.objects.filter(pk=d.get('department_id')).first() if d.get('department_id') else None
 
+        password = d.get('password') or d.get('temporary_password')
         staff_profile, _ = invite_staff(
             email=email,
             first_name=d['first_name'],
@@ -355,7 +383,8 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
             role_code=role_code,
             department=department,
             phone_number=d.get('phone_number'),
-            actor=request.user
+            actor=request.user,
+            password=password
         )
         return Response(self.get_serializer(staff_profile).data, status=status.HTTP_201_CREATED)
 
@@ -363,8 +392,21 @@ class StaffProfileViewSet(viewsets.ModelViewSet):
     def activate(self, request, pk=None):
         """Authoritative domain action to activate staff and enable operational authorization."""
         profile = self.get_object()
-        activated = activate_staff(profile, actor=request.user)
+        serializer = ActivateStaffActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        password = serializer.validated_data.get('password') or serializer.validated_data.get('temporary_password')
+        activated = activate_staff(profile, actor=request.user, password=password)
         return Response(self.get_serializer(activated).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='set-credentials')
+    def set_credentials(self, request, pk=None):
+        """Authoritative domain action to provision or update staff credentials."""
+        profile = self.get_object()
+        serializer = SetStaffCredentialsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        password = serializer.validated_data['password']
+        set_staff_credentials(profile, password=password, actor=request.user)
+        return Response({"status": "SUCCESS", "message": "Credentials updated successfully."}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='suspend')
     def suspend(self, request, pk=None):

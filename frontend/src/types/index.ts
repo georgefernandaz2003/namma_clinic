@@ -62,6 +62,8 @@ export interface Facility {
   services: string;
   specialists: string;
   status: string;
+  has_hospital_admin?: boolean;
+  hospital_admin_name?: string | null;
   outgoing_relationships?: FacilityRelationship[];
   incoming_relationships?: FacilityRelationship[];
 }

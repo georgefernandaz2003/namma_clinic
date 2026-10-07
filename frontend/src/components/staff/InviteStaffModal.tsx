@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, UserPlus, AlertCircle } from 'lucide-react';
+import { X, UserPlus, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import type { Role } from '../../types/auth';
 import type { InviteStaffPayload } from '../../types/staff';
 
@@ -13,6 +13,8 @@ interface InviteStaffModalProps {
   userRole?: Role;
   userFacilityId?: number | null;
   facilities?: FacilityOption[];
+  initialFacilityId?: number | null;
+  initialRoleCode?: Role | null;
   isLoading?: boolean;
   onInvite: (payload: InviteStaffPayload) => Promise<void>;
   onClose: () => void;
@@ -23,10 +25,13 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
   userRole,
   userFacilityId,
   facilities = [],
+  initialFacilityId = null,
+  initialRoleCode = null,
   isLoading = false,
   onInvite,
   onClose,
 }) => {
+  const [showPassword, setShowPassword] = useState(false);
   const isDHO = userRole === 'DISTRICT_OFFICER';
 
   // Allowed operational roles strictly governed by backend permissions
@@ -64,6 +69,7 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
     facility_id: number;
     medical_council_reg_number: string;
     email: string;
+    temporary_password?: string;
   }>({
     first_name: '',
     last_name: '',
@@ -73,10 +79,22 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
     employee_id: '',
     designation: 'Medical Officer',
     role_code: 'DOCTOR',
-    facility_id: defaultFacilityId,
+    facility_id: initialFacilityId ? Number(initialFacilityId) : defaultFacilityId,
     medical_council_reg_number: '',
     email: '',
+    temporary_password: '',
   });
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setFormData((prev) => ({
+        ...prev,
+        facility_id: initialFacilityId ? Number(initialFacilityId) : (userFacilityId || facilities[0]?.id || 1),
+        role_code: (initialRoleCode || prev.role_code || 'DOCTOR') as Role,
+        designation: initialRoleCode === 'HOSPITAL_ADMIN' ? 'Hospital Administrator' : prev.designation,
+      }));
+    }
+  }, [isOpen, initialFacilityId, initialRoleCode, userFacilityId, facilities]);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -102,6 +120,10 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
       setError('Operational role is required.');
       return;
     }
+    if (formData.temporary_password && formData.temporary_password.length < 8) {
+      setError('Initial password must be at least 8 characters.');
+      return;
+    }
 
     try {
       const targetFacilityId = isDHO ? Number(formData.facility_id) : (userFacilityId || Number(formData.facility_id));
@@ -117,6 +139,7 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
         facility_id: targetFacilityId,
         medical_council_reg_number: formData.medical_council_reg_number.trim() || undefined,
         email: formData.email.trim() || undefined,
+        temporary_password: formData.temporary_password ? formData.temporary_password.trim() : undefined,
       };
 
       await onInvite(payload);
@@ -324,6 +347,34 @@ export const InviteStaffModal: React.FC<InviteStaffModalProps> = ({
               </p>
             </div>
           )}
+
+          {/* Initial Temporary Credential */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Initial Temporary Password <span className="text-slate-400 font-normal">(Min. 8 characters)</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={formData.temporary_password}
+                onChange={(e) => setFormData({ ...formData, temporary_password: e.target.value })}
+                placeholder="e.g. TempAdmin@2026"
+                className="w-full text-sm border border-slate-300 rounded-lg p-2.5 pr-10 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                data-testid="invite-password-input"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Initial login credential for the appointed administrator. Staff will use this to sign in once activated.
+            </p>
+          </div>
 
           {/* Registration Number */}
           <div>
