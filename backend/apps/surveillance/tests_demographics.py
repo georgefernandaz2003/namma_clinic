@@ -1314,3 +1314,587 @@ class PublicHealthIntelligenceDemographicAPIsTestCase(TestCase):
         self.assertEqual(res_45_59.data['summary']['total_current_cases'], 0)
 
 
+class PublicHealthHistoricalDemographicsTestCase(TestCase):
+    """
+    Comprehensive tests for Demographic Historical Analysis:
+    Verifies all 17 required scenarios:
+    1. Historical age-group counts.
+    2. Historical gender counts.
+    3. Age + gender matrix.
+    4. Monthly demographic trends.
+    5. Disease + age filter.
+    6. Disease + gender filter.
+    7. Disease + age + gender filter.
+    8. Facility + demographic filter.
+    9. District + demographic filter.
+    10. Unauthorized facility + demographic filter -> 403.
+    11. Unauthorized district + demographic filter -> 403.
+    12. Missing DOB -> UNKNOWN.
+    13. Missing gender -> UNKNOWN.
+    14. Age calculated using DiseaseCase.report_date.
+    15. All age groups are represented.
+    16. Existing historical response fields remain unchanged.
+    17. No demographic filters -> existing behavior.
+    """
+    @classmethod
+    def setUpTestData(cls):
+        cls.state = State.objects.create(name='Karnataka', code='KA')
+        cls.district_central = District.objects.create(state=cls.state, name='BBMP Central', code='KA-BU')
+        cls.district_rural = District.objects.create(state=cls.state, name='Bengaluru Rural', code='KA-BR')
+
+        cls.zone_central = Zone.objects.create(district=cls.district_central, name='Central Zone', code='Z-CEN')
+        cls.zone_rural = Zone.objects.create(district=cls.district_rural, name='Rural Zone', code='Z-RUR')
+
+        cls.ward_central = Ward.objects.create(zone=cls.zone_central, ward_number=10, name='Indiranagar', population=20000)
+        cls.ward_rural = Ward.objects.create(zone=cls.zone_rural, ward_number=20, name='Varthur', population=15000)
+
+        # Facilities
+        cls.fac_central_1 = Facility.objects.create(
+            facility_code='HOSP-C1', facility_name='Victoria General Hospital', facility_type='MAIN_HOSPITAL',
+            district=cls.district_central, ward=cls.ward_central, state=cls.state
+        )
+        cls.fac_central_2 = Facility.objects.create(
+            facility_code='CLINIC-C2', facility_name='Indiranagar Namma Clinic', facility_type='NAMMA_CLINIC',
+            district=cls.district_central, ward=cls.ward_central, state=cls.state
+        )
+        cls.fac_rural = Facility.objects.create(
+            facility_code='RURAL-R1', facility_name='Varthur Health Centre', facility_type='RURAL_CLINIC',
+            district=cls.district_rural, ward=cls.ward_rural, state=cls.state
+        )
+
+        # Users
+        cls.admin_central_1 = User.objects.create_user(
+            username='hist_admin_c1', password='Password123!', role='HOSPITAL_ADMIN',
+            assigned_facility=cls.fac_central_1
+        )
+        cls.officer_central = User.objects.create_user(
+            username='hist_officer_c', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_central
+        )
+        cls.officer_rural = User.objects.create_user(
+            username='hist_officer_r', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_rural
+        )
+
+        # Fixed reference date: 2026-10-04
+        cls.as_of = datetime.date(2026, 10, 4)
+
+        # Deterministic Patients across age boundaries, genders, and edge cases
+        # 0-5 MALE (2 yo in 2026)
+        cls.p_0_5 = Patient.objects.create(
+            patient_id='P-H01', name='Infant Boy',
+            date_of_birth=datetime.date(2024, 5, 15), age=2, gender='MALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central_1
+        )
+        # 6-14 FEMALE (10 yo in 2026)
+        cls.p_6_14 = Patient.objects.create(
+            patient_id='P-H02', name='School Girl',
+            date_of_birth=datetime.date(2016, 5, 15), age=10, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central_1
+        )
+        # 15-24 FEMALE (20 yo in 2026)
+        cls.p_15_24 = Patient.objects.create(
+            patient_id='P-H03', name='College Student',
+            date_of_birth=datetime.date(2006, 5, 15), age=20, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central_1
+        )
+        # 25-44 MALE (30 yo in 2026)
+        cls.p_25_44_m = Patient.objects.create(
+            patient_id='P-H04', name='Adult Male',
+            date_of_birth=datetime.date(1996, 5, 15), age=30, gender='MALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central_1
+        )
+        # 25-44 FEMALE (35 yo in 2026)
+        cls.p_25_44_f = Patient.objects.create(
+            patient_id='P-H05', name='Adult Female',
+            date_of_birth=datetime.date(1991, 5, 15), age=35, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central_1
+        )
+        # 45-59 OTHER (50 yo in 2026)
+        cls.p_45_59 = Patient.objects.create(
+            patient_id='P-H06', name='Middle Aged Other',
+            date_of_birth=datetime.date(1976, 5, 15), age=50, gender='OTHER',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central_1
+        )
+        # 60+ MALE (70 yo in 2026)
+        cls.p_60_plus = Patient.objects.create(
+            patient_id='P-H07', name='Elderly Male',
+            date_of_birth=datetime.date(1956, 5, 15), age=70, gender='MALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central_1
+        )
+        # Missing DOB Patient (null DOB -> age UNKNOWN, FEMALE)
+        cls.p_no_dob = Patient.objects.create(
+            patient_id='P-H08', name='Missing DOB Patient',
+            date_of_birth=None, age=30, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central_1
+        )
+        # Missing Gender Patient (26 yo in 2026, blank gender -> gender UNKNOWN)
+        cls.p_no_gender = Patient.objects.create(
+            patient_id='P-H09', name='Missing Gender Patient',
+            date_of_birth=datetime.date(2000, 5, 15), age=26, gender='',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central_1
+        )
+        # Aging Patient for report_date relative calculation
+        # Born 2010-07-01: age 14 on 2024-07-01 (6-14), age 16 on 2026-07-01 (15-24)
+        cls.p_aging = Patient.objects.create(
+            patient_id='P-H10', name='Aging Multi-Year Patient',
+            date_of_birth=datetime.date(2010, 7, 1), age=99, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_central_1
+        )
+        # Rural Patient
+        cls.p_rural = Patient.objects.create(
+            patient_id='P-H11', name='Rural Patient',
+            date_of_birth=datetime.date(1995, 1, 1), age=31, gender='FEMALE',
+            district=cls.district_rural, ward=cls.ward_rural, registered_at_facility=cls.fac_rural
+        )
+
+        # -----------------------------------------------------------------------
+        # Create Historical Disease Cases across 6 calendar months (May - Oct 2026)
+        # -----------------------------------------------------------------------
+        # May 2026 (2026-05): 1 Dengue case (P_0_5: 0-5 MALE)
+        cls.c_may_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_0_5, facility=cls.fac_central_1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 5, 10), severity='MILD'
+        )
+
+        # June 2026 (2026-06): 1 Dengue case (P_6_14: 6-14 FEMALE)
+        cls.c_jun_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_6_14, facility=cls.fac_central_1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 6, 12), severity='MODERATE'
+        )
+
+        # July 2026 (2026-07): 2 Dengue cases
+        # - P_15_24: 15-24 FEMALE
+        # - P_AGING: 16 yo on report_date -> 15-24 FEMALE
+        cls.c_jul_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_15_24, facility=cls.fac_central_1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 7, 15), severity='MILD'
+        )
+        cls.c_jul_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_aging, facility=cls.fac_central_1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 7, 20), severity='SEVERE'
+        )
+
+        # August 2026 (2026-08): 2 Dengue cases
+        # - P_25_44_F: 25-44 FEMALE
+        # - P_NO_GENDER: 26 yo -> 25-44, UNKNOWN gender
+        cls.c_aug_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_25_44_f, facility=cls.fac_central_1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 8, 10), severity='MODERATE'
+        )
+        cls.c_aug_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_no_gender, facility=cls.fac_central_1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 8, 25), severity='MILD'
+        )
+
+        # September 2026 (2026-09): 2 Dengue cases at fac_central_1
+        # - P_25_44_M: 25-44 MALE
+        # - P_NO_DOB: UNKNOWN age, FEMALE
+        cls.c_sep_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_25_44_m, facility=cls.fac_central_1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 9, 5), severity='SEVERE'
+        )
+        cls.c_sep_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_no_dob, facility=cls.fac_central_1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 9, 20), severity='MILD'
+        )
+
+        # September 2026: 1 Dengue case at fac_central_2 (P_25_44_F)
+        cls.c_sep_fac2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_25_44_f, facility=cls.fac_central_2,
+            ward=cls.ward_central, report_date=datetime.date(2026, 9, 15), severity='MILD'
+        )
+
+        # October 2026 (2026-10): 2 Dengue cases at fac_central_1
+        # - P_45_59: 45-59 OTHER
+        # - P_60_PLUS: 60+ MALE
+        cls.c_oct_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_45_59, facility=cls.fac_central_1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 10, 1), severity='MILD'
+        )
+        cls.c_oct_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_60_plus, facility=cls.fac_central_1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 10, 3), severity='MILD'
+        )
+
+        # Malaria case at fac_central_1 (different disease)
+        cls.c_malaria = DiseaseCase.objects.create(
+            disease_name='Malaria', patient=cls.p_0_5, facility=cls.fac_central_1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 9, 18), severity='MILD'
+        )
+
+        # Rural Dengue case at fac_rural (different district)
+        cls.c_rural_dengue = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_rural, facility=cls.fac_rural,
+            ward=cls.ward_rural, report_date=datetime.date(2026, 9, 15), severity='MILD'
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin_central_1)
+
+    # 1. Historical age-group counts
+    def test_01_historical_age_group_counts(self):
+        """
+        Verifies historical counts grouped by age group across the observation window.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('historical_age_groups', res.data)
+
+        age_groups = res.data['historical_age_groups']
+        # Map age_group to total_cases
+        ag_map = {item['age_group']: item['total_cases'] for item in age_groups}
+
+        # fac_central_1 Dengue cases:
+        # 0-5: 1 (May)
+        # 6-14: 1 (Jun)
+        # 15-24: 2 (Jul: p_15_24, p_aging)
+        # 25-44: 2 (Aug: p_25_44_f, p_no_gender) + 1 (Sep: p_25_44_m) = 3
+        # 45-59: 1 (Oct: p_45_59)
+        # 60+: 1 (Oct: p_60_plus)
+        # UNKNOWN: 1 (Sep: p_no_dob)
+        self.assertEqual(ag_map['0-5'], 1)
+        self.assertEqual(ag_map['6-14'], 1)
+        self.assertEqual(ag_map['15-24'], 2)
+        self.assertEqual(ag_map['25-44'], 3)
+        self.assertEqual(ag_map['45-59'], 1)
+        self.assertEqual(ag_map['60+'], 1)
+        self.assertEqual(ag_map['UNKNOWN'], 1)
+
+        # Every age group item has monthly_counts spanning all 6 months
+        for item in age_groups:
+            self.assertEqual(len(item['monthly_counts']), 6)
+            self.assertEqual(sum(m['count'] for m in item['monthly_counts']), item['total_cases'])
+
+    # 2. Historical gender counts
+    def test_02_historical_gender_counts(self):
+        """
+        Verifies historical gender distribution including MALE, FEMALE, OTHER, and UNKNOWN.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('historical_gender', res.data)
+
+        genders = res.data['historical_gender']
+        g_map = {item['gender']: item['total_cases'] for item in genders}
+
+        # fac_central_1 Dengue cases by gender:
+        # MALE: p_0_5 (May), p_25_44_m (Sep), p_60_plus (Oct) = 3
+        # FEMALE: p_6_14 (Jun), p_15_24 (Jul), p_aging (Jul), p_25_44_f (Aug), p_no_dob (Sep) = 5
+        # OTHER: p_45_59 (Oct) = 1
+        # UNKNOWN: p_no_gender (Aug) = 1
+        self.assertEqual(g_map['MALE'], 3)
+        self.assertEqual(g_map['FEMALE'], 5)
+        self.assertEqual(g_map['OTHER'], 1)
+        self.assertEqual(g_map['UNKNOWN'], 1)
+
+        # Monthly counts match total
+        for item in genders:
+            self.assertEqual(len(item['monthly_counts']), 6)
+            self.assertEqual(sum(m['count'] for m in item['monthly_counts']), item['total_cases'])
+
+    # 3. Age + gender matrix
+    def test_03_age_gender_matrix(self):
+        """
+        Verifies the 2D cross-tabulation matrix of age groups x genders across historical data.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('age_gender_matrix', res.data)
+
+        matrix = res.data['age_gender_matrix']
+        # Check specific cross-tabulations
+        self.assertEqual(matrix['0-5']['MALE'], 1)
+        self.assertEqual(matrix['0-5']['FEMALE'], 0)
+        self.assertEqual(matrix['6-14']['FEMALE'], 1)
+        self.assertEqual(matrix['15-24']['FEMALE'], 2)
+        self.assertEqual(matrix['25-44']['FEMALE'], 1) # p_25_44_f
+        self.assertEqual(matrix['25-44']['MALE'], 1)   # p_25_44_m
+        self.assertEqual(matrix['25-44']['UNKNOWN'], 1)# p_no_gender
+        self.assertEqual(matrix['45-59']['OTHER'], 1)  # p_45_59
+        self.assertEqual(matrix['60+']['MALE'], 1)     # p_60_plus
+        self.assertEqual(matrix['UNKNOWN']['FEMALE'], 1)# p_no_dob
+
+    # 4. Monthly demographic trends
+    def test_04_monthly_demographic_trends(self):
+        """
+        Verifies monthly demographic case counts with age_groups and gender breakdown per month.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('monthly_demographic_trends', res.data)
+
+        trends = res.data['monthly_demographic_trends']
+        self.assertEqual(len(trends), 6)
+
+        # Map trends by month
+        trend_map = {t['month']: t for t in trends}
+
+        # May: 1 case (0-5, MALE)
+        may = trend_map['2026-05']
+        self.assertEqual(may['total_cases'], 1)
+        self.assertEqual(may['age_groups']['0-5'], 1)
+        self.assertEqual(may['gender']['MALE'], 1)
+
+        # July: 2 cases (both 15-24, FEMALE)
+        jul = trend_map['2026-07']
+        self.assertEqual(jul['total_cases'], 2)
+        self.assertEqual(jul['age_groups']['15-24'], 2)
+        self.assertEqual(jul['gender']['FEMALE'], 2)
+
+        # August: 2 cases (both 25-44: 1 FEMALE, 1 UNKNOWN gender)
+        aug = trend_map['2026-08']
+        self.assertEqual(aug['total_cases'], 2)
+        self.assertEqual(aug['age_groups']['25-44'], 2)
+        self.assertEqual(aug['gender']['FEMALE'], 1)
+        self.assertEqual(aug['gender']['UNKNOWN'], 1)
+
+        # October: 2 cases (1 45-59 OTHER, 1 60+ MALE)
+        oct_m = trend_map['2026-10']
+        self.assertEqual(oct_m['total_cases'], 2)
+        self.assertEqual(oct_m['age_groups']['45-59'], 1)
+        self.assertEqual(oct_m['age_groups']['60+'], 1)
+        self.assertEqual(oct_m['gender']['OTHER'], 1)
+        self.assertEqual(oct_m['gender']['MALE'], 1)
+
+    # 5. Disease + age filter
+    def test_05_disease_and_age_filter(self):
+        """
+        ?disease=Dengue&age_group=15-24 filters strictly to 15-24 Dengue cases.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&age_group=15-24&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # Total cases in history = 2 (p_15_24 and p_aging in July)
+        self.assertEqual(res.data['total_cases_in_history'], 2)
+
+        ag_map = {item['age_group']: item['total_cases'] for item in res.data['historical_age_groups']}
+        self.assertEqual(ag_map['15-24'], 2)
+        self.assertEqual(ag_map['0-5'], 0)
+        self.assertEqual(ag_map['25-44'], 0)
+
+    # 6. Disease + gender filter
+    def test_06_disease_and_gender_filter(self):
+        """
+        ?disease=Dengue&gender=MALE filters strictly to MALE Dengue cases.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&gender=MALE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # Total cases in history = 3 (May: p_0_5, Sep: p_25_44_m, Oct: p_60_plus)
+        self.assertEqual(res.data['total_cases_in_history'], 3)
+
+        g_map = {item['gender']: item['total_cases'] for item in res.data['historical_gender']}
+        self.assertEqual(g_map['MALE'], 3)
+        self.assertEqual(g_map['FEMALE'], 0)
+        self.assertEqual(g_map['OTHER'], 0)
+
+    # 7. Disease + age + gender filter
+    def test_07_disease_and_age_and_gender_filter(self):
+        """
+        ?disease=Dengue&age_group=25-44&gender=MALE filters by AND logic (p_25_44_m only).
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&age_group=25-44&gender=MALE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 1)
+        matrix = res.data['age_gender_matrix']
+        self.assertEqual(matrix['25-44']['MALE'], 1)
+        self.assertEqual(matrix['25-44']['FEMALE'], 0)
+
+    # 8. Facility + demographic filter
+    def test_08_facility_and_demographic_filter(self):
+        """
+        Hospital Admin querying assigned facility with demographic filter succeeds.
+        ?disease=Dengue&facility=<id>&age_group=0-5&gender=MALE
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&facility={self.fac_central_1.id}&age_group=0-5&gender=MALE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 1)
+
+    # 9. District + demographic filter
+    def test_09_district_and_demographic_filter(self):
+        """
+        District Officer querying assigned district with demographic filter includes cases
+        across all facilities in that district.
+        """
+        self.client.force_authenticate(user=self.officer_central)
+        # Query Dengue + age_group=25-44 + gender=FEMALE in district_central
+        # Matches p_25_44_f at fac_central_1 (Aug) AND p_25_44_f at fac_central_2 (Sep) = 2 cases
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&district={self.district_central.id}&age_group=25-44&gender=FEMALE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 2)
+
+    # 10. Unauthorized facility + demographic filter -> 403
+    def test_10_unauthorized_facility_and_demographic_filter_forbidden(self):
+        """
+        Hospital Admin requesting another facility returns HTTP 403 Forbidden.
+        Demographic filters must never bypass authorization.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?facility={self.fac_central_2.id}&disease=Dengue&age_group=25-44&gender=FEMALE"
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    # 11. Unauthorized district + demographic filter -> 403
+    def test_11_unauthorized_district_and_demographic_filter_forbidden(self):
+        """
+        District Officer requesting another district returns HTTP 403 Forbidden.
+        Demographic filters must never bypass authorization.
+        """
+        self.client.force_authenticate(user=self.officer_central)
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?district={self.district_rural.id}&disease=Dengue&age_group=25-44&gender=FEMALE"
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    # 12. Missing DOB -> UNKNOWN
+    def test_12_missing_dob_classified_as_unknown(self):
+        """
+        Cases with missing/invalid DOB are classified safely as UNKNOWN age group.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        matrix = res.data['age_gender_matrix']
+        self.assertIn('UNKNOWN', matrix)
+        self.assertEqual(matrix['UNKNOWN']['FEMALE'], 1)
+
+    # 13. Missing gender -> UNKNOWN
+    def test_13_missing_gender_classified_as_unknown(self):
+        """
+        Cases with missing/blank gender are classified safely as UNKNOWN gender.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        matrix = res.data['age_gender_matrix']
+        self.assertEqual(matrix['25-44']['UNKNOWN'], 1)
+
+    # 14. Age calculated using DiseaseCase.report_date
+    def test_14_age_calculated_using_case_report_date(self):
+        """
+        Age is calculated relative to each individual DiseaseCase.report_date:
+        p_aging born on 2010-07-01:
+        On report_date 2026-07-20: Age is 16 completed years (age_group 15-24).
+        It does not use today's date or static DB age.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        trends = {t['month']: t for t in res.data['monthly_demographic_trends']}
+        jul = trends['2026-07']
+        # July includes p_15_24 (20 yo) and p_aging (16 yo) -> exactly 2 cases in 15-24
+        self.assertEqual(jul['age_groups']['15-24'], 2)
+
+    # 15. All age groups are represented
+    def test_15_all_age_groups_represented(self):
+        """
+        Every supported age group (0-5, 6-14, 15-24, 25-44, 45-59, 60+) is represented,
+        including groups with zero cases.
+        """
+        # Malaria at fac_central_1 only has 1 case (p_0_5: 0-5 MALE)
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Malaria&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ag_items = res.data['historical_age_groups']
+        ag_names = [item['age_group'] for item in ag_items]
+
+        for required_ag in ['0-5', '6-14', '15-24', '25-44', '45-59', '60+']:
+            self.assertIn(required_ag, ag_names)
+
+        # Groups with no cases have 0
+        ag_map = {item['age_group']: item['total_cases'] for item in ag_items}
+        self.assertEqual(ag_map['0-5'], 1)
+        self.assertEqual(ag_map['6-14'], 0)
+        self.assertEqual(ag_map['15-24'], 0)
+        self.assertEqual(ag_map['25-44'], 0)
+        self.assertEqual(ag_map['45-59'], 0)
+        self.assertEqual(ag_map['60+'], 0)
+
+    # 16. Existing historical response fields remain unchanged
+    def test_16_existing_historical_response_fields_unchanged(self):
+        """
+        Confirms backward compatibility: total_cases_in_history, monthly_series,
+        severity_breakdown, observation_period, months_analyzed, monthly_average,
+        trend_direction, and explanation are all preserved.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('total_cases_in_history', res.data)
+        self.assertIn('monthly_series', res.data)
+        self.assertIn('historical_series', res.data)
+        self.assertIn('observation_period', res.data)
+        self.assertIn('months_analyzed', res.data)
+        self.assertIn('monthly_average', res.data)
+        self.assertIn('current_month_cases', res.data)
+        self.assertIn('previous_month_cases', res.data)
+        self.assertIn('percentage_change', res.data)
+        self.assertIn('trend_direction', res.data)
+        self.assertIn('explanation', res.data)
+
+        # Check severity_breakdown inside monthly series
+        first_month = res.data['historical_series'][0]
+        self.assertIn('severity_breakdown', first_month)
+        self.assertIn('MILD', first_month['severity_breakdown'])
+        self.assertIn('MODERATE', first_month['severity_breakdown'])
+        self.assertIn('SEVERE', first_month['severity_breakdown'])
+
+    # 17. No demographic filters -> existing behavior
+    def test_17_no_demographic_filters_existing_behavior(self):
+        """
+        When demographic filters are omitted, all 10 Dengue cases recorded at fac_central_1
+        across the 6-month period are included in the result.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # Total cases at fac_central_1 across May-Oct:
+        # May(1) + Jun(1) + Jul(2) + Aug(2) + Sep(2) + Oct(2) = 10
+        self.assertEqual(res.data['total_cases_in_history'], 10)
+
+    # URL Alias Tests
+    def test_historical_url_alias_routes(self):
+        """
+        Verifies both /surveillance/intelligence/historical/ and alias routes work identically.
+        """
+        urls = [
+            f"{reverse('intelligence_historical')}?disease=Dengue&date={self.as_of}&months=6",
+            f"{reverse('intelligence_historical_alias')}?disease=Dengue&date={self.as_of}&months=6",
+            f"{reverse('intelligence_historical_disease_alias')}?disease=Dengue&date={self.as_of}&months=6",
+        ]
+        for u in urls:
+            res = self.client.get(u)
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            self.assertEqual(res.data['total_cases_in_history'], 10)
+            self.assertIn('historical_age_groups', res.data)
+            self.assertIn('historical_gender', res.data)
+            self.assertIn('age_gender_matrix', res.data)
+            self.assertIn('monthly_demographic_trends', res.data)
+
+
+

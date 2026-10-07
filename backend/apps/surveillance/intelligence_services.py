@@ -608,7 +608,30 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
     - monthly counts
     - breakdown by severity (MILD, MODERATE, SEVERE)
     - trend direction across sequential periods
+    - historical age-group distribution (all supported age groups represented)
+    - historical gender distribution (all supported genders represented)
+    - 2D age + gender cross-tabulation matrix
+    - monthly demographic trends across each historical month
     """
+    from apps.surveillance.demographic_services import (
+        AGE_GROUPS,
+        AGE_GROUP_0_5,
+        AGE_GROUP_6_14,
+        AGE_GROUP_15_24,
+        AGE_GROUP_25_44,
+        AGE_GROUP_45_59,
+        AGE_GROUP_60_PLUS,
+        AGE_GROUP_UNKNOWN,
+        GENDER_CHOICES,
+        GENDER_MALE,
+        GENDER_FEMALE,
+        GENDER_OTHER,
+        GENDER_UNKNOWN,
+        resolve_patient_demographics,
+        build_age_gender_matrix,
+        filter_cases_by_demographics,
+    )
+
     as_of = resolve_date(as_of_date)
 
     qs = DiseaseCase.objects.all()
@@ -629,39 +652,193 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
     if age_group or gender:
         qs = filter_cases_by_demographics(qs, age_groups=age_group, genders=gender)
 
-    series = []
-    case_counts = []
-
+    # Generate chronological sequence of months from oldest to newest
+    months_list = []
     for m_offset in range(months - 1, -1, -1):
         y = as_of.year
         m = as_of.month - m_offset
         while m <= 0:
             m += 12
             y -= 1
+        period_label = f"{y}-{m:02d}"
+        months_list.append((y, m, period_label))
 
-        sub_qs = qs.filter(report_date__year=y, report_date__month=m)
-        total_m = sub_qs.count()
-        mild_m = sub_qs.filter(severity='MILD').count()
-        mod_m = sub_qs.filter(severity='MODERATE').count()
-        sev_m = sub_qs.filter(severity='SEVERE').count()
+    oldest_y, oldest_m, _ = months_list[0]
+    newest_y, newest_m, _ = months_list[-1]
+    start_date = datetime.date(oldest_y, oldest_m, 1)
 
-        case_counts.append(total_m)
-        series.append({
-            'period_label': f"{y}-{m:02d}",
+    # Determine end date of the historical period
+    if newest_m == 12:
+        end_date = datetime.date(newest_y + 1, 1, 1) - datetime.timedelta(days=1)
+    else:
+        end_date = datetime.date(newest_y, newest_m + 1, 1) - datetime.timedelta(days=1)
+
+    # Single efficient query with select_related('patient')
+    historical_cases_qs = qs.filter(
+        report_date__gte=start_date,
+        report_date__lte=end_date
+    ).select_related('patient')
+
+    historical_cases = list(historical_cases_qs)
+
+    # Initialize data structures for each month
+    month_data = {}
+    for (y, m, pl) in months_list:
+        month_data[(y, m)] = {
+            'period_label': pl,
             'year': y,
             'month': m,
-            'total_cases': total_m,
+            'total_cases': 0,
+            'severity': {'MILD': 0, 'MODERATE': 0, 'SEVERE': 0},
+            'age_groups': {ag: 0 for ag in AGE_GROUPS},
+            'gender': {g: 0 for g in GENDER_CHOICES},
+            'unknown_age': 0,
+            'unknown_gender': 0,
+        }
+
+    # Tracking across entire historical window
+    total_age_group_counts = {ag: 0 for ag in AGE_GROUPS}
+    total_unknown_age_count = 0
+    total_gender_counts = {g: 0 for g in GENDER_CHOICES}
+    total_unknown_gender_count = 0
+
+    # Process all cases in a single in-memory pass
+    for case in historical_cases:
+        r_date = case.report_date
+        y = r_date.year
+        m = r_date.month
+        key = (y, m)
+        if key not in month_data:
+            continue
+
+        # Severity breakdown
+        sev = (case.severity or 'MILD').upper()
+        if sev not in month_data[key]['severity']:
+            month_data[key]['severity'][sev] = 0
+        month_data[key]['severity'][sev] += 1
+        month_data[key]['total_cases'] += 1
+
+        # Authoritative demographics calculated using DiseaseCase.report_date
+        demo = resolve_patient_demographics(
+            case.patient,
+            reference_date=r_date,
+            allow_stored_age_fallback=False
+        )
+        case_ag = demo['age_group']
+        case_g = demo['gender']
+
+        # Age group tracking
+        if case_ag in total_age_group_counts:
+            total_age_group_counts[case_ag] += 1
+            month_data[key]['age_groups'][case_ag] += 1
+        else:
+            total_unknown_age_count += 1
+            month_data[key]['unknown_age'] += 1
+
+        # Gender tracking
+        if case_g in total_gender_counts:
+            total_gender_counts[case_g] += 1
+            month_data[key]['gender'][case_g] += 1
+        else:
+            total_unknown_gender_count += 1
+            month_data[key]['unknown_gender'] += 1
+
+    # Build historical_series (preserves existing format and backward compatibility)
+    historical_series = []
+    case_counts = []
+    monthly_demographic_trends = []
+
+    for (y, m, pl) in months_list:
+        md = month_data[(y, m)]
+        tot = md['total_cases']
+        case_counts.append(tot)
+
+        historical_series.append({
+            'period_label': pl,
+            'year': y,
+            'month': m,
+            'total_cases': tot,
             'severity_breakdown': {
-                'MILD': mild_m,
-                'MODERATE': mod_m,
-                'SEVERE': sev_m
+                'MILD': md['severity'].get('MILD', 0),
+                'MODERATE': md['severity'].get('MODERATE', 0),
+                'SEVERE': md['severity'].get('SEVERE', 0),
             }
         })
+
+        # Monthly demographic trend object
+        ag_dict = dict(md['age_groups'])
+        if total_unknown_age_count > 0:
+            ag_dict[AGE_GROUP_UNKNOWN] = md['unknown_age']
+
+        g_dict = dict(md['gender'])
+        if total_unknown_gender_count > 0:
+            g_dict[GENDER_UNKNOWN] = md['unknown_gender']
+
+        monthly_demographic_trends.append({
+            'month': pl,
+            'total_cases': tot,
+            'age_groups': ag_dict,
+            'gender': g_dict
+        })
+
+    # Build historical_age_groups (all supported age groups represented, plus UNKNOWN if present)
+    historical_age_groups = []
+    for ag in AGE_GROUPS:
+        m_counts = [
+            {'month': pl, 'count': month_data[(y, m)]['age_groups'].get(ag, 0), 'cases': month_data[(y, m)]['age_groups'].get(ag, 0)}
+            for (y, m, pl) in months_list
+        ]
+        historical_age_groups.append({
+            'age_group': ag,
+            'total_cases': total_age_group_counts[ag],
+            'monthly_counts': m_counts
+        })
+
+    if total_unknown_age_count > 0:
+        m_counts = [
+            {'month': pl, 'count': month_data[(y, m)]['unknown_age'], 'cases': month_data[(y, m)]['unknown_age']}
+            for (y, m, pl) in months_list
+        ]
+        historical_age_groups.append({
+            'age_group': AGE_GROUP_UNKNOWN,
+            'total_cases': total_unknown_age_count,
+            'monthly_counts': m_counts
+        })
+
+    # Build historical_gender (all supported genders represented, plus UNKNOWN if present)
+    historical_gender = []
+    for g in GENDER_CHOICES:
+        m_counts = [
+            {'month': pl, 'count': month_data[(y, m)]['gender'].get(g, 0), 'cases': month_data[(y, m)]['gender'].get(g, 0)}
+            for (y, m, pl) in months_list
+        ]
+        historical_gender.append({
+            'gender': g,
+            'total_cases': total_gender_counts[g],
+            'monthly_counts': m_counts
+        })
+
+    if total_unknown_gender_count > 0:
+        m_counts = [
+            {'month': pl, 'count': month_data[(y, m)]['unknown_gender'], 'cases': month_data[(y, m)]['unknown_gender']}
+            for (y, m, pl) in months_list
+        ]
+        historical_gender.append({
+            'gender': GENDER_UNKNOWN,
+            'total_cases': total_unknown_gender_count,
+            'monthly_counts': m_counts
+        })
+
+    # Build age_gender_matrix using existing utility
+    age_gender_matrix = build_age_gender_matrix(
+        historical_cases,
+        reference_date=as_of,
+        allow_stored_age_fallback=False
+    )
 
     current_val = case_counts[-1] if case_counts else 0
     previous_val = case_counts[-2] if len(case_counts) > 1 else 0
     status_str, pct_change, explanation = compute_trend_status(current_val, previous_val)
-
     mean_cases = round(sum(case_counts) / len(case_counts), 2) if case_counts else 0.0
 
     return {
@@ -674,8 +851,19 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
         'percentage_change': pct_change,
         'trend_direction': status_str,
         'explanation': explanation,
-        'historical_series': series
+        'historical_series': historical_series,
+        'monthly_series': historical_series,
+        'observation_period': {
+            'start_date': str(start_date),
+            'end_date': str(as_of),
+            'months_count': months
+        },
+        'historical_age_groups': historical_age_groups,
+        'historical_gender': historical_gender,
+        'age_gender_matrix': age_gender_matrix,
+        'monthly_demographic_trends': monthly_demographic_trends
     }
+
 
 
 # ---------------------------------------------------------------------------

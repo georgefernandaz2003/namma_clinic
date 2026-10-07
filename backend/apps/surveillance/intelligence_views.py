@@ -130,8 +130,17 @@ class PublicHealthHistoricalDiseaseView(BaseIntelligenceView):
         fac_id = request.query_params.get('facility')
         dist_id = request.query_params.get('district')
         disease = request.query_params.get('disease')
-        months = int(request.query_params.get('months', 6))
         as_of_date = request.query_params.get('date')
+
+        months_param = request.query_params.get('months')
+        months = 6
+        if months_param is not None and str(months_param).strip() != '':
+            try:
+                months = int(months_param)
+                if months <= 0 or months > 60:
+                    return Response({'error': 'Invalid months parameter. Must be an integer between 1 and 60.'}, status=status.HTTP_400_BAD_REQUEST)
+            except (ValueError, TypeError):
+                return Response({'error': 'Invalid months parameter. Must be a valid positive integer.'}, status=status.HTTP_400_BAD_REQUEST)
 
         scope = resolve_facility_scope(
             user=request.user,
