@@ -111,7 +111,9 @@ class CSVExportView(APIView):
             from apps.reports.services import get_pharmacy_report_metrics_for_period
             pharm_data = get_pharmacy_report_metrics_for_period(target_fac_ids, start_date, end_date, period_param)
             for item in pharm_data['stock_movement']['items']:
-                writer.writerow([item['medicine'], item['brand_name'], item['dosage_form'], item['unit'], item['opening_stock'], item['received'], item['dispensed'], item['adjusted'], item['closing_stock']])
+                op_val = item['opening_stock'] if item['opening_stock'] is not None else 'UNAVAILABLE'
+                cl_val = item['closing_stock'] if item['closing_stock'] is not None else 'UNAVAILABLE'
+                writer.writerow([item['medicine'], item['brand_name'], item['dosage_form'], item['unit'], op_val, item['received'], item['dispensed'], item['adjusted'], cl_val])
 
         elif report_type == 'expiry':
             writer.writerow(['Medicine Name', 'Batch Number', 'Quantity', 'Expiry Date', 'Days Remaining', 'Status', 'Category'])

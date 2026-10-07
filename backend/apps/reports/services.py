@@ -34,15 +34,40 @@ def get_stock_status(quantity, minimum_stock=25, reorder_level=None):
 
 
 
+# Authoritative Queue Filter Conditions
+Q_TRIAGE_WAITING = Q(current_queue='TRIAGE', status__in=['WAITING', 'WAITING_FOR_TRIAGE'])
+Q_TRIAGE_IN_PROGRESS = Q(current_queue='TRIAGE', status='IN_TRIAGE')
+Q_TRIAGE_COMPLETED = Q(triage_end_time__isnull=False) | Q(triage__isnull=False) | ~Q(current_queue='TRIAGE')
+
+Q_DOCTOR_WAITING = Q(current_queue='DOCTOR', status__in=['WAITING_FOR_DOCTOR', 'TRIAGED', 'LAB_COMPLETED'])
+Q_DOCTOR_IN_CONSULTATION = Q(current_queue='DOCTOR', status='IN_CONSULTATION')
+Q_DOCTOR_COMPLETED = Q(status='COMPLETED') | Q(current_queue__in=['LAB', 'PHARMACY', 'COMPLETED'])
+
+Q_LAB_WAITING = Q(current_queue='LAB', status='LAB_PENDING')
+Q_LAB_IN_PROGRESS = Q(current_queue='LAB', status='LAB_IN_PROGRESS')
+Q_LAB_PENDING = Q(current_queue='LAB', status__in=['LAB_PENDING', 'LAB_IN_PROGRESS'])
+Q_LAB_COMPLETED = Q(status='LAB_COMPLETED')
+
+Q_PHARMACY_WAITING = Q(current_queue='PHARMACY', status='WAITING_FOR_PHARMACY')
+Q_PHARMACY_IN_PROGRESS = Q(current_queue='PHARMACY', status='IN_PHARMACY')
+Q_PHARMACY_QUEUE_TOTAL = Q(current_queue='PHARMACY', status__in=['WAITING_FOR_PHARMACY', 'IN_PHARMACY'])
+Q_PHARMACY_COMPLETED = Q(status='COMPLETED', current_queue='COMPLETED')
+
+Q_COMPLETED_VISIT = Q(status='COMPLETED') | Q(current_queue='COMPLETED')
+Q_EMERGENCY_PRIORITY = Q(priority='EMERGENCY')
+
+
 def get_facility_scope(user, requested_facility_id=None):
     """
     Authoritative facility scoping resolution:
     - DISTRICT_OFFICER:
-      Default to district-wide monitoring (active_facility_id: None) over all facilities in assigned district.
+      Default to district-wide monitoring over all facilities in assigned district.
       If a specific facility is requested and belongs to assigned district, scopes to that single facility.
-      If requested facility is outside district, clamps to district-wide scope.
+      If requested facility is outside assigned district or invalid, clamps strictly to assigned district
+      without ever broadening scope to unassigned facilities or other districts.
+      If user has no assigned district, scope is empty (Facility.objects.none()).
     - Operational Roles (HOSPITAL_ADMIN, DOCTOR, NURSE, LAB_TECHNICIAN, PHARMACIST):
-      Strictly locked to assigned_facility_id. Any requested facility param is ignored.
+      Strictly locked to assigned_facility_id. Any requested facility param is ignored and cannot expose another facility.
     """
     role = getattr(user, 'role', '')
 
@@ -52,11 +77,11 @@ def get_facility_scope(user, requested_facility_id=None):
             district_name = user.assigned_district.name
             district_id = user.assigned_district.id
         else:
-            district_fac_qs = Facility.objects.all()
-            district_name = "District"
+            district_fac_qs = Facility.objects.none()
+            district_name = None
             district_id = None
 
-        if requested_facility_id:
+        if requested_facility_id is not None:
             try:
                 fac_id_int = int(requested_facility_id)
             except (ValueError, TypeError):
@@ -73,20 +98,22 @@ def get_facility_scope(user, requested_facility_id=None):
                         'district_name': district_name,
                         'district_id': district_id,
                         'fac_qs': district_fac_qs.filter(id=selected_fac.id),
-                        'total_facilities': 1
+                        'total_facilities': 1,
+                        'is_single_facility': True
                     }
 
-        # District-wide default
+        # District-wide default within assigned district
         target_fac_ids = list(district_fac_qs.values_list('id', flat=True))
         return {
             'target_fac_ids': target_fac_ids,
             'active_facility_id': None,
-            'active_fac_name': f"{district_name} District Network",
+            'active_fac_name': f"{district_name} District Network" if district_name else "Unassigned District Network",
             'active_fac_type': "District Network",
             'district_name': district_name,
             'district_id': district_id,
             'fac_qs': district_fac_qs,
-            'total_facilities': district_fac_qs.count()
+            'total_facilities': district_fac_qs.count(),
+            'is_single_facility': False
         }
 
     # Operational roles: strictly locked to assigned_facility
@@ -100,7 +127,8 @@ def get_facility_scope(user, requested_facility_id=None):
             'district_name': assigned_fac.district.name if assigned_fac.district else None,
             'district_id': assigned_fac.district.id if assigned_fac.district else None,
             'fac_qs': Facility.objects.filter(id=assigned_fac.id),
-            'total_facilities': 1
+            'total_facilities': 1,
+            'is_single_facility': True
         }
 
     return {
@@ -111,7 +139,8 @@ def get_facility_scope(user, requested_facility_id=None):
         'district_name': None,
         'district_id': None,
         'fac_qs': Facility.objects.none(),
-        'total_facilities': 0
+        'total_facilities': 0,
+        'is_single_facility': False
     }
 
 
@@ -122,11 +151,9 @@ def get_patient_metrics(target_fac_ids, target_date):
     - registered_today: patients registered on the target_date
     - new_opd: distinct patients registered on target_date who attended OPD
     """
-    total = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids).count()
-    registered_today = Patient.objects.filter(
-        registered_at_facility_id__in=target_fac_ids,
-        registration_date=target_date
-    ).count()
+    fac_patients = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids)
+    total = fac_patients.count()
+    registered_today = fac_patients.filter(registration_date=target_date).count()
 
     new_opd = Visit.objects.filter(
         facility_id__in=target_fac_ids,
@@ -134,9 +161,9 @@ def get_patient_metrics(target_fac_ids, target_date):
         patient__registration_date=target_date
     ).values('patient').distinct().count()
 
-    male_count = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids, gender__iexact='MALE').count()
-    female_count = Patient.objects.filter(registered_at_facility_id__in=target_fac_ids, gender__iexact='FEMALE').count()
-    other_count = total - (male_count + female_count)
+    male_count = fac_patients.filter(gender__iexact='MALE').count()
+    female_count = fac_patients.filter(gender__iexact='FEMALE').count()
+    other_count = max(0, total - (male_count + female_count))
 
     return {
         'total': total,
@@ -144,185 +171,307 @@ def get_patient_metrics(target_fac_ids, target_date):
         'new_opd': new_opd,
         'male': male_count,
         'female': female_count,
-        'other': max(0, other_count)
+        'other': other_count
     }
 
 
-def get_visit_and_queue_metrics(target_fac_ids, target_date, doctor_user=None):
+def get_authoritative_queue_metrics(target_fac_ids, start_date, end_date, doctor_user=None):
     """
-    Authoritative OPD visits and stage queue metrics:
-    Single source of truth for:
-    - TRIAGE_WAITING (WAITING_FOR_TRIAGE, WAITING)
-    - IN_TRIAGE
-    - DOCTOR_WAITING (WAITING_FOR_DOCTOR, TRIAGED, LAB_COMPLETED)
-    - IN_CONSULTATION
-    - LAB_WAITING (LAB_PENDING, LAB_IN_PROGRESS)
-    - PHARMACY_WAITING (WAITING_FOR_PHARMACY, IN_PHARMACY)
-    - COMPLETED
+    Authoritative single-source calculation for OPD queue metrics.
+    Reconciled across Dashboard, Hospital Admin Reports, and Role Dashboards.
     """
-    opd_visits_qs = Visit.objects.filter(facility_id__in=target_fac_ids, opd_date=target_date)
+    visits_qs = Visit.objects.filter(
+        facility_id__in=target_fac_ids,
+        opd_date__gte=start_date,
+        opd_date__lte=end_date
+    )
     if doctor_user:
-        opd_visits_qs = opd_visits_qs.filter(assigned_doctor=doctor_user)
+        visits_qs = visits_qs.filter(assigned_doctor=doctor_user)
 
-    total = opd_visits_qs.count()
-    emergency = opd_visits_qs.filter(priority='EMERGENCY').count()
-    completed = opd_visits_qs.filter(
-        Q(status='COMPLETED') | Q(current_queue='COMPLETED')
-    ).count()
+    total = visits_qs.count()
+    emergency = visits_qs.filter(Q_EMERGENCY_PRIORITY).count()
+    completed = visits_qs.filter(Q_COMPLETED_VISIT).count()
 
-    # Authoritative consultation completion tracking
-    from apps.consultations.models import Consultation
-    consult_qs = Consultation.objects.filter(facility_id__in=target_fac_ids, visit__opd_date=target_date)
+    # Consultation completion tracking
+    consult_qs = Consultation.objects.filter(
+        facility_id__in=target_fac_ids,
+        visit__opd_date__gte=start_date,
+        visit__opd_date__lte=end_date
+    )
     if doctor_user:
         consult_qs = consult_qs.filter(doctor=doctor_user)
     consultations_completed = consult_qs.count()
     doctor_completed_count = max(completed, consultations_completed) if doctor_user else completed
 
-    # 1. Triage Queue
-    triage_waiting = opd_visits_qs.filter(
-        current_queue='TRIAGE',
-        status__in=['WAITING', 'WAITING_FOR_TRIAGE']
-    ).count()
-    triage_in_progress = opd_visits_qs.filter(
-        current_queue='TRIAGE',
-        status='IN_TRIAGE'
-    ).count()
-    triage_completed = opd_visits_qs.filter(
-        Q(triage_end_time__isnull=False) | Q(triage__isnull=False) | ~Q(current_queue='TRIAGE')
-    ).distinct().count()
+    # 1. Registration
+    reg_completed = total
 
-    # 2. Doctor Queue (includes LAB_COMPLETED for re-consultation)
-    doctor_waiting = opd_visits_qs.filter(
-        current_queue='DOCTOR',
-        status__in=['WAITING_FOR_DOCTOR', 'TRIAGED', 'LAB_COMPLETED']
-    ).count()
-    doctor_in_consultation = opd_visits_qs.filter(
-        current_queue='DOCTOR',
-        status='IN_CONSULTATION'
-    ).count()
+    # 2. Triage
+    triage_waiting = visits_qs.filter(Q_TRIAGE_WAITING).count()
+    triage_in_progress = visits_qs.filter(Q_TRIAGE_IN_PROGRESS).count()
+    triage_completed = visits_qs.filter(Q_TRIAGE_COMPLETED).distinct().count()
 
-    # 3. Lab Queue (Visits in LAB stage)
-    lab_pending_visits = opd_visits_qs.filter(
-        current_queue='LAB',
-        status__in=['LAB_PENDING', 'LAB_IN_PROGRESS']
-    ).count()
+    # 3. Doctor
+    doctor_waiting = visits_qs.filter(Q_DOCTOR_WAITING).count()
+    doctor_in_consultation = visits_qs.filter(Q_DOCTOR_IN_CONSULTATION).count()
+    doctor_completed = visits_qs.filter(Q_DOCTOR_COMPLETED).count()
 
-    # 4. Pharmacy Queue (Visits in PHARMACY stage)
-    pharmacy_waiting_visits = opd_visits_qs.filter(
-        current_queue='PHARMACY',
-        status__in=['WAITING_FOR_PHARMACY', 'IN_PHARMACY']
-    ).count()
+    # 4. Lab
+    lab_waiting = visits_qs.filter(Q_LAB_WAITING).count()
+    lab_in_progress = visits_qs.filter(Q_LAB_IN_PROGRESS).count()
+    lab_pending = visits_qs.filter(Q_LAB_PENDING).count()
+    lab_completed = visits_qs.filter(Q_LAB_COMPLETED).count()
 
-    total_waiting = triage_waiting + doctor_waiting + lab_pending_visits + pharmacy_waiting_visits
+    # 5. Pharmacy
+    pharmacy_waiting = visits_qs.filter(Q_PHARMACY_WAITING).count()
+    pharmacy_in_progress = visits_qs.filter(Q_PHARMACY_IN_PROGRESS).count()
+    pharmacy_queue_total = visits_qs.filter(Q_PHARMACY_QUEUE_TOTAL).count()
+    pharmacy_completed = visits_qs.filter(Q_PHARMACY_COMPLETED).count()
+
+    # Total waiting across stages
+    total_waiting = triage_waiting + doctor_waiting + lab_pending + pharmacy_waiting
+
+    return {
+        'total': total,
+        'emergency': emergency,
+        'completed': completed,
+        'doctor_completed_count': doctor_completed_count,
+        'consultations_completed': consultations_completed,
+        'total_waiting': total_waiting,
+        'reg_completed': reg_completed,
+        'triage_waiting': triage_waiting,
+        'triage_in_progress': triage_in_progress,
+        'triage_completed': triage_completed,
+        'doctor_waiting': doctor_waiting,
+        'doctor_in_consultation': doctor_in_consultation,
+        'doctor_completed': doctor_completed,
+        'lab_waiting': lab_waiting,
+        'lab_in_progress': lab_in_progress,
+        'lab_pending': lab_pending,
+        'lab_completed': lab_completed,
+        'pharmacy_waiting': pharmacy_waiting,
+        'pharmacy_in_progress': pharmacy_in_progress,
+        'pharmacy_queue_total': pharmacy_queue_total,
+        'pharmacy_completed': pharmacy_completed,
+        'visits_qs': visits_qs
+    }
+
+
+def get_visit_and_queue_metrics(target_fac_ids, target_date, doctor_user=None):
+    """
+    Authoritative OPD visits and stage queue metrics for Dashboard:
+    Calls shared get_authoritative_queue_metrics for consistent KPI reporting.
+    """
+    qm = get_authoritative_queue_metrics(target_fac_ids, target_date, target_date, doctor_user=doctor_user)
 
     return {
         'visits': {
-            'total': total,
-            'waiting': total_waiting,
-            'in_consultation': doctor_in_consultation,
-            'lab_pending': lab_pending_visits,
-            'lab_pending_visits': lab_pending_visits,
-            'pharmacy_waiting': pharmacy_waiting_visits,
-            'pharmacy_waiting_visits': pharmacy_waiting_visits,
-            'completed': doctor_completed_count,
-            'consultations_completed': consultations_completed,
-            'triage_completed': triage_completed,
-            'emergency': emergency
+            'total': qm['total'],
+            'waiting': qm['total_waiting'],
+            'in_consultation': qm['doctor_in_consultation'],
+            'lab_pending': qm['lab_pending'],
+            'lab_pending_visits': qm['lab_pending'],
+            'pharmacy_waiting': qm['pharmacy_waiting'],
+            'pharmacy_waiting_visits': qm['pharmacy_waiting'],
+            'completed': qm['doctor_completed_count'],
+            'consultations_completed': qm['consultations_completed'],
+            'triage_completed': qm['triage_completed'],
+            'emergency': qm['emergency']
         },
         'queues': {
-            'triage_waiting': triage_waiting,
-            'triage_in_progress': triage_in_progress,
-            'triage_completed': triage_completed,
-            'doctor_waiting': doctor_waiting,
-            'doctor_in_consultation': doctor_in_consultation,
-            'lab_pending': lab_pending_visits,
-            'lab_pending_visits': lab_pending_visits,
-            'pharmacy_waiting': pharmacy_waiting_visits,
-            'pharmacy_waiting_visits': pharmacy_waiting_visits
+            'triage_waiting': qm['triage_waiting'],
+            'triage_in_progress': qm['triage_in_progress'],
+            'triage_completed': qm['triage_completed'],
+            'doctor_waiting': qm['doctor_waiting'],
+            'doctor_in_consultation': qm['doctor_in_consultation'],
+            'lab_waiting': qm['lab_waiting'],
+            'lab_in_progress': qm['lab_in_progress'],
+            'lab_pending': qm['lab_pending'],
+            'lab_pending_visits': qm['lab_pending'],
+            'pharmacy_waiting': qm['pharmacy_waiting'],
+            'pharmacy_in_progress': qm['pharmacy_in_progress'],
+            'pharmacy_queue_total': qm['pharmacy_queue_total'],
+            'pharmacy_waiting_visits': qm['pharmacy_waiting'],
+            'completed': qm['completed'],
+            'emergency': qm['emergency']
         }
+    }
+
+
+def calculate_lab_metrics(target_fac_ids, start_date, end_date):
+    """
+    Authoritative single-source calculation for Laboratory test orders.
+    Shared by Dashboard and Hospital Admin Reports.
+    """
+    lab_orders = LabOrder.objects.filter(
+        facility_id__in=target_fac_ids,
+        order_date__date__gte=start_date,
+        order_date__date__lte=end_date
+    ).select_related('test_master')
+
+    total_orders = lab_orders.count()
+    ordered = lab_orders.filter(status='ORDERED').count()
+    samples_collected = lab_orders.filter(status='SAMPLE_COLLECTED').count()
+    in_progress = lab_orders.filter(status__in=['SAMPLE_COLLECTED', 'RESULT_ENTRY']).count()
+    results_pending = lab_orders.filter(status__in=['ORDERED', 'SAMPLE_COLLECTED', 'RESULT_ENTRY']).count()
+    verified_results = lab_orders.filter(status='VERIFIED').count()
+    cancelled = lab_orders.filter(status='CANCELLED').count()
+
+    test_breakdown = []
+    for test in LabTestMaster.objects.all():
+        t_orders = lab_orders.filter(test_master=test)
+        cnt = t_orders.count()
+        test_breakdown.append({
+            'code': test.code,
+            'name': test.name,
+            'category': test.category,
+            'unit': test.unit,
+            'reference_range': test.reference_range,
+            'total_orders': cnt,
+            'verified': t_orders.filter(status='VERIFIED').count(),
+            'pending': t_orders.filter(status__in=['ORDERED', 'SAMPLE_COLLECTED', 'RESULT_ENTRY']).count()
+        })
+
+    return {
+        'total_orders': total_orders,
+        'ordered': ordered,
+        'sample_collected': samples_collected,
+        'samples_collected': samples_collected,
+        'in_progress': in_progress,
+        'result_pending': results_pending,
+        'results_pending': results_pending,
+        'results_completed': verified_results,
+        'verified': verified_results,
+        'verified_results': verified_results,
+        'completed': verified_results,
+        'cancelled_tests': cancelled,
+        'lab_pending_orders': results_pending,
+        'test_breakdown': test_breakdown
     }
 
 
 def get_laboratory_metrics(target_fac_ids, target_date):
     """
-    Authoritative laboratory order and diagnostic test metrics:
-    Explicitly distinguishes between Lab Orders and Lab Visits.
+    Authoritative laboratory order and diagnostic test metrics for Dashboard:
+    Reuses shared calculate_lab_metrics and includes live queue count.
     """
-    lab_orders_qs = LabOrder.objects.filter(
-        facility_id__in=target_fac_ids,
-        order_date__date=target_date
-    )
+    metrics = calculate_lab_metrics(target_fac_ids, target_date, target_date)
 
-    total_orders = lab_orders_qs.count()
-    ordered = lab_orders_qs.filter(status='ORDERED').count()
-    sample_collected = lab_orders_qs.filter(status='SAMPLE_COLLECTED').count()
-    result_pending = ordered + sample_collected
-    verified = lab_orders_qs.filter(status='VERIFIED').count()
-
-    # Laboratory Visits in queue
     lab_pending_visits = Visit.objects.filter(
         facility_id__in=target_fac_ids,
         opd_date=target_date,
-        current_queue='LAB',
-        status__in=['LAB_PENDING', 'LAB_IN_PROGRESS']
-    ).count()
+        current_queue='LAB'
+    ).filter(Q_LAB_PENDING).count()
+
+    metrics['lab_pending_visits'] = lab_pending_visits
+    return metrics
+
+
+def calculate_prescription_metrics(target_fac_ids, start_date, end_date):
+    """
+    Authoritative single-source calculation for Prescription metrics across both
+    Dashboard and Reports.
+    """
+    rx_qs = Prescription.objects.filter(
+        facility_id__in=target_fac_ids,
+        date__gte=start_date,
+        date__lte=end_date
+    )
+    total = rx_qs.count()
+    pending = rx_qs.filter(status__in=['PENDING', 'ACTIVE']).count()
+    partially_dispensed = rx_qs.filter(status='PARTIALLY_DISPENSED').count()
+    dispensed = rx_qs.filter(status='DISPENSED').count()
+    cancelled = rx_qs.filter(status='CANCELLED').count()
 
     return {
-        'total_orders': total_orders,
-        'ordered': ordered,
-        'sample_collected': sample_collected,
-        'result_pending': result_pending,
-        'pending': ordered,
-        'in_progress': sample_collected,
-        'completed': verified,
-        'verified': verified,
-        'lab_pending_orders': result_pending,
-        'lab_pending_visits': lab_pending_visits
+        'total_prescriptions': total,
+        'pending_prescriptions': pending,
+        'partially_dispensed': partially_dispensed,
+        'dispensed_prescriptions': dispensed,
+        'cancelled_prescriptions': cancelled,
+        # Convenience aliases
+        'total': total,
+        'pending': pending,
+        'dispensed': dispensed,
+        'cancelled': cancelled,
+        'waiting': pending + partially_dispensed,
     }
 
 
-def get_pharmacy_and_inventory_metrics(target_fac_ids, target_date):
+def calculate_dispensing_metrics(target_fac_ids, start_date, end_date):
     """
-    Authoritative pharmacy prescription orders and facility drug inventory metrics.
-    Standardized:
-    - Real-time inventory as of today (documented via inventory_as_of)
-    - 60-day expiry window (EXPIRING_SOON_DAYS = 60)
-    - Low-stock rule: facility medicine total quantity <= MedicineMaster.minimum_stock
-    - Distinct master vs facility stock counts
+    Authoritative single-source calculation for Dispensing transaction metrics.
     """
-    # 1. Prescriptions for target_date
-    rx_qs = Prescription.objects.filter(
+    tx_period = InventoryTransaction.objects.filter(
         facility_id__in=target_fac_ids,
-        date=target_date
-    )
-    total_prescriptions = rx_qs.count()
-    pending_prescriptions = rx_qs.filter(status__in=['PENDING', 'ACTIVE']).count()
-    partially_dispensed = rx_qs.filter(status='PARTIALLY_DISPENSED').count()
-    dispensed_prescriptions = rx_qs.filter(status='DISPENSED').count()
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date
+    ).select_related('medicine', 'batch')
 
-    pharmacy_waiting_visits = Visit.objects.filter(
-        facility_id__in=target_fac_ids,
-        opd_date=target_date,
-        current_queue='PHARMACY',
-        status__in=['WAITING_FOR_PHARMACY', 'IN_PHARMACY']
-    ).count()
+    dispense_tx = tx_period.filter(transaction_type='DISPENSED')
+    total_medicines_dispensed = dispense_tx.aggregate(t=Sum('quantity'))['t'] or 0
+    total_dispensing_transactions = dispense_tx.count()
+    patients_served = dispense_tx.values('reference_id').distinct().count()
 
-    # 2. Inventory (Real-time snapshot as of current date)
-    today = datetime.date.today()
-    expiring_threshold = today + datetime.timedelta(days=EXPIRING_SOON_DAYS)
+    top_dispensed = []
+    top_records = dispense_tx.values(
+        'medicine_id', 'medicine__generic_name', 'medicine__brand_name', 'medicine__unit'
+    ).annotate(
+        qty=Sum('quantity'),
+        rx_count=Count('reference_id', distinct=True)
+    ).order_by('-qty')[:15]
 
-    inventory_batches = MedicineBatch.objects.filter(facility_id__in=target_fac_ids)
-    all_master_meds = MedicineMaster.objects.all()
+    for tr in top_records:
+        top_dispensed.append({
+            'medicine_id': tr['medicine_id'],
+            'generic_name': tr['medicine__generic_name'],
+            'brand_name': tr.get('medicine__brand_name') or '',
+            'unit': tr.get('medicine__unit') or 'Units',
+            'quantity_dispensed': tr['qty'],
+            'prescriptions_count': tr['rx_count']
+        })
+
+    return {
+        'total_medicines_dispensed': total_medicines_dispensed,
+        'total_dispensing_transactions': total_dispensing_transactions,
+        'patients_served': patients_served,
+        'top_dispensed_medicines': top_dispensed
+    }
+
+
+def calculate_inventory_kpis(target_fac_ids, as_of_date=None):
+    """
+    Authoritative single-source calculation for Drug Inventory KPIs.
+    - Expiry threshold: EXPIRING_SOON_DAYS = 60
+    - Status evaluation: get_stock_status(quantity, minimum_stock, reorder_level)
+    - Expired definition: expiry_date <= as_of_date or status == 'EXPIRED'
+    - Expiring soon definition: quantity > 0, expiry_date > as_of_date, expiry_date <= as_of_date + 60 days
+    """
+    if as_of_date is None:
+        as_of_date = datetime.date.today()
+
+    expiring_threshold = as_of_date + datetime.timedelta(days=EXPIRING_SOON_DAYS)
+
+    batch_qs = MedicineBatch.objects.filter(facility_id__in=target_fac_ids).select_related('medicine')
+    all_master_meds = MedicineMaster.objects.all().order_by('generic_name')
     total_medicine_master_records = all_master_meds.count()
 
-    stocked_medicines_ids = set(inventory_batches.values_list('medicine_id', flat=True).distinct())
+    stocked_medicines_ids = set(batch_qs.values_list('medicine_id', flat=True).distinct())
     total_medicines_stocked_at_facility = len(stocked_medicines_ids)
+
+    # Active available batches (unexpired and quantity > 0)
+    unexpired_batches = batch_qs.filter(
+        quantity__gt=0,
+        expiry_date__gt=as_of_date
+    ).exclude(status='EXPIRED')
+    total_available_units = unexpired_batches.aggregate(t=Sum('quantity'))['t'] or 0
 
     low_stock_medicines = 0
     out_of_stock_medicines = 0
+    low_stock_table = []
 
     for m in all_master_meds:
-        m_batches = inventory_batches.filter(medicine=m, status__in=['ACTIVE', 'LOW_STOCK', 'EXPIRING_SOON'])
+        m_batches = batch_qs.filter(medicine=m, status__in=['ACTIVE', 'LOW_STOCK', 'EXPIRING_SOON'])
         tot_qty = m_batches.aggregate(t=Sum('quantity'))['t'] or 0
         st = get_stock_status(tot_qty, m.minimum_stock, m.reorder_level)
         if st == 'OUT_OF_STOCK':
@@ -330,38 +479,86 @@ def get_pharmacy_and_inventory_metrics(target_fac_ids, target_date):
         elif st == 'LOW_STOCK':
             low_stock_medicines += 1
 
+        low_stock_table.append({
+            'id': m.id,
+            'generic_name': m.generic_name,
+            'brand_name': m.brand_name,
+            'category': m.category,
+            'unit': m.unit,
+            'current_stock': tot_qty,
+            'minimum_stock': m.minimum_stock,
+            'reorder_level': m.reorder_level,
+            'status': st
+        })
+
     low_stock_batches = 0
-    for b in inventory_batches.filter(quantity__gt=0).select_related('medicine'):
+    for b in batch_qs.filter(quantity__gt=0):
         threshold = b.medicine.minimum_stock or b.medicine.reorder_level or 0
         if threshold > 0 and b.quantity <= threshold:
             low_stock_batches += 1
 
-    expiring_soon_batches = inventory_batches.filter(
-        quantity__gt=0,
-        expiry_date__gte=today,
-        expiry_date__lte=expiring_threshold
-    ).count()
+    # Expiry definitions (consistent between Dashboard and Reports)
+    expired_batches_qs = batch_qs.filter(
+        Q(expiry_date__lte=as_of_date) | Q(status='EXPIRED')
+    )
+    expired_batches_count = expired_batches_qs.count()
 
-    expired_batches = inventory_batches.filter(
-        Q(expiry_date__lt=today) | Q(status='EXPIRED')
-    ).count()
+    active_exp_batches = batch_qs.filter(
+        quantity__gt=0,
+        expiry_date__gt=as_of_date
+    ).exclude(status='EXPIRED')
+
+    date_7d = as_of_date + datetime.timedelta(days=7)
+    date_30d = as_of_date + datetime.timedelta(days=30)
+    date_60d = as_of_date + datetime.timedelta(days=60)
+    date_90d = as_of_date + datetime.timedelta(days=90)
+
+    exp_7_count = active_exp_batches.filter(expiry_date__lte=date_7d).count()
+    exp_30_count = active_exp_batches.filter(expiry_date__gt=date_7d, expiry_date__lte=date_30d).count()
+    exp_60_count = active_exp_batches.filter(expiry_date__gt=date_30d, expiry_date__lte=date_60d).count()
+    exp_90_count = active_exp_batches.filter(expiry_date__gt=date_60d, expiry_date__lte=date_90d).count()
+    expiring_soon_batches = exp_7_count + exp_30_count + exp_60_count
+
+    # Detailed list of expiring/expired batches for table
+    monitoring_batches_list = []
+    for b in batch_qs.filter(Q(expiry_date__lte=date_90d) | Q(status='EXPIRED')).order_by('expiry_date'):
+        days_left = (b.expiry_date - as_of_date).days
+        is_exp = b.expiry_date <= as_of_date or b.status == 'EXPIRED'
+        if is_exp:
+            cat = 'EXPIRED'
+        elif days_left <= 7:
+            cat = 'EXPIRES_7_DAYS'
+        elif days_left <= 30:
+            cat = 'EXPIRES_30_DAYS'
+        elif days_left <= 60:
+            cat = 'EXPIRES_60_DAYS'
+        else:
+            cat = 'EXPIRES_90_DAYS'
+
+        monitoring_batches_list.append({
+            'batch_id': b.id,
+            'medicine_name': b.medicine.generic_name,
+            'brand_name': b.medicine.brand_name,
+            'batch_number': b.batch_number,
+            'quantity': b.quantity,
+            'expiry_date': b.expiry_date.strftime('%Y-%m-%d'),
+            'days_remaining': days_left,
+            'status': 'EXPIRED' if is_exp else ('EXPIRING_SOON' if days_left <= EXPIRING_SOON_DAYS else 'ACTIVE'),
+            'category': cat
+        })
+
+    is_today = as_of_date == datetime.date.today()
 
     return {
-        # Prescription metrics
-        'total_prescriptions': total_prescriptions,
-        'pending_prescriptions': pending_prescriptions,
-        'partially_dispensed': partially_dispensed,
-        'dispensed_prescriptions': dispensed_prescriptions,
-        'waiting': pending_prescriptions + partially_dispensed,
-        'dispensed': dispensed_prescriptions,
-        'pharmacy_waiting_visits': pharmacy_waiting_visits,
-
-        # Real-time inventory metrics
-        'inventory_as_of': today.isoformat(),
+        'inventory_as_of': as_of_date.isoformat(),
+        'inventory_snapshot_note': f"Inventory as of {as_of_date.isoformat()}",
+        'metric_source': 'REAL_TIME_SNAPSHOT' if is_today else 'HISTORICAL_SNAPSHOT',
+        'expiry_window_days': EXPIRING_SOON_DAYS,
         'total_medicine_master_records': total_medicine_master_records,
         'total_medicines_stocked_at_facility': total_medicines_stocked_at_facility,
         'total_medicines': total_medicine_master_records,
         'stocked_medicines': total_medicines_stocked_at_facility,
+        'total_available_units': total_available_units,
         'out_of_stock_medicines': out_of_stock_medicines,
         'out_of_stock': out_of_stock_medicines,
         'low_stock_medicines': low_stock_medicines,
@@ -369,8 +566,223 @@ def get_pharmacy_and_inventory_metrics(target_fac_ids, target_date):
         'low_stock_batches': low_stock_batches,
         'expiring_soon_batches': expiring_soon_batches,
         'expiring_soon': expiring_soon_batches,
-        'expired_batches': expired_batches,
-        'expired': expired_batches
+        'expired_batches': expired_batches_count,
+        'expired': expired_batches_count,
+        'expiry_breakdown': {
+            'expired': expired_batches_count,
+            'expires_within_7_days': exp_7_count,
+            'expires_within_30_days': exp_30_count,
+            'expires_within_60_days': exp_60_count,
+            'expires_within_90_days': exp_90_count
+        },
+        'monitoring_batches_list': monitoring_batches_list,
+        'low_stock_table': low_stock_table
+    }
+
+
+def calculate_stock_movement_for_period(target_fac_ids, start_date, end_date):
+    """
+    Deterministic period-based stock movement:
+    Opening Stock + Received - Dispensed +/- Adjustments = Closing Stock.
+    Uses InventoryTransaction records and MedicineBatch records.
+    If exact historical opening stock cannot be reconstructed from existing transaction
+    history (e.g. transactions missing, negative math, or reporting period begins prior to
+    earliest recorded transaction), does NOT fabricate a number. Explicitly sets
+    reconstructable=False and opening_stock=None.
+    """
+    today = datetime.date.today()
+    all_master = MedicineMaster.objects.all().order_by('generic_name')
+    batch_qs = MedicineBatch.objects.filter(facility_id__in=target_fac_ids)
+    all_tx = InventoryTransaction.objects.filter(facility_id__in=target_fac_ids)
+
+    tx_period = all_tx.filter(
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date
+    )
+
+    stock_movement_items = []
+    tot_rec = 0
+    tot_disp = 0
+    tot_adj = 0
+    tot_close = 0
+    tot_open = 0
+    all_reconstructable = True
+
+    for m in all_master:
+        m_batches = batch_qs.filter(medicine=m, quantity__gt=0)
+        current_batch_stock = m_batches.aggregate(t=Sum('quantity'))['t'] or 0
+
+        m_tx_all = all_tx.filter(medicine=m)
+        m_tx_period = tx_period.filter(medicine=m)
+
+        rec = m_tx_period.filter(transaction_type='PURCHASE_RECEIVED').aggregate(t=Sum('quantity'))['t'] or 0
+        returned = m_tx_period.filter(transaction_type='RETURNED').aggregate(t=Sum('quantity'))['t'] or 0
+        rec_total = rec + returned
+
+        disp = m_tx_period.filter(transaction_type='DISPENSED').aggregate(t=Sum('quantity'))['t'] or 0
+        damaged = m_tx_period.filter(transaction_type='DAMAGED').aggregate(t=Sum('quantity'))['t'] or 0
+        expired_tx = m_tx_period.filter(transaction_type='EXPIRED').aggregate(t=Sum('quantity'))['t'] or 0
+        issued = m_tx_period.filter(transaction_type='ISSUED').aggregate(t=Sum('quantity'))['t'] or 0
+        transferred = m_tx_period.filter(transaction_type='TRANSFERRED').aggregate(t=Sum('quantity'))['t'] or 0
+        disp_total = disp + damaged + expired_tx + issued + transferred
+
+        adj = m_tx_period.filter(transaction_type='ADJUSTMENT').aggregate(t=Sum('quantity'))['t'] or 0
+
+        # Check if medicine has any activity or stock
+        has_activity = (current_batch_stock > 0 or m_tx_all.exists())
+        if not has_activity:
+            continue
+
+        # Determine closing stock at end_date
+        is_reconstructable = True
+        is_exact = True
+
+        if end_date >= today:
+            closing_stock = current_batch_stock
+        else:
+            # Reconstruct closing stock backwards from current stock
+            tx_after = m_tx_all.filter(created_at__date__gt=end_date)
+            rec_after = (tx_after.filter(transaction_type__in=['PURCHASE_RECEIVED', 'RETURNED']).aggregate(t=Sum('quantity'))['t'] or 0)
+            disp_after = (tx_after.filter(transaction_type__in=['DISPENSED', 'DAMAGED', 'EXPIRED', 'ISSUED', 'TRANSFERRED']).aggregate(t=Sum('quantity'))['t'] or 0)
+            adj_after = (tx_after.filter(transaction_type='ADJUSTMENT').aggregate(t=Sum('quantity'))['t'] or 0)
+
+            closing_stock = current_batch_stock - rec_after + disp_after - adj_after
+            if closing_stock < 0:
+                is_reconstructable = False
+
+        if is_reconstructable:
+            # Check transaction history sufficiency:
+            # If there are NO transactions ever for this medicine, but current_batch_stock > 0:
+            if not m_tx_all.exists():
+                is_reconstructable = False
+            else:
+                earliest_tx = m_tx_all.order_by('created_at').first()
+                # If the reporting period starts strictly BEFORE the earliest transaction,
+                # we have no history prior to that transaction
+                if earliest_tx and start_date < earliest_tx.created_at.date():
+                    tx_prior = m_tx_all.filter(created_at__date__lt=start_date)
+                    if not tx_prior.exists():
+                        is_reconstructable = False
+
+        if is_reconstructable:
+            # Mathematical formula: opening + rec - disp + adj = closing
+            # => opening = closing - rec + disp - adj
+            opening_stock = closing_stock - rec_total + disp_total - adj
+            if opening_stock < 0:
+                is_reconstructable = False
+                is_exact = False
+        else:
+            opening_stock = None
+            is_exact = False
+
+        if not is_reconstructable:
+            opening_stock = None
+            all_reconstructable = False
+            status_str = 'UNAVAILABLE'
+        else:
+            tot_rec += rec_total
+            tot_disp += disp_total
+            tot_adj += adj
+            tot_close += closing_stock
+            tot_open += opening_stock
+            status_str = 'RECONSTRUCTED'
+
+        stock_movement_items.append({
+            'medicine_id': m.id,
+            'medicine': m.generic_name,
+            'brand_name': m.brand_name,
+            'dosage_form': m.dosage_form,
+            'unit': m.unit,
+            'opening_stock': opening_stock,
+            'received': rec_total,
+            'dispensed': disp_total,
+            'adjusted': adj,
+            'closing_stock': closing_stock if is_reconstructable else None,
+            'historical_opening_exact': is_exact and is_reconstructable,
+            'reconstructable': is_reconstructable,
+            'derivation_status': 'EXACT' if (is_exact and is_reconstructable) else 'UNAVAILABLE',
+            'status': status_str
+        })
+
+    stock_movement_items.sort(key=lambda x: (x['dispensed'], x['closing_stock'] or 0), reverse=True)
+
+    return {
+        'summary': {
+            'opening_stock': tot_open if all_reconstructable else None,
+            'stock_received': tot_rec,
+            'stock_dispensed': tot_disp,
+            'stock_adjusted': tot_adj,
+            'closing_stock': tot_close if all_reconstructable else None,
+            'reconstructable': all_reconstructable,
+            'historical_opening_available': all_reconstructable
+        },
+        'items': stock_movement_items
+    }
+
+
+def get_pharmacy_and_inventory_metrics(target_fac_ids, target_date):
+    """
+    Authoritative pharmacy prescription orders and facility drug inventory metrics.
+    Reconciled with Hospital Admin Reports:
+    - Shared calculate_prescription_metrics()
+    - Shared calculate_dispensing_metrics()
+    - Shared calculate_inventory_kpis()
+    - Distinct real-time snapshot metadata: inventory_as_of, metric_source
+    """
+    today = datetime.date.today()
+
+    rx_metrics = calculate_prescription_metrics(target_fac_ids, target_date, target_date)
+    disp_metrics = calculate_dispensing_metrics(target_fac_ids, target_date, target_date)
+    inv_metrics = calculate_inventory_kpis(target_fac_ids, as_of_date=today)
+
+    pharmacy_waiting_visits = Visit.objects.filter(
+        facility_id__in=target_fac_ids,
+        opd_date=target_date,
+        current_queue='PHARMACY'
+    ).filter(Q_PHARMACY_WAITING).count()
+
+    return {
+        # Prescription metrics
+        'total_prescriptions': rx_metrics['total_prescriptions'],
+        'pending_prescriptions': rx_metrics['pending_prescriptions'],
+        'partially_dispensed': rx_metrics['partially_dispensed'],
+        'dispensed_prescriptions': rx_metrics['dispensed_prescriptions'],
+        'cancelled_prescriptions': rx_metrics['cancelled_prescriptions'],
+        'waiting': rx_metrics['waiting'],
+        'dispensed': rx_metrics['dispensed_prescriptions'],
+        'pharmacy_waiting_visits': pharmacy_waiting_visits,
+
+        # Dispensing metrics
+        'total_medicines_dispensed': disp_metrics['total_medicines_dispensed'],
+        'medicines_dispensed': disp_metrics['total_medicines_dispensed'],
+        'total_dispensing_transactions': disp_metrics['total_dispensing_transactions'],
+        'dispensing_transactions': disp_metrics['total_dispensing_transactions'],
+        'patients_served': disp_metrics['patients_served'],
+
+        # Inventory metrics (real-time snapshot as of today)
+        'inventory_as_of': inv_metrics['inventory_as_of'],
+        'inventory_snapshot_note': inv_metrics['inventory_snapshot_note'],
+        'metric_source': 'AUTHORITATIVE_BACKEND',
+        'inventory_type': 'REAL_TIME_SNAPSHOT',
+        'report_period_start': target_date.strftime('%Y-%m-%d') if hasattr(target_date, 'strftime') else str(target_date),
+        'report_period_end': target_date.strftime('%Y-%m-%d') if hasattr(target_date, 'strftime') else str(target_date),
+        'expiry_window_days': inv_metrics['expiry_window_days'],
+
+        'total_medicine_master_records': inv_metrics['total_medicine_master_records'],
+        'total_medicines_stocked_at_facility': inv_metrics['total_medicines_stocked_at_facility'],
+        'total_medicines': inv_metrics['total_medicines'],
+        'stocked_medicines': inv_metrics['stocked_medicines'],
+        'total_available_units': inv_metrics['total_available_units'],
+        'out_of_stock_medicines': inv_metrics['out_of_stock_medicines'],
+        'out_of_stock': inv_metrics['out_of_stock'],
+        'low_stock_medicines': inv_metrics['low_stock_medicines'],
+        'low_stock': inv_metrics['low_stock'],
+        'low_stock_batches': inv_metrics['low_stock_batches'],
+        'expiring_soon_batches': inv_metrics['expiring_soon_batches'],
+        'expiring_soon': inv_metrics['expiring_soon'],
+        'expired_batches': inv_metrics['expired_batches'],
+        'expired': inv_metrics['expired'],
+        'expiry_breakdown': inv_metrics['expiry_breakdown']
     }
 
 
@@ -643,6 +1055,10 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
     return {
         # Unified authoritative contract
         'date': target_date.strftime('%Y-%m-%d'),
+        'report_period_start': target_date.strftime('%Y-%m-%d'),
+        'report_period_end': target_date.strftime('%Y-%m-%d'),
+        'inventory_as_of': datetime.date.today().strftime('%Y-%m-%d'),
+        'metric_source': 'AUTHORITATIVE_BACKEND',
         'is_today': is_today,
         'scope': {
             'role': role,
@@ -974,41 +1390,10 @@ def get_queue_service_report_metrics(target_fac_ids, start_date, end_date):
     """
     Section 5: Queue & Service Report.
     Stages: Registration, Triage, Doctor, Laboratory, Pharmacy, Completed.
-    Computes Waiting, In Progress, Completed, Average Waiting Time, Peak Queue Period.
+    Uses shared get_authoritative_queue_metrics for 100% reconciliation with Dashboard.
     """
-    visits_qs = Visit.objects.filter(
-        facility_id__in=target_fac_ids,
-        opd_date__gte=start_date,
-        opd_date__lte=end_date
-    )
-
-    # 1. Registration
-    reg_completed = visits_qs.count()
-
-    # 2. Triage
-    triage_waiting = visits_qs.filter(current_queue='TRIAGE', status__in=['WAITING', 'WAITING_FOR_TRIAGE']).count()
-    triage_in_progress = visits_qs.filter(current_queue='TRIAGE', status='IN_TRIAGE').count()
-    triage_completed = visits_qs.filter(triage_end_time__isnull=False).count() or visits_qs.exclude(current_queue='TRIAGE').count()
-
-    # 3. Doctor
-    doc_waiting = visits_qs.filter(current_queue='DOCTOR', status__in=['WAITING_FOR_DOCTOR', 'TRIAGED', 'LAB_COMPLETED']).count()
-    doc_in_progress = visits_qs.filter(current_queue='DOCTOR', status='IN_CONSULTATION').count()
-    doc_completed = visits_qs.filter(
-        Q(status='COMPLETED') | Q(current_queue__in=['LAB', 'PHARMACY', 'COMPLETED'])
-    ).count()
-
-    # 4. Laboratory
-    lab_waiting = visits_qs.filter(current_queue='LAB', status='LAB_PENDING').count()
-    lab_in_progress = visits_qs.filter(current_queue='LAB', status='LAB_IN_PROGRESS').count()
-    lab_completed = visits_qs.filter(status='LAB_COMPLETED').count()
-
-    # 5. Pharmacy
-    pharm_waiting = visits_qs.filter(current_queue='PHARMACY', status='WAITING_FOR_PHARMACY').count()
-    pharm_in_progress = visits_qs.filter(current_queue='PHARMACY', status='IN_PHARMACY').count()
-    pharm_completed = visits_qs.filter(status='COMPLETED', current_queue='COMPLETED').count()
-
-    # 6. Overall Completed
-    overall_completed = visits_qs.filter(Q(status='COMPLETED') | Q(current_queue='COMPLETED')).count()
+    qm = get_authoritative_queue_metrics(target_fac_ids, start_date, end_date)
+    visits_qs = qm['visits_qs']
 
     # Timestamp-derived Average Waiting Times (only when reliable timestamps exist)
     triage_wait_deltas = []
@@ -1042,12 +1427,12 @@ def get_queue_service_report_metrics(target_fac_ids, start_date, end_date):
 
     return {
         'stages': {
-            'registration': {'waiting': 0, 'in_progress': 0, 'completed': reg_completed},
-            'triage': {'waiting': triage_waiting, 'in_progress': triage_in_progress, 'completed': triage_completed},
-            'doctor': {'waiting': doc_waiting, 'in_progress': doc_in_progress, 'completed': doc_completed},
-            'laboratory': {'waiting': lab_waiting, 'in_progress': lab_in_progress, 'completed': lab_completed},
-            'pharmacy': {'waiting': pharm_waiting, 'in_progress': pharm_in_progress, 'completed': pharm_completed},
-            'completed': {'waiting': 0, 'in_progress': 0, 'completed': overall_completed}
+            'registration': {'waiting': 0, 'in_progress': 0, 'completed': qm['reg_completed']},
+            'triage': {'waiting': qm['triage_waiting'], 'in_progress': qm['triage_in_progress'], 'completed': qm['triage_completed']},
+            'doctor': {'waiting': qm['doctor_waiting'], 'in_progress': qm['doctor_in_consultation'], 'completed': qm['doctor_completed']},
+            'laboratory': {'waiting': qm['lab_waiting'], 'in_progress': qm['lab_in_progress'], 'pending': qm['lab_pending'], 'completed': qm['lab_completed']},
+            'pharmacy': {'waiting': qm['pharmacy_waiting'], 'in_progress': qm['pharmacy_in_progress'], 'completed': qm['pharmacy_completed']},
+            'completed': {'waiting': 0, 'in_progress': 0, 'completed': qm['completed']}
         },
         'avg_triage_wait_minutes': avg_triage_wait,
         'avg_doctor_wait_minutes': avg_doctor_wait,
@@ -1145,48 +1530,9 @@ def get_laboratory_report_metrics_for_period(target_fac_ids, start_date, end_dat
     """
     Section 7: Laboratory Report.
     Orders, status breakdown, and diagnostics breakdown by LabTestMaster.
+    Reuses shared calculate_lab_metrics for 100% reconciliation with Dashboard.
     """
-    lab_orders = LabOrder.objects.filter(
-        facility_id__in=target_fac_ids,
-        order_date__date__gte=start_date,
-        order_date__date__lte=end_date
-    ).select_related('test_master')
-
-    total_orders = lab_orders.count()
-    ordered = lab_orders.filter(status='ORDERED').count()
-    samples_collected = lab_orders.filter(status='SAMPLE_COLLECTED').count()
-    in_progress = lab_orders.filter(status__in=['SAMPLE_COLLECTED', 'RESULT_ENTRY']).count()
-    results_pending = lab_orders.filter(status__in=['ORDERED', 'SAMPLE_COLLECTED', 'RESULT_ENTRY']).count()
-    verified_results = lab_orders.filter(status='VERIFIED').count()
-    results_completed = verified_results
-    cancelled = lab_orders.filter(status='CANCELLED').count()
-
-    # Breakdown by Lab Test Master
-    test_breakdown = []
-    for test in LabTestMaster.objects.all():
-        t_orders = lab_orders.filter(test_master=test)
-        cnt = t_orders.count()
-        test_breakdown.append({
-            'code': test.code,
-            'name': test.name,
-            'category': test.category,
-            'unit': test.unit,
-            'reference_range': test.reference_range,
-            'total_orders': cnt,
-            'verified': t_orders.filter(status='VERIFIED').count(),
-            'pending': t_orders.filter(status__in=['ORDERED', 'SAMPLE_COLLECTED', 'RESULT_ENTRY']).count()
-        })
-
-    return {
-        'total_orders': total_orders,
-        'samples_collected': samples_collected,
-        'in_progress': in_progress,
-        'results_pending': results_pending,
-        'results_completed': results_completed,
-        'verified_results': verified_results,
-        'cancelled_tests': cancelled,
-        'test_breakdown': test_breakdown
-    }
+    return calculate_lab_metrics(target_fac_ids, start_date, end_date)
 
 
 def get_pharmacy_report_metrics_for_period(target_fac_ids, start_date, end_date, period='day'):
@@ -1194,135 +1540,14 @@ def get_pharmacy_report_metrics_for_period(target_fac_ids, start_date, end_date,
     Sections 8–14: Complete Pharmacy Report.
     Prescriptions, Dispensing, Inventory, Purchases, Vendors, Stock Movement & Consumption,
     Top Dispensed Medicines, Expiry Monitoring, Low Stock Report.
-    100% reconciled with Pharmacy module.
+    100% reconciled with Dashboard and Pharmacy module.
     """
     today = datetime.date.today()
 
-    # 1. Prescriptions in reporting period
-    rx_qs = Prescription.objects.filter(
-        facility_id__in=target_fac_ids,
-        date__gte=start_date,
-        date__lte=end_date
-    )
-    total_prescriptions = rx_qs.count()
-    pending_rx = rx_qs.filter(status__in=['PENDING', 'ACTIVE']).count()
-    partially_dispensed_rx = rx_qs.filter(status='PARTIALLY_DISPENSED').count()
-    dispensed_rx = rx_qs.filter(status='DISPENSED').count()
-    cancelled_rx = rx_qs.filter(status='CANCELLED').count()
-
-    # 2. Dispensing Transactions in reporting period
-    tx_period = InventoryTransaction.objects.filter(
-        facility_id__in=target_fac_ids,
-        created_at__date__gte=start_date,
-        created_at__date__lte=end_date
-    ).select_related('medicine', 'batch')
-
-    dispense_tx = tx_period.filter(transaction_type='DISPENSED')
-    total_medicines_dispensed = dispense_tx.aggregate(t=Sum('quantity'))['t'] or 0
-    total_dispensing_transactions = dispense_tx.count()
-    patients_served = dispense_tx.values('reference_id').distinct().count()
-
-    # Top Dispensed Medicines (backend aggregated)
-    top_dispensed = []
-    top_records = dispense_tx.values('medicine_id', 'medicine__generic_name', 'medicine__brand_name', 'medicine__unit').annotate(
-        qty=Sum('quantity'),
-        rx_count=Count('reference_id', distinct=True)
-    ).order_by('-qty')[:15]
-
-    for tr in top_records:
-        top_dispensed.append({
-            'medicine_id': tr['medicine_id'],
-            'generic_name': tr['medicine__generic_name'],
-            'brand_name': tr.get('medicine__brand_name') or '',
-            'unit': tr.get('medicine__unit') or 'Units',
-            'quantity_dispensed': tr['qty'],
-            'prescriptions_count': tr['rx_count']
-        })
-
-    # 3. Real-Time Inventory Snapshot
-    batch_qs = MedicineBatch.objects.filter(facility_id__in=target_fac_ids).select_related('medicine')
-    all_master = MedicineMaster.objects.all()
-    total_medicine_master = all_master.count()
-    stocked_ids = set(batch_qs.values_list('medicine_id', flat=True).distinct())
-    total_medicines_stocked = len(stocked_ids)
-
-    # Active available batches (unexpired and quantity > 0)
-    unexpired_batches = batch_qs.filter(
-        quantity__gt=0,
-        expiry_date__gt=today
-    ).exclude(status='EXPIRED')
-    total_available_units = unexpired_batches.aggregate(t=Sum('quantity'))['t'] or 0
-
-    # Low stock & Out of stock using authoritative get_stock_status
-    low_stock_medicines = 0
-    out_of_stock_medicines = 0
-    low_stock_table = []
-
-    for m in all_master:
-        m_batches = batch_qs.filter(medicine=m, status__in=['ACTIVE', 'LOW_STOCK', 'EXPIRING_SOON'])
-        tot_qty = m_batches.aggregate(t=Sum('quantity'))['t'] or 0
-        st = get_stock_status(tot_qty, m.minimum_stock, m.reorder_level)
-        if st == 'OUT_OF_STOCK':
-            out_of_stock_medicines += 1
-        elif st == 'LOW_STOCK':
-            low_stock_medicines += 1
-
-        low_stock_table.append({
-            'id': m.id,
-            'generic_name': m.generic_name,
-            'brand_name': m.brand_name,
-            'category': m.category,
-            'unit': m.unit,
-            'current_stock': tot_qty,
-            'minimum_stock': m.minimum_stock,
-            'reorder_level': m.reorder_level,
-            'status': st
-        })
-
-    # Expiry Monitoring (Strictly actual batch expiry dates)
-    expired_batches_qs = batch_qs.filter(Q(expiry_date__lte=today) | Q(status='EXPIRED'))
-    expired_batches_count = expired_batches_qs.count()
-
-    date_7d = today + datetime.timedelta(days=7)
-    date_30d = today + datetime.timedelta(days=30)
-    date_60d = today + datetime.timedelta(days=60)
-    date_90d = today + datetime.timedelta(days=90)
-
-    active_exp_batches = batch_qs.filter(quantity__gt=0, expiry_date__gt=today).exclude(status='EXPIRED')
-
-    exp_7_count = active_exp_batches.filter(expiry_date__lte=date_7d).count()
-    exp_30_count = active_exp_batches.filter(expiry_date__gt=date_7d, expiry_date__lte=date_30d).count()
-    exp_60_count = active_exp_batches.filter(expiry_date__gt=date_30d, expiry_date__lte=date_60d).count()
-    exp_90_count = active_exp_batches.filter(expiry_date__gt=date_60d, expiry_date__lte=date_90d).count()
-    expiring_soon_count = exp_7_count + exp_30_count + exp_60_count
-
-    # Detailed list of expiring/expired batches for table
-    monitoring_batches_list = []
-    for b in batch_qs.filter(Q(expiry_date__lte=date_90d) | Q(status='EXPIRED')).order_by('expiry_date'):
-        days_left = (b.expiry_date - today).days
-        is_exp = b.expiry_date <= today or b.status == 'EXPIRED'
-        if is_exp:
-            cat = 'EXPIRED'
-        elif days_left <= 7:
-            cat = 'EXPIRES_7_DAYS'
-        elif days_left <= 30:
-            cat = 'EXPIRES_30_DAYS'
-        elif days_left <= 60:
-            cat = 'EXPIRES_60_DAYS'
-        else:
-            cat = 'EXPIRES_90_DAYS'
-
-        monitoring_batches_list.append({
-            'batch_id': b.id,
-            'medicine_name': b.medicine.generic_name,
-            'brand_name': b.medicine.brand_name,
-            'batch_number': b.batch_number,
-            'quantity': b.quantity,
-            'expiry_date': b.expiry_date.strftime('%Y-%m-%d'),
-            'days_remaining': days_left,
-            'status': 'EXPIRED' if is_exp else ('EXPIRING_SOON' if days_left <= 60 else 'ACTIVE'),
-            'category': cat
-        })
+    rx_metrics = calculate_prescription_metrics(target_fac_ids, start_date, end_date)
+    disp_metrics = calculate_dispensing_metrics(target_fac_ids, start_date, end_date)
+    inv_metrics = calculate_inventory_kpis(target_fac_ids, as_of_date=today)
+    stock_movement = calculate_stock_movement_for_period(target_fac_ids, start_date, end_date)
 
     # 4. Purchases in reporting period
     po_qs = PurchaseOrder.objects.filter(
@@ -1360,70 +1585,32 @@ def get_pharmacy_report_metrics_for_period(target_fac_ids, start_date, end_date,
     active_vendors = vendor_qs.filter(status='ACTIVE').count()
     inactive_vendors = vendor_qs.filter(status='INACTIVE').count()
 
-    # 6. Reconciled Stock Movement & Consumption
-    # Opening Stock + Received - Dispensed +/- Adjustments = Closing Stock
-    stock_movement_items = []
-    tot_rec = 0
-    tot_disp = 0
-    tot_adj = 0
-    tot_close = 0
-    tot_open = 0
-
-    for m in all_master:
-        m_batches = batch_qs.filter(medicine=m, quantity__gt=0, expiry_date__gt=today).exclude(status='EXPIRED')
-        closing = m_batches.aggregate(t=Sum('quantity'))['t'] or 0
-
-        m_tx = tx_period.filter(medicine=m)
-        rec = m_tx.filter(transaction_type='PURCHASE_RECEIVED').aggregate(t=Sum('quantity'))['t'] or 0
-        disp = m_tx.filter(transaction_type='DISPENSED').aggregate(t=Sum('quantity'))['t'] or 0
-        adj = m_tx.filter(transaction_type='ADJUSTMENT').aggregate(t=Sum('quantity'))['t'] or 0
-
-        opening = max(0, closing - rec + disp - adj)
-
-        tot_rec += rec
-        tot_disp += disp
-        tot_adj += adj
-        tot_close += closing
-        tot_open += opening
-
-        if closing > 0 or rec > 0 or disp > 0 or adj > 0:
-            stock_movement_items.append({
-                'medicine_id': m.id,
-                'medicine': m.generic_name,
-                'brand_name': m.brand_name,
-                'dosage_form': m.dosage_form,
-                'unit': m.unit,
-                'opening_stock': opening,
-                'received': rec,
-                'dispensed': disp,
-                'adjusted': adj,
-                'closing_stock': closing
-            })
-
-    stock_movement_items.sort(key=lambda x: (x['dispensed'], x['closing_stock']), reverse=True)
-
     return {
         'prescriptions': {
-            'total_prescriptions': total_prescriptions,
-            'pending': pending_rx,
-            'partially_dispensed': partially_dispensed_rx,
-            'dispensed': dispensed_rx,
-            'cancelled': cancelled_rx
+            'total_prescriptions': rx_metrics['total_prescriptions'],
+            'pending': rx_metrics['pending'],
+            'partially_dispensed': rx_metrics['partially_dispensed'],
+            'dispensed': rx_metrics['dispensed'],
+            'cancelled': rx_metrics['cancelled'],
+            'waiting': rx_metrics['waiting']
         },
         'dispensing': {
-            'total_medicines_dispensed': total_medicines_dispensed,
-            'total_dispensing_transactions': total_dispensing_transactions,
-            'patients_served': patients_served,
-            'top_dispensed_medicines': top_dispensed
+            'total_medicines_dispensed': disp_metrics['total_medicines_dispensed'],
+            'total_dispensing_transactions': disp_metrics['total_dispensing_transactions'],
+            'patients_served': disp_metrics['patients_served'],
+            'top_dispensed_medicines': disp_metrics['top_dispensed_medicines']
         },
         'inventory': {
-            'total_medicines_master': total_medicine_master,
-            'medicines_currently_stocked': total_medicines_stocked,
-            'total_available_units': total_available_units,
-            'low_stock_medicines': low_stock_medicines,
-            'out_of_stock_medicines': out_of_stock_medicines,
-            'expiring_soon_batches': expiring_soon_count,
-            'expired_batches': expired_batches_count
+            'inventory_as_of': inv_metrics['inventory_as_of'],
+            'inventory_snapshot_note': inv_metrics['inventory_snapshot_note'],
+            'metric_source': 'AUTHORITATIVE_BACKEND',
+            'total_medicines_master': inv_metrics['total_medicine_master_records'],
+            'medicines_currently_stocked': inv_metrics['total_medicines_stocked_at_facility'],
+            'total_available_units': inv_metrics['total_available_units'],
+            'low_stock_medicines': inv_metrics['low_stock_medicines'],
+            'out_of_stock_medicines': inv_metrics['out_of_stock_medicines'],
+            'expiring_soon_batches': inv_metrics['expiring_soon_batches'],
+            'expired_batches': inv_metrics['expired_batches']
         },
         'purchases': {
             'total_purchase_orders': total_pos,
@@ -1441,27 +1628,15 @@ def get_pharmacy_report_metrics_for_period(target_fac_ids, start_date, end_date,
             'active_vendors': active_vendors,
             'inactive_vendors': inactive_vendors
         },
-        'stock_movement': {
-            'summary': {
-                'opening_stock': tot_open,
-                'stock_received': tot_rec,
-                'stock_dispensed': tot_disp,
-                'stock_adjusted': tot_adj,
-                'closing_stock': tot_close
-            },
-            'items': stock_movement_items
-        },
+        'stock_movement': stock_movement,
         'expiry_monitoring': {
-            'categories': {
-                'expired': expired_batches_count,
-                'expires_within_7_days': exp_7_count,
-                'expires_within_30_days': exp_30_count,
-                'expires_within_60_days': exp_60_count,
-                'expires_within_90_days': exp_90_count
-            },
-            'batches': monitoring_batches_list
+            'categories': inv_metrics['expiry_breakdown'],
+            'batches': inv_metrics['monitoring_batches_list']
         },
-        'low_stock_report': low_stock_table
+        'low_stock_report': inv_metrics['low_stock_table'],
+        'report_period_start': start_date.strftime('%Y-%m-%d'),
+        'report_period_end': end_date.strftime('%Y-%m-%d'),
+        'inventory_as_of': inv_metrics['inventory_as_of']
     }
 
 
@@ -1784,8 +1959,14 @@ def get_hospital_admin_report_data(user, requested_facility_id=None, period='day
             'type': period.lower(),
             'start_date': start_date.strftime('%Y-%m-%d'),
             'end_date': end_date.strftime('%Y-%m-%d'),
-            'target_date': t_date_str
+            'target_date': t_date_str,
+            'report_period_start': start_date.strftime('%Y-%m-%d'),
+            'report_period_end': end_date.strftime('%Y-%m-%d')
         },
+        'report_period_start': start_date.strftime('%Y-%m-%d'),
+        'report_period_end': end_date.strftime('%Y-%m-%d'),
+        'inventory_as_of': datetime.date.today().strftime('%Y-%m-%d'),
+        'metric_source': 'AUTHORITATIVE_BACKEND',
         'summary_cards': summary_cards,
         'comparison': comparison,
         'opd_patient': opd_patient,

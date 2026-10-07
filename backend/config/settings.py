@@ -1,6 +1,12 @@
 import os
+import sys
 from pathlib import Path
 from datetime import timedelta
+
+if 'test' in sys.argv:
+    PASSWORD_HASHERS = [
+        'django.contrib.auth.hashers.MD5PasswordHasher',
+    ]
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 

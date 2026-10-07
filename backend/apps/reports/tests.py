@@ -923,4 +923,266 @@ class HospitalAdminReportTests(APITestCase):
         self.assertEqual(res_stock['Content-Type'], 'text/csv')
 
 
+class ReconciledDashboardAndReportsTests(APITestCase):
+    """
+    Authoritative test suite verifying Step 5 reconciliation between Dashboard
+    and Hospital Admin Reports (Requirements A through M).
+    """
+    def setUp(self):
+        self.state = State.objects.create(name='Karnataka', code='KA')
+        self.district_1 = District.objects.create(name='District 1', code='D1', state=self.state)
+        self.district_2 = District.objects.create(name='District 2', code='D2', state=self.state)
+
+        self.fac_1a = Facility.objects.create(
+            facility_code='F-1A', facility_name='Facility 1A',
+            facility_type=FacilityTypeChoices.UPHC, state=self.state, district=self.district_1
+        )
+        self.fac_1b = Facility.objects.create(
+            facility_code='F-1B', facility_name='Facility 1B',
+            facility_type=FacilityTypeChoices.UPHC, state=self.state, district=self.district_1
+        )
+        self.fac_2 = Facility.objects.create(
+            facility_code='F-2', facility_name='Facility 2',
+            facility_type=FacilityTypeChoices.UPHC, state=self.state, district=self.district_2
+        )
+
+        self.district_officer = User.objects.create_user(
+            username='do_recon', password='password123',
+            role=RoleChoices.DISTRICT_OFFICER, assigned_district=self.district_1
+        )
+        self.hospital_admin = User.objects.create_user(
+            username='ha_recon_1a', password='password123',
+            role=RoleChoices.HOSPITAL_ADMIN, assigned_facility=self.fac_1a
+        )
+        self.doctor = User.objects.create_user(
+            username='doc_recon_1a', password='password123',
+            role=RoleChoices.DOCTOR, assigned_facility=self.fac_1a
+        )
+
+        self.today = datetime.date.today()
+        self.past_date = self.today - datetime.timedelta(days=10)
+
+    # A. Same facility + same date: Dashboard and corresponding report KPI match.
+    def test_a_same_facility_same_date_kpis_match(self):
+        p1 = Patient.objects.create(patient_id='P1-RECON', name='Pat 1', registered_at_facility=self.fac_1a, registration_date=self.today)
+        p2 = Patient.objects.create(patient_id='P2-RECON', name='Pat 2', registered_at_facility=self.fac_1a, registration_date=self.today)
+        Visit.objects.create(visit_id='V1-RECON', patient=p1, facility=self.fac_1a, opd_date=self.today, current_queue='TRIAGE', status='WAITING_FOR_TRIAGE', priority='EMERGENCY')
+        Visit.objects.create(visit_id='V2-RECON', patient=p2, facility=self.fac_1a, opd_date=self.today, current_queue='COMPLETED', status='COMPLETED', priority='NORMAL')
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        dash = self.client.get(f'/api/dashboard/summary/?date={self.today.isoformat()}').data
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}').data
+
+        self.assertEqual(dash['visits']['total'], rep['opd_patient']['total_opd_visits'])
+        self.assertEqual(dash['visits']['emergency'], rep['opd_patient']['emergency_visits'])
+        self.assertEqual(dash['visits']['completed'], rep['opd_patient']['completed_visits'])
+        self.assertEqual(dash['patients']['registered_today'], rep['opd_patient']['new_patients'])
+        self.assertEqual(dash['visits']['total'], rep['summary_cards']['patients']['total_visits'])
+        self.assertEqual(dash['visits']['emergency'], rep['summary_cards']['patients']['emergency'])
+        self.assertEqual(dash['visits']['completed'], rep['summary_cards']['patients']['completed'])
+
+    # B. Historical dashboard date: No accidental use of today's OPD data.
+    def test_b_historical_dashboard_date_no_todays_opd(self):
+        p_today = Patient.objects.create(patient_id='P-TODAY', name='Today Pat', registered_at_facility=self.fac_1a)
+        Visit.objects.create(visit_id='V-TODAY', patient=p_today, facility=self.fac_1a, opd_date=self.today)
+
+        p_past = Patient.objects.create(patient_id='P-PAST', name='Past Pat', registered_at_facility=self.fac_1a)
+        Patient.objects.filter(pk=p_past.pk).update(registration_date=self.past_date)
+        Visit.objects.create(visit_id='V-PAST-1', patient=p_past, facility=self.fac_1a, opd_date=self.past_date)
+        Visit.objects.create(visit_id='V-PAST-2', patient=p_past, facility=self.fac_1a, opd_date=self.past_date)
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        dash_past = self.client.get(f'/api/dashboard/summary/?date={self.past_date.isoformat()}').data
+
+        self.assertEqual(dash_past['visits']['total'], 2)
+        self.assertEqual(dash_past['todays_opd'], 2)
+        self.assertEqual(dash_past['patients']['registered_today'], 1)
+        self.assertFalse(dash_past['is_today'])
+
+    # C. Pharmacy: Dashboard pharmacy counts match authoritative pharmacy calculations.
+    def test_c_pharmacy_dashboard_and_report_match(self):
+        med = MedicineMaster.objects.create(generic_name='Amoxicillin', minimum_stock=20)
+        p = Patient.objects.create(patient_id='P-RX', name='Rx Pat', registered_at_facility=self.fac_1a)
+        v1 = Visit.objects.create(visit_id='V-RX-1', patient=p, facility=self.fac_1a, opd_date=self.today)
+        c1 = Consultation.objects.create(visit=v1, patient=p, doctor=self.doctor, facility=self.fac_1a, chief_complaint='Fever')
+        Prescription.objects.create(consultation=c1, patient=p, doctor=self.doctor, facility=self.fac_1a, status='PENDING')
+
+        v2 = Visit.objects.create(visit_id='V-RX-2', patient=p, facility=self.fac_1a, opd_date=self.today)
+        c2 = Consultation.objects.create(visit=v2, patient=p, doctor=self.doctor, facility=self.fac_1a, chief_complaint='Cough')
+        Prescription.objects.create(consultation=c2, patient=p, doctor=self.doctor, facility=self.fac_1a, status='DISPENSED')
+
+        batch = MedicineBatch.objects.create(facility=self.fac_1a, medicine=med, batch_number='B-01', quantity=100, expiry_date=self.today + datetime.timedelta(days=90))
+        InventoryTransaction.objects.create(facility=self.fac_1a, medicine=med, batch=batch, transaction_type='DISPENSED', quantity=15, reference_id='RX-2')
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        dash = self.client.get(f'/api/dashboard/summary/?date={self.today.isoformat()}').data
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}').data
+
+        self.assertEqual(dash['pharmacy']['total_prescriptions'], rep['pharmacy']['prescriptions']['total_prescriptions'])
+        self.assertEqual(dash['pharmacy']['pending_prescriptions'], rep['pharmacy']['prescriptions']['pending'])
+        self.assertEqual(dash['pharmacy']['dispensed_prescriptions'], rep['pharmacy']['prescriptions']['dispensed'])
+        self.assertEqual(dash['pharmacy']['total_medicines_dispensed'], rep['pharmacy']['dispensing']['total_medicines_dispensed'])
+        self.assertEqual(dash['pharmacy']['total_medicines_dispensed'], rep['summary_cards']['pharmacy']['dispensed_units'])
+
+    # D. Queue: Dashboard queue counts match Report queue counts.
+    def test_d_queue_counts_match(self):
+        p = Patient.objects.create(patient_id='P-Q', name='Queue Pat', registered_at_facility=self.fac_1a)
+        Visit.objects.create(visit_id='V-T', patient=p, facility=self.fac_1a, opd_date=self.today, current_queue='TRIAGE', status='WAITING_FOR_TRIAGE')
+        Visit.objects.create(visit_id='V-D', patient=p, facility=self.fac_1a, opd_date=self.today, current_queue='DOCTOR', status='WAITING_FOR_DOCTOR')
+        Visit.objects.create(visit_id='V-L', patient=p, facility=self.fac_1a, opd_date=self.today, current_queue='LAB', status='LAB_PENDING')
+        Visit.objects.create(visit_id='V-P', patient=p, facility=self.fac_1a, opd_date=self.today, current_queue='PHARMACY', status='WAITING_FOR_PHARMACY')
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        dash = self.client.get(f'/api/dashboard/summary/?date={self.today.isoformat()}').data
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}').data
+
+        self.assertEqual(dash['queues']['triage_waiting'], rep['queue_service']['stages']['triage']['waiting'])
+        self.assertEqual(dash['queues']['doctor_waiting'], rep['queue_service']['stages']['doctor']['waiting'])
+        self.assertEqual(dash['queues']['lab_pending'], rep['summary_cards']['services']['lab_pending'])
+        self.assertEqual(dash['queues']['pharmacy_waiting'], rep['queue_service']['stages']['pharmacy']['waiting'])
+        self.assertEqual(dash['queues']['pharmacy_waiting'], rep['summary_cards']['services']['pharmacy_waiting'])
+
+    # E. Low stock: Dashboard and Reports use identical threshold logic.
+    def test_e_low_stock_threshold_identical(self):
+        med_low = MedicineMaster.objects.create(generic_name='Paracetamol-Recon', minimum_stock=50, reorder_level=100)
+        MedicineBatch.objects.create(facility=self.fac_1a, medicine=med_low, batch_number='B-LOW-R', quantity=30, expiry_date=self.today + datetime.timedelta(days=120))
+
+        med_normal = MedicineMaster.objects.create(generic_name='Ibuprofen-Recon', minimum_stock=20, reorder_level=40)
+        MedicineBatch.objects.create(facility=self.fac_1a, medicine=med_normal, batch_number='B-NORM-R', quantity=80, expiry_date=self.today + datetime.timedelta(days=120))
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        dash = self.client.get(f'/api/dashboard/summary/?date={self.today.isoformat()}').data
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}').data
+
+        self.assertEqual(dash['pharmacy']['low_stock'], rep['pharmacy']['inventory']['low_stock_medicines'])
+        self.assertEqual(dash['pharmacy']['low_stock'], rep['summary_cards']['pharmacy']['low_stock_medicines'])
+
+    # F. Expiry: Dashboard and Reports use identical expiry definition.
+    def test_f_expiry_window_identical(self):
+        med = MedicineMaster.objects.create(generic_name='Cough Syrup-Recon', minimum_stock=10)
+        # Expired batch
+        MedicineBatch.objects.create(facility=self.fac_1a, medicine=med, batch_number='B-EXP-R', quantity=10, expiry_date=self.today - datetime.timedelta(days=1))
+        # Expiring soon batch (within 60 days)
+        MedicineBatch.objects.create(facility=self.fac_1a, medicine=med, batch_number='B-SOON-R', quantity=10, expiry_date=self.today + datetime.timedelta(days=30))
+        # Active batch (> 60 days)
+        MedicineBatch.objects.create(facility=self.fac_1a, medicine=med, batch_number='B-ACT-R', quantity=50, expiry_date=self.today + datetime.timedelta(days=150))
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        dash = self.client.get(f'/api/dashboard/summary/?date={self.today.isoformat()}').data
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}').data
+
+        self.assertEqual(dash['pharmacy']['expired'], rep['pharmacy']['inventory']['expired_batches'])
+        self.assertEqual(dash['pharmacy']['expiring_soon'], rep['pharmacy']['inventory']['expiring_soon_batches'])
+        self.assertEqual(dash['pharmacy']['expiring_soon'], rep['summary_cards']['pharmacy']['expiring_soon_batches'])
+
+    # G. Inventory movement: opening + received - dispensed +/- adjustment = closing where historical data is reconstructable.
+    def test_g_inventory_movement_reconstructable(self):
+        med = MedicineMaster.objects.create(generic_name='Azithromycin-Recon', minimum_stock=10)
+        batch = MedicineBatch.objects.create(facility=self.fac_1a, medicine=med, batch_number='B-AZ-R', quantity=100, expiry_date=self.today + datetime.timedelta(days=200))
+
+        InventoryTransaction.objects.create(facility=self.fac_1a, medicine=med, batch=batch, transaction_type='PURCHASE_RECEIVED', quantity=40)
+        InventoryTransaction.objects.create(facility=self.fac_1a, medicine=med, batch=batch, transaction_type='DISPENSED', quantity=15)
+        InventoryTransaction.objects.create(facility=self.fac_1a, medicine=med, batch=batch, transaction_type='ADJUSTMENT', quantity=-5)
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}').data
+
+        item = next(it for it in rep['pharmacy']['stock_movement']['items'] if it['medicine_id'] == med.id)
+        self.assertTrue(item['reconstructable'])
+        self.assertTrue(item['historical_opening_exact'])
+        self.assertEqual(item['derivation_status'], 'EXACT')
+
+        opening = item['opening_stock']
+        received = item['received']
+        dispensed = item['dispensed']
+        adjusted = item['adjusted']
+        closing = item['closing_stock']
+
+        self.assertEqual(opening + received - dispensed + adjusted, closing)
+
+    # H. Insufficient transaction history: System does not fabricate an exact historical opening balance.
+    def test_h_insufficient_transaction_history_no_fabrication(self):
+        med = MedicineMaster.objects.create(generic_name='Old Drug-Recon', minimum_stock=10)
+        # Batch exists with quantity 100, but ZERO transactions were ever recorded in InventoryTransaction
+        MedicineBatch.objects.create(facility=self.fac_1a, medicine=med, batch_number='B-OLD-R', quantity=100, expiry_date=self.today + datetime.timedelta(days=200))
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.past_date.isoformat()}').data
+
+        item = next(it for it in rep['pharmacy']['stock_movement']['items'] if it['medicine_id'] == med.id)
+        # Must NOT fabricate an exact opening stock
+        self.assertFalse(item['historical_opening_exact'])
+        self.assertFalse(item['reconstructable'])
+        self.assertIsNone(item['opening_stock'])
+        self.assertEqual(item['derivation_status'], 'UNAVAILABLE')
+
+    # I. Hospital Admin: cannot access another facility.
+    def test_i_hospital_admin_cannot_access_another_facility(self):
+        self.client.force_authenticate(user=self.hospital_admin)
+        res = self.client.get(f'/api/reports/hospital/?facility={self.fac_2.id}&period=day&date={self.today.isoformat()}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # Strictly locked to Facility 1A
+        self.assertEqual(res.data['facility']['id'], self.fac_1a.id)
+
+    # J. District Officer: cannot access another district.
+    def test_j_district_officer_cannot_access_another_district(self):
+        self.client.force_authenticate(user=self.district_officer)
+        # Request facility in District 2
+        res = self.client.get(f'/api/dashboard/summary/?facility={self.fac_2.id}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # Clamped to District 1 scope (2 facilities in District 1)
+        self.assertIsNone(res.data.get('active_facility_id'))
+        self.assertEqual(res.data.get('total_facilities'), 2)
+        self.assertEqual(res.data['scope']['district'], 'District 1')
+
+    # K. Invalid facility: must not silently broaden the user's scope.
+    def test_k_invalid_facility_does_not_broaden_scope(self):
+        self.client.force_authenticate(user=self.district_officer)
+        res = self.client.get('/api/dashboard/summary/?facility=99999999')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # Remains clamped to District 1, not all facilities in DB
+        self.assertEqual(res.data.get('total_facilities'), 2)
+        self.assertEqual(res.data['scope']['district'], 'District 1')
+
+    # L. Zero-data facility: all metrics return valid zero/empty values without errors.
+    def test_l_zero_data_facility_returns_valid_empty_metrics(self):
+        zero_fac = Facility.objects.create(facility_code='F-ZERO-R', facility_name='Zero Facility Recon', state=self.state, district=self.district_1)
+        ha_zero = User.objects.create_user(username='ha_zero_r', password='password123', role=RoleChoices.HOSPITAL_ADMIN, assigned_facility=zero_fac)
+
+        self.client.force_authenticate(user=ha_zero)
+        dash = self.client.get(f'/api/dashboard/summary/?date={self.today.isoformat()}')
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}')
+
+        self.assertEqual(dash.status_code, status.HTTP_200_OK)
+        self.assertEqual(rep.status_code, status.HTTP_200_OK)
+        self.assertEqual(dash.data['visits']['total'], 0)
+        self.assertEqual(rep.data['opd_patient']['total_opd_visits'], 0)
+        self.assertEqual(rep.data['summary_cards']['patients']['total_visits'], 0)
+        self.assertEqual(rep.data['pharmacy']['dispensing']['total_medicines_dispensed'], 0)
+
+    # M. Multi-facility District Officer: district totals equal the sum of the selected facility-level metrics where aggregation is mathematically applicable.
+    def test_m_multi_facility_district_officer_sum_aggregation(self):
+        p1 = Patient.objects.create(patient_id='P-1A-R', name='Pat 1A', registered_at_facility=self.fac_1a, registration_date=self.today)
+        p2 = Patient.objects.create(patient_id='P-1B-R', name='Pat 1B', registered_at_facility=self.fac_1b, registration_date=self.today)
+        Visit.objects.create(visit_id='V-1A-R', patient=p1, facility=self.fac_1a, opd_date=self.today, current_queue='TRIAGE', status='WAITING_FOR_TRIAGE')
+        Visit.objects.create(visit_id='V-1B-R', patient=p2, facility=self.fac_1b, opd_date=self.today, current_queue='TRIAGE', status='WAITING_FOR_TRIAGE')
+
+        self.client.force_authenticate(user=self.district_officer)
+
+        # Facility 1A request
+        res_1a = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1a.id}&date={self.today.isoformat()}').data
+        # Facility 1B request
+        res_1b = self.client.get(f'/api/dashboard/summary/?facility={self.fac_1b.id}&date={self.today.isoformat()}').data
+        # District-wide request
+        res_dist = self.client.get(f'/api/dashboard/summary/?date={self.today.isoformat()}').data
+
+        self.assertEqual(res_1a['visits']['total'], 1)
+        self.assertEqual(res_1b['visits']['total'], 1)
+        self.assertEqual(res_dist['visits']['total'], 2)
+        # Sum equality check
+        self.assertEqual(res_dist['visits']['total'], res_1a['visits']['total'] + res_1b['visits']['total'])
+        self.assertEqual(res_dist['queues']['triage_waiting'], res_1a['queues']['triage_waiting'] + res_1b['queues']['triage_waiting'])
+
+
+
 
