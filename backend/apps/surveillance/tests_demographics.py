@@ -73,6 +73,21 @@ from apps.surveillance.intelligence_services import (
     aggregate_district_level,
     get_public_health_intelligence_summary,
 )
+from apps.surveillance.vulnerable_population_services import (
+    VULNERABLE_GROUP_PREGNANT,
+    VULNERABLE_GROUP_ELDERLY,
+    VULNERABLE_GROUP_DISABILITY,
+    VULNERABLE_GROUP_CHRONIC,
+    VULNERABLE_GROUP_LOW_INCOME,
+    VULNERABLE_GROUP_GENERAL,
+    VULNERABLE_GROUP_UNKNOWN,
+    VULNERABLE_GROUPS,
+    ALL_VULNERABLE_GROUPS,
+    normalize_vulnerable_group,
+    validate_vulnerable_group_param,
+    filter_cases_by_vulnerable_group,
+    build_vulnerable_population_matrices,
+)
 
 User = get_user_model()
 
@@ -2520,6 +2535,681 @@ class PublicHealthSeverityDemographicsTestCase(TestCase):
                 months=6,
                 as_of_date=self.as_of
             )
+
+
+class PublicHealthVulnerablePopulationTestCase(TestCase):
+    """
+    Dedicated comprehensive test suite for Prompt 5: Vulnerable Population Analysis.
+    Covers all 24 required test scenarios:
+    1. Vulnerable group filter validation (valid -> 200, invalid/UNKNOWN -> 400)
+    2. Vulnerable group filtering correctness
+    3. Vulnerable group + disease combined filtering
+    4. Vulnerable group + severity combined filtering
+    5. Vulnerable group + age_group combined filtering
+    6. Vulnerable group + gender combined filtering
+    7. Vulnerable group + age_group + gender + severity + disease combined filtering
+    8. historical_vulnerable_groups correctness
+    9. monthly_vulnerable_population_trends correctness and sum invariant
+    10. vulnerable_age_groups correctness
+    11. vulnerable_gender correctness
+    12. vulnerable_age_gender correctness
+    13. vulnerable_severity correctness
+    14. vulnerable_age_gender_severity 4D matrix correctness
+    15. Role-based authorization (403 for unauthorized cross-facility / cross-district)
+    16. Missing/unknown vulnerability handling (internal UNKNOWN vs rejected param)
+    17. Backward compatibility when vulnerable_group is omitted
+    18. Trends endpoint with vulnerable_group filter
+    19. Locality endpoint with vulnerable_group filter
+    20. Hospital and district endpoints with vulnerable_group filter
+    21. Summary endpoint with vulnerable_group filter
+    22. Non-silent filtering across endpoints
+    23. Age calculation uses case report_date, not today
+    24. Query efficiency (assertNumQueries(1) without N+1 loop)
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.state = State.objects.create(name='Tamil Nadu', code='TN')
+        cls.district_central = District.objects.create(name='Central Chennai', code='CEN', state=cls.state)
+        cls.district_rural = District.objects.create(name='Rural Kanchipuram', code='RUR', state=cls.state)
+
+        cls.zone_c = Zone.objects.create(name='Central Zone', code='Z-CEN', district=cls.district_central)
+        cls.zone_r = Zone.objects.create(name='Rural Zone', code='Z-RUR', district=cls.district_rural)
+
+        cls.ward_c1 = Ward.objects.create(name='Central Ward 1', ward_number=101, zone=cls.zone_c)
+        cls.ward_c2 = Ward.objects.create(name='Central Ward 2', ward_number=102, zone=cls.zone_c)
+        cls.ward_r1 = Ward.objects.create(name='Rural Ward 1', ward_number=201, zone=cls.zone_r)
+
+        cls.fac_c1 = Facility.objects.create(
+            facility_name='Central Clinic One', facility_code='CC01',
+            facility_type='URBAN_PHC', district=cls.district_central, ward=cls.ward_c1, state=cls.state
+        )
+        cls.fac_c2 = Facility.objects.create(
+            facility_name='Central Clinic Two', facility_code='CC02',
+            facility_type='COMMUNITY_HEALTH_CENTRE', district=cls.district_central, ward=cls.ward_c2, state=cls.state
+        )
+        cls.fac_r1 = Facility.objects.create(
+            facility_name='Rural Primary Clinic', facility_code='RC01',
+            facility_type='PRIMARY_HEALTH_CENTRE', district=cls.district_rural, ward=cls.ward_r1, state=cls.state
+        )
+
+        cls.admin_c1 = User.objects.create_user(
+            username='admin_c1', email='admin_c1@clinic.in', password='pass',
+            role='HOSPITAL_ADMIN', assigned_facility=cls.fac_c1
+        )
+        cls.admin_c2 = User.objects.create_user(
+            username='admin_c2', email='admin_c2@clinic.in', password='pass',
+            role='HOSPITAL_ADMIN', assigned_facility=cls.fac_c2
+        )
+        cls.doctor_c1 = User.objects.create_user(
+            username='doctor_c1', email='doctor_c1@clinic.in', password='pass',
+            role='DOCTOR', assigned_facility=cls.fac_c1
+        )
+        cls.officer_c = User.objects.create_user(
+            username='officer_c', email='officer_c@clinic.in', password='pass',
+            role='DISTRICT_OFFICER', assigned_district=cls.district_central
+        )
+        cls.officer_r = User.objects.create_user(
+            username='officer_r', email='officer_r@clinic.in', password='pass',
+            role='DISTRICT_OFFICER', assigned_district=cls.district_rural
+        )
+
+        for u in [cls.admin_c1, cls.admin_c2, cls.doctor_c1, cls.officer_c, cls.officer_r]:
+            u.user_permissions.add(
+                *list(u.user_permissions.model.objects.filter(codename__in=['view_dashboard', 'dashboard.view']))
+            )
+
+        # Deterministic Patients mapped to each vulnerable population group
+        # 1. PREGNANT
+        cls.p_preg = Patient.objects.create(
+            patient_id='P-VP01', name='Maternal Patient',
+            date_of_birth=datetime.date(2000, 1, 1), age=26, gender='FEMALE',
+            vulnerability_information='High Risk Pregnancy ANC',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 2. ELDERLY
+        cls.p_elder = Patient.objects.create(
+            patient_id='P-VP02', name='Elderly Patient',
+            date_of_birth=datetime.date(1956, 1, 1), age=70, gender='MALE',
+            vulnerability_information='Senior Citizen / Diabetic',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 3. DISABILITY
+        cls.p_pwd = Patient.objects.create(
+            patient_id='P-VP03', name='PwD Patient',
+            date_of_birth=datetime.date(1994, 1, 1), age=32, gender='MALE',
+            vulnerability_information='Person with Disability (PwD)',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 4. CHRONIC_CONDITION
+        cls.p_chronic = Patient.objects.create(
+            patient_id='P-VP04', name='Chronic Patient',
+            date_of_birth=datetime.date(1980, 1, 1), age=46, gender='FEMALE',
+            vulnerability_information='Hypertension / General BPL',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 5. LOW_INCOME_SLUM
+        cls.p_slum = Patient.objects.create(
+            patient_id='P-VP05', name='Slum Resident Child',
+            date_of_birth=datetime.date(2022, 1, 1), age=4, gender='MALE',
+            vulnerability_information='Slum Resident / Low Income Group',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 6. GENERAL
+        cls.p_gen = Patient.objects.create(
+            patient_id='P-VP06', name='General Non-Vulnerable Patient',
+            date_of_birth=datetime.date(2012, 1, 1), age=14, gender='FEMALE',
+            vulnerability_information='General / Non-Vulnerable',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 7. UNKNOWN tag
+        cls.p_unk_tag = Patient.objects.create(
+            patient_id='P-VP07', name='Unknown Custom Tag Patient',
+            date_of_birth=datetime.date(2005, 1, 1), age=21, gender='FEMALE',
+            vulnerability_information='Unknown Random Tag XYZ',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 8. Missing / None
+        cls.p_unk_none = Patient.objects.create(
+            patient_id='P-VP08', name='Missing Vulnerability Patient',
+            date_of_birth=datetime.date(1970, 1, 1), age=56, gender='MALE',
+            vulnerability_information='',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+
+        cls.as_of = datetime.date(2026, 10, 7)
+
+        # Historical cases across 6 calendar months (May - Oct 2026) at fac_c1
+        # May 2026: 1 MILD Dengue case (LOW_INCOME_SLUM)
+        cls.c_may_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_slum, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 5, 10), severity='MILD'
+        )
+        # June 2026: 1 MODERATE Dengue case (GENERAL)
+        cls.c_jun_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_gen, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 6, 15), severity='MODERATE'
+        )
+        # July 2026: 2 cases (PREGNANT SEVERE, DISABILITY MILD)
+        cls.c_jul_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_preg, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 7, 10), severity='SEVERE'
+        )
+        cls.c_jul_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_pwd, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 7, 20), severity='MILD'
+        )
+        # August 2026: 2 cases (CHRONIC MODERATE, ELDERLY SEVERE)
+        cls.c_aug_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_chronic, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 8, 12), severity='MODERATE'
+        )
+        cls.c_aug_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_elder, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 8, 25), severity='SEVERE'
+        )
+        # September 2026: 2 cases (UNKNOWN Dengue MILD, ELDERLY Malaria SEVERE)
+        cls.c_sep_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_unk_tag, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 9, 5), severity='MILD'
+        )
+        cls.c_sep_2 = DiseaseCase.objects.create(
+            disease_name='Malaria', patient=cls.p_elder, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 9, 15), severity='SEVERE'
+        )
+        # October 2026: 2 Dengue cases (UNKNOWN MODERATE, ELDERLY SEVERE)
+        cls.c_oct_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_unk_none, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 10, 2), severity='MODERATE'
+        )
+        cls.c_oct_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_elder, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 10, 5), severity='SEVERE'
+        )
+
+        # Cross-district case in Rural Kanchipuram (facility fac_r1)
+        cls.c_rur_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_elder, facility=cls.fac_r1,
+            ward=cls.ward_r1, report_date=datetime.date(2026, 10, 3), severity='SEVERE'
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin_c1)
+
+    # 1. Vulnerable group filter validation
+    def test_01_vulnerable_group_validation(self):
+        """
+        Verify validation of vulnerable_group query parameter:
+        - Valid supported groups -> 200
+        - Lowercase versions -> 200
+        - Raw application labels -> 200
+        - UNKNOWN -> 400
+        - Invalid string -> 400
+        """
+        url = reverse('intelligence_historical_disease')
+
+        # Supported valid groups
+        for vg in ['PREGNANT', 'ELDERLY', 'DISABILITY', 'CHRONIC_CONDITION', 'LOW_INCOME_SLUM', 'GENERAL']:
+            res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group={vg}")
+            self.assertEqual(res.status_code, status.HTTP_200_OK, f"Valid group {vg} rejected.")
+
+        # Case-insensitivity & aliases
+        for alias in ['pregnant', 'elderly', 'disability', 'chronic_condition', 'low_income_slum', 'general', 'High Risk Pregnancy ANC']:
+            res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group={alias}")
+            self.assertEqual(res.status_code, status.HTTP_200_OK, f"Alias {alias} rejected.")
+
+        # UNKNOWN is invalid as a public filter
+        res_unk = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=UNKNOWN")
+        self.assertEqual(res_unk.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', res_unk.data)
+
+        # Arbitrary invalid group
+        for invalid_val in ['INVALID', 'HOMELESS', '123', 'UNKNOWN_GROUP']:
+            res_inv = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group={invalid_val}")
+            self.assertEqual(res_inv.status_code, status.HTTP_400_BAD_REQUEST, f"Invalid group {invalid_val} should return 400.")
+            self.assertIn('error', res_inv.data)
+
+    # 2. Vulnerable group filtering correctness
+    def test_02_vulnerable_group_filtering_correctness(self):
+        """
+        Filtering by vulnerable_group must include only records matching that group.
+        """
+        url = reverse('intelligence_historical_disease')
+
+        # ELDERLY Dengue cases: c_aug_2, c_oct_2 (2 Dengue cases total at fac_c1)
+        res_elder = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=ELDERLY")
+        self.assertEqual(res_elder.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_elder.data['total_cases_in_history'], 2)
+
+        # PREGNANT Dengue cases: c_jul_1 (1 Dengue case total at fac_c1)
+        res_preg = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=PREGNANT")
+        self.assertEqual(res_preg.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_preg.data['total_cases_in_history'], 1)
+
+        # LOW_INCOME_SLUM Dengue cases: c_may_1 (1 Dengue case)
+        res_slum = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=LOW_INCOME_SLUM")
+        self.assertEqual(res_slum.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_slum.data['total_cases_in_history'], 1)
+
+    # 3. Combined filter: vulnerable_group + disease
+    def test_03_combined_filter_vulnerable_group_and_disease(self):
+        """
+        Verifies AND logic when combining vulnerable_group and disease.
+        """
+        url = reverse('intelligence_historical_disease')
+
+        # ELDERLY + Dengue -> 2 cases (c_aug_2, c_oct_2)
+        res_dengue = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=ELDERLY")
+        self.assertEqual(res_dengue.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_dengue.data['total_cases_in_history'], 2)
+
+        # ELDERLY + Malaria -> 1 case (c_sep_2)
+        res_malaria = self.client.get(f"{url}?disease=Malaria&date={self.as_of}&vulnerable_group=ELDERLY")
+        self.assertEqual(res_malaria.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_malaria.data['total_cases_in_history'], 1)
+
+    # 4. Combined filter: vulnerable_group + severity
+    def test_04_combined_filter_vulnerable_group_and_severity(self):
+        """
+        Verifies AND logic when combining vulnerable_group and severity.
+        """
+        url = reverse('intelligence_historical_disease')
+
+        # ELDERLY + SEVERE -> 2 Dengue cases
+        res_sev = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=ELDERLY&severity=SEVERE")
+        self.assertEqual(res_sev.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_sev.data['total_cases_in_history'], 2)
+
+        # ELDERLY + MILD -> 0 Dengue cases
+        res_mild = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=ELDERLY&severity=MILD")
+        self.assertEqual(res_mild.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_mild.data['total_cases_in_history'], 0)
+
+    # 5. Combined filter: vulnerable_group + age_group
+    def test_05_combined_filter_vulnerable_group_and_age_group(self):
+        """
+        Verifies AND logic when combining vulnerable_group and age_group.
+        """
+        url = reverse('intelligence_historical_disease')
+
+        # LOW_INCOME_SLUM + 0-5 -> 1 case (c_may_1)
+        res_child = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=LOW_INCOME_SLUM&age_group=0-5")
+        self.assertEqual(res_child.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_child.data['total_cases_in_history'], 1)
+
+        # LOW_INCOME_SLUM + 45-59 -> 0 cases
+        res_none = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=LOW_INCOME_SLUM&age_group=45-59")
+        self.assertEqual(res_none.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_none.data['total_cases_in_history'], 0)
+
+    # 6. Combined filter: vulnerable_group + gender
+    def test_06_combined_filter_vulnerable_group_and_gender(self):
+        """
+        Verifies AND logic when combining vulnerable_group and gender.
+        """
+        url = reverse('intelligence_historical_disease')
+
+        # PREGNANT + FEMALE -> 1 case (c_jul_1)
+        res_fem = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=PREGNANT&gender=FEMALE")
+        self.assertEqual(res_fem.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_fem.data['total_cases_in_history'], 1)
+
+        # PREGNANT + MALE -> 0 cases
+        res_male = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=PREGNANT&gender=MALE")
+        self.assertEqual(res_male.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_male.data['total_cases_in_history'], 0)
+
+    # 7. Combined filter across all dimensions
+    def test_07_combined_all_demographic_severity_vulnerable_filters(self):
+        """
+        Verifies combination of: vulnerable_group + age_group + gender + severity + disease.
+        """
+        url = reverse('intelligence_historical_disease')
+
+        # LOW_INCOME_SLUM + 0-5 + MALE + MILD + Dengue -> 1 case (c_may_1)
+        res = self.client.get(
+            f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=LOW_INCOME_SLUM&age_group=0-5&gender=MALE&severity=MILD"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 1)
+
+        # Changing severity to SEVERE -> 0 cases
+        res_mismatch = self.client.get(
+            f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=LOW_INCOME_SLUM&age_group=0-5&gender=MALE&severity=SEVERE"
+        )
+        self.assertEqual(res_mismatch.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_mismatch.data['total_cases_in_history'], 0)
+
+    # 8. historical_vulnerable_groups correctness
+    def test_08_historical_vulnerable_groups_structure_and_counts(self):
+        """
+        Verify historical_vulnerable_groups contains all supported categories,
+        monthly counts, and accurate totals.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('historical_vulnerable_groups', res.data)
+        vg_list = res.data['historical_vulnerable_groups']
+        self.assertIsInstance(vg_list, list)
+
+        vg_map = {item['vulnerable_group']: item['total_cases'] for item in vg_list}
+
+        # Check each group count for Dengue (total Dengue cases at fac_c1 = 9)
+        self.assertEqual(vg_map.get('LOW_INCOME_SLUM'), 1)
+        self.assertEqual(vg_map.get('GENERAL'), 1)
+        self.assertEqual(vg_map.get('PREGNANT'), 1)
+        self.assertEqual(vg_map.get('DISABILITY'), 1)
+        self.assertEqual(vg_map.get('CHRONIC_CONDITION'), 1)
+        self.assertEqual(vg_map.get('ELDERLY'), 2)
+        self.assertEqual(vg_map.get('UNKNOWN'), 2)
+        self.assertEqual(sum(vg_map.values()), 9)
+
+        # Check monthly_counts inside each group item
+        for item in vg_list:
+            self.assertIn('monthly_counts', item)
+            self.assertEqual(len(item['monthly_counts']), 6)
+            for m in item['monthly_counts']:
+                self.assertIn('month', m)
+                self.assertIn('count', m)
+                self.assertIn('cases', m)
+
+    # 9. monthly_vulnerable_population_trends correctness and sum invariant
+    def test_09_monthly_vulnerable_population_trends_sum_invariant(self):
+        """
+        Verify monthly_vulnerable_population_trends:
+        For every month, sum(vulnerable_groups.values()) must strictly equal total_cases.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('monthly_vulnerable_population_trends', res.data)
+        trends = res.data['monthly_vulnerable_population_trends']
+        self.assertEqual(len(trends), 6)
+
+        for month_entry in trends:
+            self.assertIn('month', month_entry)
+            self.assertIn('total_cases', month_entry)
+            self.assertIn('vulnerable_groups', month_entry)
+            tot = month_entry['total_cases']
+            vg_sum = sum(month_entry['vulnerable_groups'].values())
+            self.assertEqual(tot, vg_sum, f"Sum mismatch for month {month_entry['month']}: total={tot}, sum={vg_sum}")
+
+    # 10. vulnerable_age_groups correctness
+    def test_10_vulnerable_age_groups_matrix(self):
+        """
+        Verify vulnerable_age_groups distribution across age brackets.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('vulnerable_age_groups', res.data)
+        vag = res.data['vulnerable_age_groups']
+
+        # ELDERLY has 2 cases in 60+
+        self.assertEqual(vag['ELDERLY']['60+'], 2)
+        # LOW_INCOME_SLUM has 1 case in 0-5
+        self.assertEqual(vag['LOW_INCOME_SLUM']['0-5'], 1)
+        # PREGNANT has 1 case in 25-44
+        self.assertEqual(vag['PREGNANT']['25-44'], 1)
+
+    # 11. vulnerable_gender correctness
+    def test_11_vulnerable_gender_matrix(self):
+        """
+        Verify vulnerable_gender distribution across gender options.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('vulnerable_gender', res.data)
+        vg_gender = res.data['vulnerable_gender']
+
+        self.assertEqual(vg_gender['PREGNANT']['FEMALE'], 1)
+        self.assertEqual(vg_gender['ELDERLY']['MALE'], 2)
+        self.assertEqual(vg_gender['LOW_INCOME_SLUM']['MALE'], 1)
+
+    # 12. vulnerable_age_gender correctness
+    def test_12_vulnerable_age_gender_matrix(self):
+        """
+        Verify vulnerable_age_gender cross-tabulation matrix.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('vulnerable_age_gender', res.data)
+        vag = res.data['vulnerable_age_gender']
+
+        self.assertEqual(vag['PREGNANT']['25-44']['FEMALE'], 1)
+        self.assertEqual(vag['ELDERLY']['60+']['MALE'], 2)
+        self.assertEqual(vag['LOW_INCOME_SLUM']['0-5']['MALE'], 1)
+
+    # 13. vulnerable_severity correctness
+    def test_13_vulnerable_severity_matrix(self):
+        """
+        Verify vulnerable_severity distribution across severity levels.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('vulnerable_severity', res.data)
+        vsev = res.data['vulnerable_severity']
+
+        self.assertEqual(vsev['ELDERLY']['SEVERE'], 2)
+        self.assertEqual(vsev['PREGNANT']['SEVERE'], 1)
+        self.assertEqual(vsev['LOW_INCOME_SLUM']['MILD'], 1)
+        self.assertEqual(vsev['DISABILITY']['MILD'], 1)
+        self.assertEqual(vsev['CHRONIC_CONDITION']['MODERATE'], 1)
+
+    # 14. vulnerable_age_gender_severity 4D matrix correctness
+    def test_14_vulnerable_age_gender_severity_matrix(self):
+        """
+        Verify 4-level nested matrix: vulnerable_group -> age_group -> gender -> severity.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('vulnerable_age_gender_severity', res.data)
+        v4d = res.data['vulnerable_age_gender_severity']
+
+        self.assertEqual(v4d['ELDERLY']['60+']['MALE']['SEVERE'], 2)
+        self.assertEqual(v4d['PREGNANT']['25-44']['FEMALE']['SEVERE'], 1)
+        self.assertEqual(v4d['LOW_INCOME_SLUM']['0-5']['MALE']['MILD'], 1)
+        self.assertEqual(v4d['CHRONIC_CONDITION']['45-59']['FEMALE']['MODERATE'], 1)
+
+    # 15. Role-based authorization: unauthorized returns 403
+    def test_15_role_based_authorization_unauthorized_returns_403(self):
+        """
+        Hospital Admin querying outside assigned facility -> 403.
+        District Officer querying outside assigned district -> 403.
+        Scope must be resolved before extracting analytical data.
+        """
+        url = reverse('intelligence_historical_disease')
+
+        # Hospital Admin admin_c1 tries to query fac_r1 (rural hospital)
+        res_cross_hosp = self.client.get(f"{url}?facility={self.fac_r1.id}&disease=Dengue&vulnerable_group=ELDERLY")
+        self.assertEqual(res_cross_hosp.status_code, status.HTTP_403_FORBIDDEN)
+
+        # District Officer officer_c tries to query rural district
+        self.client.force_authenticate(user=self.officer_c)
+        res_cross_dist = self.client.get(f"{url}?district={self.district_rural.id}&disease=Dengue&vulnerable_group=ELDERLY")
+        self.assertEqual(res_cross_dist.status_code, status.HTTP_403_FORBIDDEN)
+
+    # 16. Missing/unknown vulnerability handling
+    def test_16_missing_and_unknown_vulnerability_handling(self):
+        """
+        Patients with missing or unmapped vulnerability information are mapped internally to UNKNOWN.
+        Query parameter vulnerable_group=UNKNOWN is rejected with 400.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        vg_map = {item['vulnerable_group']: item['total_cases'] for item in res.data['historical_vulnerable_groups']}
+        self.assertIn('UNKNOWN', vg_map)
+        self.assertEqual(vg_map['UNKNOWN'], 2)
+
+        # UNKNOWN cannot be passed as a public query filter
+        res_bad = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&vulnerable_group=UNKNOWN")
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', res_bad.data)
+
+    # 17. Backward compatibility when vulnerable_group is omitted
+    def test_17_backward_compatibility_when_omitted(self):
+        """
+        Omitting vulnerable_group returns all cases and keeps all Prompt 1-4 fields intact.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertEqual(res.data['total_cases_in_history'], 9)
+
+        # Check legacy & demographic & severity keys
+        required_keys = [
+            'disease', 'months_analyzed', 'total_cases_in_history', 'monthly_average',
+            'mean_monthly_cases', 'current_month_cases', 'previous_month_cases',
+            'percentage_change', 'trend_direction', 'explanation', 'historical_series',
+            'monthly_series', 'severity_breakdown', 'observation_period',
+            'historical_age_groups', 'historical_gender', 'age_gender_matrix',
+            'monthly_demographic_trends', 'historical_severity', 'monthly_severity_trends',
+            'severity_age_groups', 'severity_gender', 'severity_age_gender',
+            'historical_vulnerable_groups', 'monthly_vulnerable_population_trends',
+            'vulnerable_age_groups', 'vulnerable_gender', 'vulnerable_age_gender',
+            'vulnerable_severity', 'vulnerable_age_gender_severity'
+        ]
+        for key in required_keys:
+            self.assertIn(key, res.data, f"Required response key '{key}' missing.")
+
+    # 18. Trends endpoint coverage
+    def test_18_endpoint_coverage_trends(self):
+        """
+        Verify disease trends endpoint supports vulnerable_group filter.
+        """
+        url = reverse('intelligence_disease_trends')
+        res = self.client.get(f"{url}?disease=Dengue&facility={self.fac_c1.id}&date={self.as_of}&vulnerable_group=ELDERLY")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # Check current cases for ELDERLY Dengue at fac_c1
+        d_trend = next((d for d in res.data['disease_trends'] if d['disease'] == 'Dengue'), None)
+        self.assertIsNotNone(d_trend)
+        self.assertEqual(d_trend['current_cases'], 1)  # c_oct_2 on 2026-10-05
+
+    # 19. Locality aggregation endpoint coverage
+    def test_19_endpoint_coverage_locality(self):
+        """
+        Verify disease locality aggregation endpoint supports vulnerable_group filter.
+        """
+        url = reverse('intelligence_disease_by_locality')
+        res = self.client.get(f"{url}?disease=Dengue&facility={self.fac_c1.id}&date={self.as_of}&vulnerable_group=ELDERLY")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('locality_aggregations', res.data)
+
+    # 20. Hospital and district endpoints coverage
+    def test_20_endpoint_coverage_hospital_and_district(self):
+        """
+        Verify hospital and district aggregation endpoints support vulnerable_group filter.
+        """
+        # Hospital endpoint
+        url_hosp = reverse('intelligence_hospital_aggregation')
+        res_hosp = self.client.get(f"{url_hosp}?facility={self.fac_c1.id}&date={self.as_of}&vulnerable_group=ELDERLY")
+        self.assertEqual(res_hosp.status_code, status.HTTP_200_OK)
+        self.assertIn('hospital', res_hosp.data)
+
+        # District endpoint
+        self.client.force_authenticate(user=self.officer_c)
+        url_dist = reverse('intelligence_district_aggregation')
+        res_dist = self.client.get(f"{url_dist}?district={self.district_central.id}&date={self.as_of}&vulnerable_group=ELDERLY")
+        self.assertEqual(res_dist.status_code, status.HTTP_200_OK)
+        self.assertIn('district', res_dist.data)
+
+    # 21. Summary endpoint coverage
+    def test_21_endpoint_coverage_summary(self):
+        """
+        Verify intelligence summary endpoint supports vulnerable_group filter.
+        """
+        url = reverse('intelligence_summary')
+        res = self.client.get(f"{url}?facility={self.fac_c1.id}&date={self.as_of}&vulnerable_group=ELDERLY")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('summary', res.data)
+
+    # 22. Non-silent filtering across endpoints
+    def test_22_non_silent_filtering_across_endpoints(self):
+        """
+        Compare unfiltered request with vulnerable_group filtered request to ensure
+        filter is NOT silently ignored, and invalid filters return 400.
+        """
+        url = reverse('intelligence_disease_trends')
+
+        res_unfiltered = self.client.get(f"{url}?disease=Dengue&facility={self.fac_c1.id}&date={self.as_of}")
+        res_filtered = self.client.get(f"{url}?disease=Dengue&facility={self.fac_c1.id}&date={self.as_of}&vulnerable_group=ELDERLY")
+
+        self.assertEqual(res_unfiltered.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_filtered.status_code, status.HTTP_200_OK)
+
+        t_all = next((d['current_cases'] for d in res_unfiltered.data['disease_trends'] if d['disease'] == 'Dengue'), 0)
+        t_elder = next((d['current_cases'] for d in res_filtered.data['disease_trends'] if d['disease'] == 'Dengue'), 0)
+
+        # Unfiltered in last 7 days: c_oct_1 (UNKNOWN) + c_oct_2 (ELDERLY) = 2
+        # Filtered to ELDERLY: 1
+        self.assertGreater(t_all, t_elder, "Filter was silently ignored on trends endpoint.")
+
+        # Invalid group returns 400, never unfiltered data
+        res_invalid = self.client.get(f"{url}?disease=Dengue&facility={self.fac_c1.id}&date={self.as_of}&vulnerable_group=BAD_VALUE")
+        self.assertEqual(res_invalid.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 23. Age calculation uses case report_date, not today
+    def test_23_age_calculation_uses_case_report_date(self):
+        """
+        Verify that age for matrix calculations is strictly computed relative to case report_date.
+        """
+        # Patient born 2020-07-01:
+        # On 2026-06-30: age 5 -> '0-5'
+        # On 2026-07-02: age 6 -> '6-14'
+        p_aging_vp = Patient.objects.create(
+            patient_id='P-AGING-VP', name='Aging VP Patient',
+            date_of_birth=datetime.date(2020, 7, 1), age=6, gender='MALE',
+            vulnerability_information='Slum Resident / Low Income Group',
+            district=self.district_central, ward=self.ward_c1, registered_at_facility=self.fac_c1
+        )
+        case_child = DiseaseCase.objects.create(
+            disease_name='Cholera', patient=p_aging_vp, facility=self.fac_c1,
+            ward=self.ward_c1, report_date=datetime.date(2026, 6, 30), severity='MILD'
+        )
+        case_adol = DiseaseCase.objects.create(
+            disease_name='Cholera', patient=p_aging_vp, facility=self.fac_c1,
+            ward=self.ward_c1, report_date=datetime.date(2026, 7, 2), severity='MILD'
+        )
+
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Cholera&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        vag = res.data['vulnerable_age_groups']
+        # Slum resident should have 1 case in '0-5' and 1 case in '6-14'
+        self.assertEqual(vag['LOW_INCOME_SLUM']['0-5'], 1)
+        self.assertEqual(vag['LOW_INCOME_SLUM']['6-14'], 1)
+
+    # 24. Query efficiency: assertNumQueries(1) without N+1 query loop
+    def test_24_query_efficiency_no_n_plus_one(self):
+        """
+        Verify that historical vulnerable population aggregation executes in strictly 1 query
+        via select_related('patient'), preventing N+1 queries.
+        """
+        with self.assertNumQueries(1):
+            aggregate_historical_disease(
+                facility_ids=[self.fac_c1.id],
+                disease_name='Dengue',
+                months=6,
+                as_of_date=self.as_of
+            )
+
 
 
 

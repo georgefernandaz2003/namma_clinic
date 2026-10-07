@@ -449,12 +449,13 @@ def validate_severity_param(severity=None):
 
 def get_demographic_intelligence(facility_ids=None, district_id=None, disease_name=None,
                                  start_date=None, end_date=None, as_of_date=None,
-                                 age_group=None, gender=None, severity=None):
+                                 age_group=None, gender=None, severity=None,
+                                 vulnerable_group=None):
     """
     Public Health Intelligence Demographic Analysis Service.
     Derives strictly from real database records across DiseaseCase and Patient.
     Supports filtering by facility_ids, district_id, disease_name, date window,
-    optional demographic criteria (age_group, gender), and severity.
+    optional demographic criteria (age_group, gender), severity, and vulnerable_group.
     """
     from apps.surveillance.models import DiseaseCase
     from apps.surveillance.intelligence_services import get_period_dates
@@ -478,6 +479,10 @@ def get_demographic_intelligence(facility_ids=None, district_id=None, disease_na
 
     if age_group or gender:
         qs = filter_cases_by_demographics(qs, age_groups=age_group, genders=gender)
+
+    if vulnerable_group:
+        from apps.surveillance.vulnerable_population_services import filter_cases_by_vulnerable_group
+        qs = filter_cases_by_vulnerable_group(qs, vulnerable_group=vulnerable_group)
 
     # Overall demographic summary
     overall_demographics = aggregate_demographics(qs, reference_date=as_of)
