@@ -55,6 +55,16 @@ GENDER_UNKNOWN = 'UNKNOWN'
 
 GENDER_CHOICES = [GENDER_MALE, GENDER_FEMALE, GENDER_OTHER]
 
+# ---------------------------------------------------------------------------
+# Authoritative Severity Constants
+# ---------------------------------------------------------------------------
+SEVERITY_MILD = 'MILD'
+SEVERITY_MODERATE = 'MODERATE'
+SEVERITY_SEVERE = 'SEVERE'
+SEVERITY_UNKNOWN = 'UNKNOWN'
+
+SEVERITY_CHOICES = [SEVERITY_MILD, SEVERITY_MODERATE, SEVERITY_SEVERE]
+
 
 # ---------------------------------------------------------------------------
 # Core Demographic Utilities
@@ -401,14 +411,50 @@ def validate_demographic_params(age_group=None, gender=None):
     return cleaned_ag, cleaned_g, None
 
 
+def normalize_severity(severity):
+    """
+    Normalizes severity string against the application's supported choices:
+    ('MILD', 'MODERATE', 'SEVERE').
+    Returns 'UNKNOWN' for missing, blank, or incompatible values.
+    Does NOT convert missing or invalid severity into MILD.
+    """
+    if not severity:
+        return SEVERITY_UNKNOWN
+
+    cleaned = str(severity).strip().upper()
+    if cleaned in SEVERITY_CHOICES:
+        return cleaned
+
+    return SEVERITY_UNKNOWN
+
+
+def validate_severity_param(severity=None):
+    """
+    Validates optional severity query parameter for Public Health Intelligence.
+    Supported values: 'MILD', 'MODERATE', 'SEVERE'.
+    UNKNOWN is NOT a selectable public filter.
+    Returns: (cleaned_severity, error_message)
+    - If valid or None/empty: (cleaned_val or None, None)
+    - If invalid or UNKNOWN: (None, error_message)
+    """
+    if severity is None or str(severity).strip() == '':
+        return None, None
+
+    cleaned = str(severity).strip().upper()
+    if cleaned not in SEVERITY_CHOICES:
+        return None, f"Invalid severity '{severity}'. Supported values are: {', '.join(SEVERITY_CHOICES)}."
+
+    return cleaned, None
+
+
 def get_demographic_intelligence(facility_ids=None, district_id=None, disease_name=None,
                                  start_date=None, end_date=None, as_of_date=None,
-                                 age_group=None, gender=None):
+                                 age_group=None, gender=None, severity=None):
     """
     Public Health Intelligence Demographic Analysis Service.
     Derives strictly from real database records across DiseaseCase and Patient.
     Supports filtering by facility_ids, district_id, disease_name, date window,
-    and optional demographic criteria (age_group, gender).
+    optional demographic criteria (age_group, gender), and severity.
     """
     from apps.surveillance.models import DiseaseCase
     from apps.surveillance.intelligence_services import get_period_dates
@@ -426,6 +472,9 @@ def get_demographic_intelligence(facility_ids=None, district_id=None, disease_na
 
     if disease_name and disease_name != 'All Monitored Conditions':
         qs = qs.filter(disease_name__iexact=disease_name)
+
+    if severity:
+        qs = qs.filter(severity__iexact=severity)
 
     if age_group or gender:
         qs = filter_cases_by_demographics(qs, age_groups=age_group, genders=gender)
@@ -565,4 +614,63 @@ def build_age_gender_matrix(disease_cases_qs, reference_date=None, allow_stored_
         matrix[ag][g] += 1
 
     return matrix
+
+
+def build_severity_demographic_matrices(disease_cases_qs, reference_date=None, allow_stored_age_fallback=False):
+    """
+    Builds multidimensional cross-tabulations combining severity and demographics:
+    1. severity_age_groups: severity -> age_group -> count
+    2. severity_gender: severity -> gender -> count
+    3. severity_age_gender: severity -> age_group -> gender -> count
+
+    Uses individual case report_date for age calculation without duplicate logic.
+    Retains UNKNOWN where actual demographic/severity data is missing or invalid.
+    """
+    all_age_groups = AGE_GROUPS + [AGE_GROUP_UNKNOWN]
+    all_genders = GENDER_CHOICES + [GENDER_UNKNOWN]
+
+    cases = disease_cases_qs
+    if hasattr(cases, 'select_related'):
+        cases = list(cases.select_related('patient'))
+    elif not isinstance(cases, list):
+        cases = list(cases)
+
+    has_unknown_sev = any(normalize_severity(getattr(c, 'severity', None)) == SEVERITY_UNKNOWN for c in cases)
+
+    severities = list(SEVERITY_CHOICES)
+    if has_unknown_sev:
+        severities.append(SEVERITY_UNKNOWN)
+
+    severity_age_groups = {
+        s: {ag: 0 for ag in all_age_groups}
+        for s in severities
+    }
+
+    severity_gender = {
+        s: {g: 0 for g in all_genders}
+        for s in severities
+    }
+
+    severity_age_gender = {
+        s: {ag: {g: 0 for g in all_genders} for ag in all_age_groups}
+        for s in severities
+    }
+
+    for case in cases:
+        case_ref = getattr(case, 'report_date', reference_date) or reference_date
+        demo = resolve_patient_demographics(
+            getattr(case, 'patient', None),
+            reference_date=case_ref,
+            allow_stored_age_fallback=allow_stored_age_fallback
+        )
+        ag = demo['age_group']
+        g = demo['gender']
+        sev = normalize_severity(getattr(case, 'severity', None))
+
+        if sev in severity_age_groups:
+            severity_age_groups[sev][ag] = severity_age_groups[sev].get(ag, 0) + 1
+            severity_gender[sev][g] = severity_gender[sev].get(g, 0) + 1
+            severity_age_gender[sev][ag][g] = severity_age_gender[sev][ag].get(g, 0) + 1
+
+    return severity_age_groups, severity_gender, severity_age_gender
 
