@@ -50,6 +50,9 @@ from apps.surveillance.demographic_services import (
     resolve_patient_demographics,
     aggregate_demographics,
     get_demographic_intelligence,
+    matches_demographic_criteria,
+    filter_cases_by_demographics,
+    build_age_gender_matrix,
 )
 from apps.surveillance.intelligence_services import calculate_disease_trends
 
@@ -584,3 +587,64 @@ class DemographicSurveillanceIntegrationTestCase(TestCase):
         # Requesting another facility ID outside assignment is forbidden
         res = client.get('/api/surveillance/intelligence/demographics/?facility=99999')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_demographic_filtering(self):
+        """
+        Tests demographic filtering utilities for age, gender, and combined criteria.
+        """
+        all_cases = DiseaseCase.objects.all()
+
+        # Filter by age group 0-5
+        infant_cases = filter_cases_by_demographics(all_cases, age_groups=[AGE_GROUP_0_5])
+        self.assertEqual(infant_cases.count(), 1)
+        self.assertEqual(infant_cases.first().patient, self.p_infant)
+
+        # Filter by gender MALE
+        male_cases = filter_cases_by_demographics(all_cases, genders=[GENDER_MALE])
+        self.assertEqual(male_cases.count(), 3) # p_infant, p_youth, p_senior
+
+        # Filter by combination: age group 25-44 AND gender FEMALE
+        female_adults = filter_cases_by_demographics(
+            all_cases,
+            age_groups=[AGE_GROUP_25_44],
+            genders=[GENDER_FEMALE]
+        )
+        self.assertEqual(female_adults.count(), 2) # p_adult (35 F) and p_no_dob (40 F)
+
+        # Filter with criteria yielding 0 matches
+        no_matches = filter_cases_by_demographics(
+            all_cases,
+            age_groups=[AGE_GROUP_0_5],
+            genders=[GENDER_FEMALE]
+        )
+        self.assertEqual(no_matches.count(), 0)
+
+    def test_age_gender_matrix(self):
+        """
+        Verifies generation of 2D cross-tabulation matrix of age groups x genders.
+        """
+        all_cases = DiseaseCase.objects.all()
+        matrix = build_age_gender_matrix(all_cases, reference_date=self.today)
+
+        # 0-5 has 1 MALE
+        self.assertEqual(matrix[AGE_GROUP_0_5][GENDER_MALE], 1)
+        self.assertEqual(matrix[AGE_GROUP_0_5][GENDER_FEMALE], 0)
+
+        # 6-14 has 1 FEMALE
+        self.assertEqual(matrix[AGE_GROUP_6_14][GENDER_FEMALE], 1)
+
+        # 15-24 has 1 MALE
+        self.assertEqual(matrix[AGE_GROUP_15_24][GENDER_MALE], 1)
+
+        # 25-44 has 2 FEMALE (p_adult and p_no_dob)
+        self.assertEqual(matrix[AGE_GROUP_25_44][GENDER_FEMALE], 2)
+
+        # 45-59 has 1 OTHER
+        self.assertEqual(matrix[AGE_GROUP_45_59][GENDER_OTHER], 1)
+
+        # 60+ has 1 MALE
+        self.assertEqual(matrix[AGE_GROUP_60_PLUS][GENDER_MALE], 1)
+
+        # UNKNOWN has 1 UNKNOWN gender
+        self.assertEqual(matrix[AGE_GROUP_UNKNOWN][GENDER_UNKNOWN], 1)
+

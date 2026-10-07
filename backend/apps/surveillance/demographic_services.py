@@ -361,3 +361,98 @@ def get_demographic_intelligence(facility_ids=None, district_id=None, disease_na
         'summary': overall_demographics,
         'disease_demographics': disease_demographics
     }
+
+
+# ---------------------------------------------------------------------------
+# Reusable Utilities for Demographic Filtering & Combinations
+# ---------------------------------------------------------------------------
+
+def matches_demographic_criteria(patient, age_groups=None, genders=None, reference_date=None):
+    """
+    Evaluates whether a patient record matches requested demographic criteria:
+    - age_groups: list, set, or single age group string, e.g. ['0-5', '6-14']
+    - genders: list, set, or single gender string, e.g. ['MALE', 'FEMALE']
+    - reference_date: reference date for age calculation (e.g. disease report_date)
+    """
+    demo = resolve_patient_demographics(patient, reference_date=reference_date)
+
+    if age_groups:
+        if isinstance(age_groups, str):
+            age_groups = [age_groups]
+        clean_ag = {str(ag).strip() for ag in age_groups if ag}
+        if clean_ag and demo['age_group'] not in clean_ag:
+            return False
+
+    if genders:
+        if isinstance(genders, str):
+            genders = [genders]
+        clean_g = {normalize_gender(g) for g in genders if g}
+        if clean_g and demo['gender'] not in clean_g:
+            return False
+
+    return True
+
+
+def filter_cases_by_demographics(disease_cases_qs, age_groups=None, genders=None, reference_date=None):
+    """
+    Filters DiseaseCase instances matching age groups and/or gender criteria.
+    Determines age relative to each case's report_date (or provided reference_date)
+    without redundant database persistence.
+    """
+    if not age_groups and not genders:
+        return disease_cases_qs
+
+    cases = disease_cases_qs
+    if hasattr(cases, 'select_related'):
+        cases = cases.select_related('patient')
+
+    matching_ids = []
+    for case in cases:
+        case_ref = getattr(case, 'report_date', reference_date) or reference_date
+        if matches_demographic_criteria(
+            patient=getattr(case, 'patient', None),
+            age_groups=age_groups,
+            genders=genders,
+            reference_date=case_ref
+        ):
+            matching_ids.append(case.id)
+
+    if hasattr(disease_cases_qs, 'filter'):
+        return disease_cases_qs.filter(id__in=matching_ids)
+    return [c for c in cases if c.id in matching_ids]
+
+
+def build_age_gender_matrix(disease_cases_qs, reference_date=None):
+    """
+    Builds a 2D cross-tabulation matrix of case counts combining age groups and genders:
+    Rows: AGE_GROUPS (0-5, 6-14, 15-24, 25-44, 45-59, 60+, UNKNOWN)
+    Columns: GENDERS (MALE, FEMALE, OTHER, UNKNOWN)
+    """
+    all_age_groups = AGE_GROUPS + [AGE_GROUP_UNKNOWN]
+    all_genders = GENDER_CHOICES + [GENDER_UNKNOWN]
+
+    # Initialize empty grid
+    matrix = {
+        ag: {g: 0 for g in all_genders}
+        for ag in all_age_groups
+    }
+
+    cases = disease_cases_qs
+    if hasattr(cases, 'select_related'):
+        cases = cases.select_related('patient')
+
+    for case in cases:
+        case_ref = getattr(case, 'report_date', reference_date) or reference_date
+        demo = resolve_patient_demographics(getattr(case, 'patient', None), reference_date=case_ref)
+        ag = demo['age_group']
+        g = demo['gender']
+
+        if ag not in matrix:
+            ag = AGE_GROUP_UNKNOWN
+        if g not in matrix[ag]:
+            g = GENDER_UNKNOWN
+
+        matrix[ag][g] += 1
+
+    return matrix
+
