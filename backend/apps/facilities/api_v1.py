@@ -229,8 +229,9 @@ class FacilityViewSet(viewsets.ModelViewSet):
             if dho_dist_id and 'district' not in serializer.validated_data:
                 extra_kwargs['district_id'] = dho_dist_id
         facility = serializer.save(**extra_kwargs)
-        from apps.facilities.services import provision_standard_departments
+        from apps.facilities.services import provision_standard_departments, provision_standard_facility_services
         provision_standard_departments(facility)
+        provision_standard_facility_services(facility)
 
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all().select_related('facility')
@@ -295,6 +296,134 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         target_facility = serializer.validated_data.get('facility')
         if target_facility:
             self.check_facility_scope(target_facility.id)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self.check_facility_scope(instance.facility_id)
+        instance.delete()
+
+
+class ServiceMasterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceMaster
+        fields = ['id', 'code', 'name', 'category', 'is_active', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class FacilityServiceSerializer(serializers.ModelSerializer):
+    facility_name = serializers.CharField(source='facility.facility_name', read_only=True)
+    facility_code = serializers.CharField(source='facility.facility_code', read_only=True)
+    service_code = serializers.CharField(source='service.code', read_only=True)
+    service_name = serializers.CharField(source='service.name', read_only=True)
+    service_category = serializers.CharField(source='service.category', read_only=True)
+
+    class Meta:
+        model = FacilityService
+        fields = [
+            'id', 'facility', 'facility_name', 'facility_code',
+            'service', 'service_code', 'service_name', 'service_category',
+            'is_available', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'facility_name', 'facility_code', 'service_code', 'service_name', 'service_category']
+
+    def validate(self, attrs):
+        facility = attrs.get('facility')
+        service = attrs.get('service')
+        if facility and service and not self.instance:
+            if FacilityService.objects.filter(facility=facility, service=service).exists():
+                raise serializers.ValidationError("This service is already configured for this facility.")
+        return attrs
+
+
+class ServiceMasterViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ServiceMaster.objects.filter(is_active=True).order_by('id')
+    serializer_class = ServiceMasterSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class FacilityServiceViewSet(viewsets.ModelViewSet):
+    queryset = FacilityService.objects.all().select_related('facility', 'service')
+    serializer_class = FacilityServiceSerializer
+    http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
+
+    def get_permissions(self):
+        # Clinical staff must NOT administer facility service configuration
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAdministrativeStaff()]
+        return [IsActiveStaff()]
+
+    def get_queryset(self):
+        user = self.request.user
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, user)
+
+        # For detail actions (retrieve, update, destroy), return all so check_object_permissions enforces HTTP 403
+        if self.action in ['retrieve', 'update', 'partial_update', 'destroy']:
+            return FacilityService.objects.all().select_related('facility', 'service')
+
+        qs = FacilityService.objects.all().select_related('facility', 'service')
+        if permitted is not None:
+            qs = qs.filter(facility_id__in=permitted)
+
+        facility_param = self.request.query_params.get('facility')
+        if facility_param:
+            qs = qs.filter(facility_id=facility_param)
+
+        return qs.order_by('id')
+
+    def check_facility_scope(self, facility_id):
+        user = self.request.user
+        if user.is_superuser:
+            return True
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, user)
+        if permitted is not None and facility_id not in permitted:
+            raise PermissionDenied(
+                f"You do not have administrative authority over facility #{facility_id}."
+            )
+
+        # Check that user has administrative role (HOSPITAL_ADMIN or DISTRICT_OFFICER)
+        active_roles = set(get_user_active_role_codes(user))
+        if not active_roles.intersection({'HOSPITAL_ADMIN', 'DISTRICT_OFFICER'}):
+            raise PermissionDenied("Clinical staff are not authorized to configure facility services.")
+
+        # DHO district check
+        if 'DISTRICT_OFFICER' in active_roles:
+            assigned_district_id = getattr(user, 'assigned_district_id', None)
+            if not assigned_district_id and staff:
+                assigned_district_id = getattr(staff, 'assigned_district_id', None)
+            if assigned_district_id:
+                fac = Facility.objects.filter(pk=facility_id).first()
+                if fac and fac.district_id != assigned_district_id:
+                    raise PermissionDenied("DHO cannot configure services for facilities outside their assigned district.")
+
+        return True
+
+    def check_object_permissions(self, request, obj):
+        super().check_object_permissions(request, obj)
+        self.check_facility_scope(obj.facility_id)
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        staff = get_request_staff(self.request, required=False)
+        permitted = get_user_permitted_facilities(staff, user)
+
+        target_facility = serializer.validated_data.get('facility')
+        if not target_facility and permitted:
+            target_facility = Facility.objects.get(pk=permitted[0])
+            serializer.validated_data['facility'] = target_facility
+
+        if target_facility:
+            self.check_facility_scope(target_facility.id)
+
+        serializer.save()
+
+    def perform_update(self, serializer):
+        target_facility = serializer.validated_data.get('facility')
+        if target_facility:
+            self.check_facility_scope(target_facility.id)
+        else:
+            self.check_facility_scope(serializer.instance.facility_id)
         serializer.save()
 
     def perform_destroy(self, instance):

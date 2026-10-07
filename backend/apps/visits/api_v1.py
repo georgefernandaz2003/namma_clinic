@@ -207,6 +207,28 @@ class VisitViewSet(viewsets.ModelViewSet):
             if not request.user.is_superuser and getattr(request.user, 'role', '') not in ['DISTRICT_OFFICER']:
                 raise exceptions.PermissionDenied("Patient is registered at a different facility.")
 
+        # Facility Service Availability Validation
+        SERVICE_VISIT_TYPE_MAP = {
+            'GENERAL_OPD': 'SRV_GENERAL_OPD',
+            'NCD_SCREENING': 'SRV_NCD_SCREENING',
+        }
+        if visit_type == 'TELECONSULTATION':
+            raise exceptions.ValidationError({'visit_type': 'Teleconsultation service is not operational or supported in this clinic.'})
+
+        required_service_code = SERVICE_VISIT_TYPE_MAP.get(visit_type)
+        if required_service_code:
+            from apps.facilities.models import FacilityService
+            svc_active = FacilityService.objects.filter(
+                facility=fac,
+                service__code=required_service_code,
+                is_available=True
+            ).exists()
+            if not svc_active:
+                display_name = 'General OPD' if visit_type == 'GENERAL_OPD' else 'NCD Screening'
+                raise exceptions.ValidationError({
+                    'visit_type': f"{display_name} service is currently unavailable or disabled at this facility."
+                })
+
         today = datetime.date.today()
         vis_id = f"VIS-{today.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 

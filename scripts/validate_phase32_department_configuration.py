@@ -21,7 +21,7 @@ import django
 django.setup()
 
 from apps.accounts.models import User, StaffProfile, StaffRoleAssignment, StaffFacilityAssignment
-from apps.facilities.models import Facility, Department
+from apps.facilities.models import Facility, Department, FacilityService
 from playwright.sync_api import sync_playwright
 
 BASE_URL = "http://localhost:3000"
@@ -124,6 +124,7 @@ def test_browser_full_lifecycle():
     log("=== STEP 2: Running Browser Automation for Phase 32 ===")
 
     # Cleanup artifacts from prior test runs
+    FacilityService.objects.filter(facility__facility_code="NC-P32-MALLESHWARAM").delete()
     Department.objects.filter(facility__facility_code="NC-P32-MALLESHWARAM").delete()
     Facility.objects.filter(facility_code="NC-P32-MALLESHWARAM").delete()
 

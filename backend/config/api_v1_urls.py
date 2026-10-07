@@ -11,7 +11,7 @@ from apps.accounts.api_v1 import (
 )
 from apps.facilities.api_v1 import (
     StateViewSet, DistrictViewSet, TalukViewSet, WardViewSet,
-    FacilityViewSet, DepartmentViewSet
+    FacilityViewSet, DepartmentViewSet, ServiceMasterViewSet, FacilityServiceViewSet
 )
 from apps.patients.api_v1 import PatientViewSet
 from apps.visits.api_v1 import VisitViewSet
@@ -51,6 +51,8 @@ router_v1.register(r'organization/taluks', TalukViewSet, basename='v1-taluk')
 router_v1.register(r'organization/wards', WardViewSet, basename='v1-ward')
 router_v1.register(r'organization/facilities', FacilityViewSet, basename='v1-facility')
 router_v1.register(r'organization/departments', DepartmentViewSet, basename='v1-department')
+router_v1.register(r'organization/services', ServiceMasterViewSet, basename='v1-servicemaster')
+router_v1.register(r'organization/facility-services', FacilityServiceViewSet, basename='v1-facilityservice')
 
 # Patients & Encounters
 router_v1.register(r'patients', PatientViewSet, basename='v1-patient')

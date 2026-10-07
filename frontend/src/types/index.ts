@@ -981,3 +981,29 @@ export interface UpdateDepartmentPayload {
   name?: string;
   is_active?: boolean;
 }
+
+export interface ServiceMaster {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface FacilityService {
+  id: number;
+  facility: number;
+  facility_name?: string;
+  facility_code?: string;
+  service: number;
+  service_code: string;
+  service_name: string;
+  service_category: string;
+  is_available: boolean;
+  created_at?: string;
+}
+
+export interface ToggleFacilityServicePayload {
+  is_available: boolean;
+}

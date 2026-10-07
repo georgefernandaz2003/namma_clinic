@@ -142,6 +142,29 @@ class VisitViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        # Facility Service Availability Validation
+        SERVICE_VISIT_TYPE_MAP = {
+            'GENERAL_OPD': 'SRV_GENERAL_OPD',
+            'NCD_SCREENING': 'SRV_NCD_SCREENING',
+        }
+        if visit_type == 'TELECONSULTATION':
+            return Response({'error': 'Teleconsultation service is not operational or supported in this clinic.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        required_service_code = SERVICE_VISIT_TYPE_MAP.get(visit_type)
+        if required_service_code:
+            from apps.facilities.models import FacilityService
+            svc_active = FacilityService.objects.filter(
+                facility_id=facility_id,
+                service__code=required_service_code,
+                is_available=True
+            ).exists()
+            if not svc_active:
+                display_name = 'General OPD' if visit_type == 'GENERAL_OPD' else 'NCD Screening'
+                return Response(
+                    {'error': f"{display_name} service is currently unavailable or disabled at this facility."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         # Operational OPD Date is strictly today
         today = datetime.date.today()
 

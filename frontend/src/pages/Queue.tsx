@@ -729,7 +729,6 @@ export const Queue: React.FC = () => {
                   >
                     <option value="GENERAL_OPD">General OPD</option>
                     <option value="NCD_SCREENING">NCD Screening</option>
-                    <option value="TELECONSULTATION">Teleconsultation</option>
                   </select>
                 </div>
 

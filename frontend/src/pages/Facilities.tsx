@@ -5,7 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { FacilityModal } from '../components/facilities/FacilityModal';
 import { DepartmentModal } from '../components/facilities/DepartmentModal';
-import { Building2, Search, Plus, Pencil, CheckCircle2, XCircle, AlertCircle, Phone, Clock, Users, X, UserCheck, UserPlus, Layers } from 'lucide-react';
+import { FacilityServicesModal } from '../components/facilities/FacilityServicesModal';
+import { Building2, Search, Plus, Pencil, CheckCircle2, XCircle, AlertCircle, Phone, Clock, Users, X, UserCheck, UserPlus, Layers, Activity } from 'lucide-react';
 
 export const Facilities: React.FC = () => {
   const { user } = useAuth();
@@ -19,6 +20,8 @@ export const Facilities: React.FC = () => {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [selectedDeptFacility, setSelectedDeptFacility] = useState<Facility | null>(null);
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+  const [selectedServiceFacility, setSelectedServiceFacility] = useState<Facility | null>(null);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
 
   const isHospitalAdmin = Boolean(
     user?.role === 'HOSPITAL_ADMIN' ||
@@ -261,6 +264,20 @@ export const Facilities: React.FC = () => {
                       Departments
                     </button>
                   )}
+                                    {(isDHO || isHospitalAdmin) && (
+                    <button
+                      onClick={() => {
+                        setSelectedServiceFacility(f);
+                        setIsServiceModalOpen(true);
+                      }}
+                      className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1 transition shadow-2xs"
+                      data-testid={`manage-services-btn-${f.facility_code.toLowerCase()}`}
+                      aria-label={`Manage services for ${f.facility_name}`}
+                    >
+                      <Activity className="w-3.5 h-3.5 text-emerald-600" />
+                      Services
+                    </button>
+                  )}
                   {isDHO && (
                     <button
                       onClick={() => handleOpenEdit(f)}
@@ -340,6 +357,15 @@ export const Facilities: React.FC = () => {
         onClose={() => {
           setIsDeptModalOpen(false);
           setSelectedDeptFacility(null);
+        }}
+      />
+      {/* Facility Services Management Modal */}
+      <FacilityServicesModal
+        isOpen={isServiceModalOpen}
+        facility={selectedServiceFacility}
+        onClose={() => {
+          setIsServiceModalOpen(false);
+          setSelectedServiceFacility(null);
         }}
       />
     </div>

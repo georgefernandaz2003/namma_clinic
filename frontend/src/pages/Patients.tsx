@@ -1,3 +1,4 @@
+import { fetchFacilityServices } from '../api/facilityServices';
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import type { Patient } from '../types';
@@ -30,6 +31,12 @@ export const Patients: React.FC = () => {
   const [priority, setPriority] = useState('NORMAL');
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [submittingToken, setSubmittingToken] = useState(false);
+  const [availableVisitTypes, setAvailableVisitTypes] = useState<Array<{ code: string; label: string }>>([
+    { code: 'GENERAL_OPD', label: 'General OPD' },
+    { code: 'NCD_SCREENING', label: 'NCD Screening' },
+  ]);
+
+
 
   // Timeline / History Modal State
   const [showTimelineModal, setShowTimelineModal] = useState(false);
@@ -44,6 +51,31 @@ export const Patients: React.FC = () => {
   const [pageError, setPageError] = useState<string | null>(null);
 
   const currentFacility = activeFacility || (user?.facility_details ? (user.facility_details as any) : (user?.assigned_facility ? { id: user.assigned_facility, facility_name: user.facility_name || 'Assigned Facility', facility_code: '' } : null));
+
+  useEffect(() => {
+    if (showTokenModal && currentFacility?.id) {
+      fetchFacilityServices(currentFacility.id)
+        .then((services) => {
+          const types: Array<{ code: string; label: string }> = [];
+          if (services.some((s) => s.service_code === 'SRV_GENERAL_OPD' && s.is_available)) {
+            types.push({ code: 'GENERAL_OPD', label: 'General OPD' });
+          }
+          if (services.some((s) => s.service_code === 'SRV_NCD_SCREENING' && s.is_available)) {
+            types.push({ code: 'NCD_SCREENING', label: 'NCD Screening' });
+          }
+          setAvailableVisitTypes(types);
+          if (types.length > 0 && !types.some((t) => t.code === visitType)) {
+            setVisitType(types[0].code);
+          }
+        })
+        .catch(() => {
+          setAvailableVisitTypes([
+            { code: 'GENERAL_OPD', label: 'General OPD' },
+            { code: 'NCD_SCREENING', label: 'NCD Screening' },
+          ]);
+        });
+    }
+  }, [showTokenModal, currentFacility?.id, visitType]);
 
   const loadPatients = async () => {
     try {
@@ -444,15 +476,24 @@ export const Patients: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Visit Type</label>
-                  <select
-                    value={visitType}
-                    onChange={(e) => setVisitType(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium focus:outline-none"
-                  >
-                    <option value="GENERAL_OPD">General OPD</option>
-                    <option value="NCD_SCREENING">NCD Screening</option>
-                    <option value="TELECONSULTATION">Teleconsultation</option>
-                  </select>
+                  {availableVisitTypes.length === 0 ? (
+                    <p className="text-xs text-rose-600 font-semibold bg-rose-50 p-2 rounded-lg border border-rose-200">
+                      No clinical services are currently active for this facility.
+                    </p>
+                  ) : (
+                    <select
+                      value={visitType}
+                      onChange={(e) => setVisitType(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium focus:outline-none"
+                      data-testid="visit-type-select"
+                    >
+                      {availableVisitTypes.map((vt) => (
+                        <option key={vt.code} value={vt.code}>
+                          {vt.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div>

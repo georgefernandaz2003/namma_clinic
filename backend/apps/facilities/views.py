@@ -55,8 +55,9 @@ class FacilityViewSet(viewsets.ModelViewSet):
             extra_kwargs['state'] = district.state
 
         facility = serializer.save(**extra_kwargs)
-        from apps.facilities.services import provision_standard_departments
+        from apps.facilities.services import provision_standard_departments, provision_standard_facility_services
         provision_standard_departments(facility)
+        provision_standard_facility_services(facility)
 
 class FacilityRelationshipViewSet(viewsets.ModelViewSet):
     serializer_class = FacilityRelationshipSerializer
