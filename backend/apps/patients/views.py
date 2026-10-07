@@ -14,6 +14,7 @@ from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasP
 class PatientViewSet(viewsets.ModelViewSet):
     serializer_class = PatientSerializer
     permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    pagination_class = None
     required_permissions = {
         'GET': 'patients.view',
         'POST': 'patients.create',

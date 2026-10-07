@@ -116,9 +116,10 @@ class PatientSerializer(serializers.ModelSerializer):
 
 
 class PatientViewSet(viewsets.ModelViewSet):
-    queryset = Patient.objects.all().select_related('person', 'registered_at_facility', 'ward', 'district')
+    queryset = Patient.objects.all().order_by('-id').select_related('person', 'registered_at_facility', 'ward', 'district')
     serializer_class = PatientSerializer
     permission_classes = [IsActiveStaff, IsPatientRegistrationStaff, FacilityScopedPermission]
+    pagination_class = None
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'mobile', 'patient_id']
 
