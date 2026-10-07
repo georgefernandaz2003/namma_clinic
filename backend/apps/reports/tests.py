@@ -1309,15 +1309,15 @@ class ReconciledDashboardAndReportsTests(APITestCase):
         InventoryTransaction.objects.filter(pk=tx1.pk).update(
             created_at=timezone.make_aware(datetime.datetime.combine(self.past_date - datetime.timedelta(days=5), datetime.time(9, 0)))
         )
-        # Dispensed 10 at past_date - 2 days
+        # Dispensed 10 at past_date + 2 days (two days after the historical report date)
         tx2 = InventoryTransaction.objects.create(
             facility=fac_iso, medicine=med, batch=batch,
             transaction_type='DISPENSED', quantity=10
         )
         InventoryTransaction.objects.filter(pk=tx2.pk).update(
-            created_at=timezone.make_aware(datetime.datetime.combine(self.past_date - datetime.timedelta(days=2), datetime.time(9, 0)))
+            created_at=timezone.make_aware(datetime.datetime.combine(self.past_date + datetime.timedelta(days=2), datetime.time(9, 0)))
         )
-        # Running balance = 100 - 10 = 90 == batch.quantity (90)
+        # Running balance across all transactions = 100 - 10 = 90 == batch.quantity (90)
 
         self.client.force_authenticate(user=ha_iso)
         rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.past_date.isoformat()}').data
@@ -1326,8 +1326,15 @@ class ReconciledDashboardAndReportsTests(APITestCase):
         self.assertTrue(inv['historical_available'])
         self.assertEqual(inv['inventory_type'], 'HISTORICAL')
         self.assertEqual(inv['metric_source'], 'HISTORICAL_TRANSACTION_RECONSTRUCTION')
-        self.assertEqual(inv['total_available_units'], 90)
-        self.assertEqual(inv['low_stock_medicines'], 0) # 90 > minimum 20
+        # At the historical report date, only the 100-unit receipt has occurred.
+        # The 10-unit dispensing transaction occurs two days after the report date
+        # and must not affect the historical inventory snapshot.
+        self.assertEqual(inv['total_available_units'], 100)
+        self.assertEqual(inv['low_stock_medicines'], 0) # 100 > minimum 20
+
+        # Current-date reconciliation verifying 100 - 10 = 90
+        rep_today = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}').data
+        self.assertEqual(rep_today['pharmacy']['inventory']['total_available_units'], 90)
 
     # R. Dashboard and Reports use the same inventory truthfulness rules.
     def test_r_dashboard_and_reports_inventory_truthfulness_match(self):
