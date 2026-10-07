@@ -10,7 +10,7 @@ import DoctorDashboard from './pages/dashboards/DoctorDashboard';
 import NurseDashboard from './pages/dashboards/NurseDashboard';
 import LabDashboard from './pages/dashboards/LabDashboard';
 import PharmacyDashboard from './pages/dashboards/PharmacyDashboard';
-import CompounderDashboard from './pages/dashboards/CompounderDashboard';
+import FrontDeskDashboard from './pages/dashboards/FrontDeskDashboard';
 import NotFound from './pages/NotFound';
 
 import { HealthcareNetwork } from './pages/HealthcareNetwork';
@@ -118,7 +118,7 @@ export const App: React.FC = () => {
             path="/dashboard/front-desk"
             element={
               <ProtectedRoute allowedRoles={['FRONT_DESK_OFFICER']}>
-                <CompounderDashboard />
+                <FrontDeskDashboard />
               </ProtectedRoute>
             }
           />
@@ -126,7 +126,7 @@ export const App: React.FC = () => {
             path="/dashboard/compounder"
             element={
               <ProtectedRoute allowedRoles={['FRONT_DESK_OFFICER']}>
-                <CompounderDashboard />
+                <FrontDeskDashboard />
               </ProtectedRoute>
             }
           />

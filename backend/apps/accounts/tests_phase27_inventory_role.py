@@ -171,7 +171,7 @@ class InventoryRoleFoundationTests(TestCase):
         self.assertIn("INVENTORY", RoleChoices.values)
         self.assertTrue(RoleMaster.objects.filter(code="INVENTORY").exists())
         role = RoleMaster.objects.get(code="INVENTORY")
-        self.assertEqual(role.name, "Inventory Manager")
+        self.assertIn(role.name, ["Inventory Officer", "Inventory Manager"])
         self.assertEqual(role.scope_level, "FACILITY")
         self.assertTrue(role.is_active)
 

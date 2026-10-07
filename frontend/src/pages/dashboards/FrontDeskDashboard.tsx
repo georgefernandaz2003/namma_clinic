@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import ErrorAlert from '../../components/common/ErrorAlert';
 
-export const CompounderDashboard: React.FC = () => {
+export const FrontDeskDashboard: React.FC = () => {
   const { user, activeFacility: authFacility } = useAuth();
   const activeFacility = authFacility || (user?.facility_details ? (user.facility_details as any) : (user?.assigned_facility ? { id: user.assigned_facility, facility_name: user.facility_name || 'Assigned Facility', facility_code: '' } : null));
   const navigate = useNavigate();
@@ -653,9 +653,7 @@ export const CompounderDashboard: React.FC = () => {
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-emerald-600 font-medium"
                 >
                   <option value="GENERAL_OPD">General OPD Consultation</option>
-                  <option value="ANC_FOLLOWUP">Antenatal Care (ANC)</option>
                   <option value="NCD_SCREENING">NCD Chronic Care Screening</option>
-                  <option value="IMMUNIZATION">Immunization / Child Health</option>
                   <option value="EMERGENCY">Emergency / Acute Triage</option>
                 </select>
               </div>
@@ -700,5 +698,5 @@ export const CompounderDashboard: React.FC = () => {
   );
 };
 
-export const FrontDeskDashboard = CompounderDashboard;
-export default CompounderDashboard;
+export const CompounderDashboard = FrontDeskDashboard;
+export default FrontDeskDashboard;

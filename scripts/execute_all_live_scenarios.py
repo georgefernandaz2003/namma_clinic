@@ -244,13 +244,13 @@ def scenario_3_facility_authorization():
     results['PHARMACIST'] = res_pharm.status_code
     assert res_pharm.status_code == 403, f"Expected 403 for PHARMACIST, got {res_pharm.status_code}"
     
-    # 7. COMPOUNDER
+    # 7. FRONT_DESK_OFFICER
     u_cmp = User.objects.get(username='testcompounder')
     client.force_authenticate(user=u_cmp)
     res_cmp = client.post('/api/v1/organization/facilities/', payload, format='json')
-    log("S3", 7, f"COMPOUNDER (testcompounder): status={res_cmp.status_code}")
-    results['COMPOUNDER'] = res_cmp.status_code
-    assert res_cmp.status_code == 403, f"Expected 403 for COMPOUNDER, got {res_cmp.status_code}"
+    log("S3", 7, f"FRONT_DESK_OFFICER (testcompounder): status={res_cmp.status_code}")
+    results['FRONT_DESK_OFFICER'] = res_cmp.status_code
+    assert res_cmp.status_code == 403, f"Expected 403 for FRONT_DESK_OFFICER, got {res_cmp.status_code}"
     
     evidence['s3'] = results
     log("S3", 8, f"Summary Matrix: {results}")
@@ -258,9 +258,9 @@ def scenario_3_facility_authorization():
 # ==============================================================================
 # SCENARIO 4: NURSE + COMPOUNDER DUAL ROLE
 # ==============================================================================
-def scenario_4_nurse_compounder():
+def scenario_4_nurse_front_desk_officer():
     print("\n" + "="*80)
-    print("SCENARIO 4: NURSE + COMPOUNDER SEPARATE ASSIGNMENTS & END ROLE")
+    print("SCENARIO 4: NURSE + FRONT_DESK_OFFICER SEPARATE ASSIGNMENTS & END ROLE")
     print("="*80)
     
     client = APIClient()
@@ -512,7 +512,7 @@ def scenario_6_transfer():
 # ==============================================================================
 def scenario_7_clinical_role_isolation():
     print("\n" + "="*80)
-    print("SCENARIO 7: CLINICAL ROLE ISOLATION (Nurse & Compounder)")
+    print("SCENARIO 7: CLINICAL ROLE ISOLATION (Nurse & Front Desk Officer)")
     print("="*80)
     
     client = APIClient()
@@ -612,7 +612,7 @@ if __name__ == "__main__":
     fac = scenario_1_dho_creates_clinic()
     scenario_2_dho_creates_clinic_admin(fac)
     scenario_3_facility_authorization()
-    scenario_4_nurse_compounder()
+    scenario_4_nurse_front_desk_officer()
     scenario_5_lifecycle()
     scenario_6_transfer()
     scenario_7_clinical_role_isolation()

@@ -18,7 +18,6 @@ export const PatientDetail: React.FC = () => {
   const { user, activeFacility } = useAuth();
   const isDistrictOfficer = user?.role === 'DISTRICT_OFFICER';
   const isFrontDeskOfficer = user?.role === 'FRONT_DESK_OFFICER';
-  const isCompounder = isFrontDeskOfficer;
   const isLabTech = user?.role === 'LAB_TECHNICIAN';
   const isPharmacist = user?.role === 'PHARMACIST';
 
@@ -507,7 +506,7 @@ export const PatientDetail: React.FC = () => {
           }`}
         >
           <History className="w-4 h-4 text-blue-600" />
-          <span>{isCompounder ? 'Demographics & Intake' : 'Overview'}</span>
+          <span>{isFrontDeskOfficer ? 'Demographics & Intake' : 'Overview'}</span>
         </button>
 
         <button
@@ -519,10 +518,10 @@ export const PatientDetail: React.FC = () => {
           }`}
         >
           <Clock className="w-4 h-4 text-emerald-600" />
-          <span>{isCompounder ? 'OPD Encounters' : 'Visits'} ({recordsData.visits.length})</span>
+          <span>{isFrontDeskOfficer ? 'OPD Encounters' : 'Visits'} ({recordsData.visits.length})</span>
         </button>
 
-        {!isCompounder && !isLabTech && !isPharmacist && (
+        {!isFrontDeskOfficer && !isLabTech && !isPharmacist && (
           <button
             onClick={() => setActiveTab('MEDICAL_RECORDS')}
             className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
@@ -536,7 +535,7 @@ export const PatientDetail: React.FC = () => {
           </button>
         )}
 
-        {!isCompounder && !isPharmacist && (
+        {!isFrontDeskOfficer && !isPharmacist && (
           <button
             onClick={() => setActiveTab('LAB_REPORTS')}
             className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
@@ -550,7 +549,7 @@ export const PatientDetail: React.FC = () => {
           </button>
         )}
 
-        {!isCompounder && !isLabTech && (
+        {!isFrontDeskOfficer && !isLabTech && (
           <button
             onClick={() => setActiveTab('PRESCRIPTIONS')}
             className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
@@ -581,7 +580,7 @@ export const PatientDetail: React.FC = () => {
       {activeTab === 'OVERVIEW' && (
         <div className="space-y-6">
           {/* Clinical Summary Cards - Restricted to Clinical Staff */}
-          {!isCompounder ? (
+          {!isFrontDeskOfficer ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             <div className="glass-panel p-4 rounded-xl border border-slate-200 bg-white space-y-2">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -697,9 +696,9 @@ export const PatientDetail: React.FC = () => {
                       className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-medium min-w-[160px]"
                     >
                       <option value="ALL">All Events</option>
-                      <option value="VISIT">{isCompounder ? 'OPD Encounters' : 'Clinic Visits'}</option>
+                      <option value="VISIT">{isFrontDeskOfficer ? 'OPD Encounters' : 'Clinic Visits'}</option>
                       <option value="DOCUMENT">Uploaded Documents</option>
-                      {!isCompounder && (
+                      {!isFrontDeskOfficer && (
                         <>
                           <option value="TRIAGE">Nurse Triage</option>
                           <option value="CONSULTATION">Diagnoses</option>

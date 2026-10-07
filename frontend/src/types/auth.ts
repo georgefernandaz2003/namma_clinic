@@ -21,7 +21,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   FRONT_DESK_OFFICER: 'Front Desk Officer',
   LAB_TECHNICIAN: 'Lab Technician',
   PHARMACIST: 'Pharmacist',
-  INVENTORY: 'Inventory Manager',
+  INVENTORY: 'Inventory Officer',
 };
 
 export type ScopeType = 'DISTRICT' | 'FACILITY' | 'GLOBAL';

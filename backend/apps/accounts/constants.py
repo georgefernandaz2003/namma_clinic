@@ -70,8 +70,8 @@ SEEDED_ROLES = [
     },
     {
         "code": "INVENTORY",
-        "name": "Inventory Manager",
-        "display_name": "Inventory Manager",
+        "name": "Inventory Officer",
+        "display_name": "Inventory Officer",
         "description": "Stock management, medicine batch tracking, purchase orders, and goods receipt notes",
         "scope_level": "FACILITY",
         "is_system_role": True,

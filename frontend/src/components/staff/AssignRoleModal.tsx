@@ -42,7 +42,7 @@ export const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
         { value: 'FRONT_DESK_OFFICER', label: 'Front Desk Officer' },
         { value: 'LAB_TECHNICIAN', label: 'Lab Technician' },
         { value: 'PHARMACIST', label: 'Pharmacist' },
-        { value: 'INVENTORY', label: 'Inventory Manager' },
+        { value: 'INVENTORY', label: 'Inventory Officer' },
         { value: 'HOSPITAL_ADMIN', label: 'Hospital Admin (Clinic Admin)' },
       ]
     : [
@@ -51,7 +51,7 @@ export const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
         { value: 'FRONT_DESK_OFFICER', label: 'Front Desk Officer' },
         { value: 'LAB_TECHNICIAN', label: 'Lab Technician' },
         { value: 'PHARMACIST', label: 'Pharmacist' },
-        { value: 'INVENTORY', label: 'Inventory Manager' },
+        { value: 'INVENTORY', label: 'Inventory Officer' },
       ];
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -144,7 +144,7 @@ export const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
               ))}
             </select>
             <p className="text-[11px] text-slate-400 mt-1">
-              For dual clinical workers (e.g. Nurse + Compounder), assign each role separately to create distinct role records.
+              For dual clinical workers (e.g. Nurse + Front Desk Officer), assign each role separately to create distinct role records.
             </p>
           </div>
 

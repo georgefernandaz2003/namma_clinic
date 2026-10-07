@@ -120,6 +120,11 @@ def run_validation():
         if token_btn.is_visible():
             token_btn.click()
             time.sleep(1)
+            # Verify Token Modal select options (strictly NO ANC or IMMUNIZATION)
+            options_text = " ".join(page.locator("select").all_inner_texts())
+            assert "Antenatal" not in options_text and "ANC" not in options_text, f"Token modal must NOT contain ANC option: {options_text}"
+            assert "Immunization" not in options_text and "Child Health" not in options_text, f"Token modal must NOT contain Immunization option: {options_text}"
+            log("STEP 4", "Verified: Front Desk Token Modal strictly contains ZERO Maternal/Child or Immunization options.")
             # In token modal, click generate
             gen_btn = page.locator("button:has-text('Generate Token'), button:has-text('Issue Token'), button:has-text('Confirm')").last
             if gen_btn.is_visible():
