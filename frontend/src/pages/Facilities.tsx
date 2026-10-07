@@ -4,7 +4,8 @@ import type { Facility } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { FacilityModal } from '../components/facilities/FacilityModal';
-import { Building2, Search, Plus, Pencil, CheckCircle2, XCircle, AlertCircle, Phone, Clock, Users, X, UserCheck, UserPlus } from 'lucide-react';
+import { DepartmentModal } from '../components/facilities/DepartmentModal';
+import { Building2, Search, Plus, Pencil, CheckCircle2, XCircle, AlertCircle, Phone, Clock, Users, X, UserCheck, UserPlus, Layers } from 'lucide-react';
 
 export const Facilities: React.FC = () => {
   const { user } = useAuth();
@@ -16,6 +17,13 @@ export const Facilities: React.FC = () => {
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [selectedDeptFacility, setSelectedDeptFacility] = useState<Facility | null>(null);
+  const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+
+  const isHospitalAdmin = Boolean(
+    user?.role === 'HOSPITAL_ADMIN' ||
+    user?.roles?.includes('HOSPITAL_ADMIN')
+  );
 
   const isDHO = Boolean(
     user?.role === 'DISTRICT_OFFICER' ||
@@ -239,6 +247,20 @@ export const Facilities: React.FC = () => {
                       Appoint Admin
                     </button>
                   )}
+                  {(isDHO || isHospitalAdmin) && (
+                    <button
+                      onClick={() => {
+                        setSelectedDeptFacility(f);
+                        setIsDeptModalOpen(true);
+                      }}
+                      className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 inline-flex items-center gap-1 transition shadow-2xs"
+                      data-testid={`manage-departments-btn-${f.facility_code.toLowerCase()}`}
+                      aria-label={`Manage departments for ${f.facility_name}`}
+                    >
+                      <Layers className="w-3.5 h-3.5 text-teal-600" />
+                      Departments
+                    </button>
+                  )}
                   {isDHO && (
                     <button
                       onClick={() => handleOpenEdit(f)}
@@ -310,6 +332,15 @@ export const Facilities: React.FC = () => {
         districtId={user?.assigned_district}
         onClose={() => setIsModalOpen(false)}
         onSave={handleSaveFacility}
+      />
+      {/* Department Management Modal */}
+      <DepartmentModal
+        isOpen={isDeptModalOpen}
+        facility={selectedDeptFacility}
+        onClose={() => {
+          setIsDeptModalOpen(false);
+          setSelectedDeptFacility(null);
+        }}
       />
     </div>
   );

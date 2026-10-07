@@ -50,7 +50,7 @@ import django
 django.setup()
 
 from apps.accounts.models import StaffProfile, StaffRoleAssignment, StaffFacilityAssignment, User
-from apps.facilities.models import Facility
+from apps.facilities.models import Facility, Department
 from apps.geography.models import District
 from apps.audit.models import AuditLogEntry
 
@@ -174,10 +174,13 @@ def test_browser_full_lifecycle():
     # Cleanup artifacts from prior test runs in dependency order
     User.objects.filter(staff_profile__employee_id="EMP-P31-ADMIN").delete()
     User.objects.filter(username__icontains="emp_p31_admin").delete()
+    StaffRoleAssignment.objects.filter(staff__employee_id="EMP-P31-ADMIN").delete()
+    StaffFacilityAssignment.objects.filter(staff__employee_id="EMP-P31-ADMIN").delete()
+    StaffProfile.objects.filter(employee_id="EMP-P31-ADMIN").delete()
     AuditLogEntry.objects.filter(facility__facility_code="NC-P31-KORAMANGALA").delete()
     StaffRoleAssignment.objects.filter(facility__facility_code="NC-P31-KORAMANGALA").delete()
     StaffFacilityAssignment.objects.filter(facility__facility_code="NC-P31-KORAMANGALA").delete()
-    StaffProfile.objects.filter(employee_id="EMP-P31-ADMIN").delete()
+    Department.objects.filter(facility__facility_code="NC-P31-KORAMANGALA").delete()
     Facility.objects.filter(facility_code="NC-P31-KORAMANGALA").delete()
 
     with sync_playwright() as p:
@@ -257,9 +260,10 @@ def test_browser_full_lifecycle():
         page.fill('[data-testid="invite-password-input"]', 'DeepakAdmin@2026')
         page.click('[data-testid="submit-invite-btn"]')
 
-        # Wait for table to reload and show the invited administrator
+        # Wait for modal to close and table to reload
+        page.wait_for_selector('role=dialog', state="detached", timeout=10000)
         log("  Waiting for staff directory to display invited administrator...")
-        invited_row = page.wait_for_selector('[data-testid="staff-row-emp-p31-admin"]')
+        invited_row = page.wait_for_selector('[data-testid="staff-row-emp-p31-admin"]', timeout=10000)
         assert invited_row, "Invited staff row must appear in directory"
         log("  PASS: Staff row EMP-P31-ADMIN rendered in directory.")
 
@@ -267,6 +271,7 @@ def test_browser_full_lifecycle():
         # 5. Activate Administrator Account
         # -------------------------------------------------------------
         log("5. Opening staff details to activate account...")
+        page.wait_for_selector('[data-testid="view-staff-btn-emp-p31-admin"]', timeout=10000)
         page.click('[data-testid="view-staff-btn-emp-p31-admin"]')
         page.wait_for_selector('[data-testid="staff-detail-modal"]')
 

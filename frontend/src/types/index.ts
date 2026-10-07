@@ -958,3 +958,26 @@ export interface FollowUpTask {
   created_at?: string;
 }
 export * from './staff';
+
+export interface Department {
+  id: number;
+  facility: number;
+  facility_name?: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface CreateDepartmentPayload {
+  facility: number;
+  code: string;
+  name: string;
+  is_active?: boolean;
+}
+
+export interface UpdateDepartmentPayload {
+  code?: string;
+  name?: string;
+  is_active?: boolean;
+}

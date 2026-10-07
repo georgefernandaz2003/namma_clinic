@@ -54,7 +54,9 @@ class FacilityViewSet(viewsets.ModelViewSet):
         if district and 'state' not in serializer.validated_data and hasattr(district, 'state'):
             extra_kwargs['state'] = district.state
 
-        serializer.save(**extra_kwargs)
+        facility = serializer.save(**extra_kwargs)
+        from apps.facilities.services import provision_standard_departments
+        provision_standard_departments(facility)
 
 class FacilityRelationshipViewSet(viewsets.ModelViewSet):
     serializer_class = FacilityRelationshipSerializer
