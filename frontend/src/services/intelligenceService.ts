@@ -115,6 +115,46 @@ export const intelligenceService = {
     });
     return res.data;
   },
+
+  /**
+   * 8. Public Health Intelligence Alerts (Step 4)
+   */
+  async getAlerts(params?: IntelligenceFilterParams & { status?: string; severity?: string }) {
+    const res = await api.get('surveillance/intelligence/alerts/', {
+      params: {
+        ...cleanParams(params),
+        ...(params?.status ? { status: params.status } : {}),
+        ...(params?.severity ? { severity: params.severity } : {}),
+      },
+    });
+    return res.data;
+  },
+
+  /**
+   * 9. Evaluate Surveillance Signals (Step 4)
+   */
+  async evaluateAlerts(payload: { facility?: number | string; district?: number | string; date?: string }) {
+    const res = await api.post('surveillance/intelligence/alerts/evaluate/', payload);
+    return res.data;
+  },
+
+  /**
+   * 10. Acknowledge Alert (Step 4)
+   */
+  async acknowledgeAlert(alertId: number) {
+    const res = await api.post(`surveillance/intelligence/alerts/${alertId}/acknowledge/`);
+    return res.data;
+  },
+
+  /**
+   * 11. Resolve Alert (Step 4)
+   */
+  async resolveAlert(alertId: number, notes?: string) {
+    const res = await api.post(`surveillance/intelligence/alerts/${alertId}/resolve/`, {
+      resolution_notes: notes || '',
+    });
+    return res.data;
+  },
 };
 
 export default intelligenceService;

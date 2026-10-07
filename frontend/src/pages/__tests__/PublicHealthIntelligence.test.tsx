@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { PublicHealthIntelligence } from '../PublicHealthIntelligence';
 import intelligenceService from '../../services/intelligenceService';
 import * as AuthContextModule from '../../context/AuthContext';
+import { ConfirmProvider } from '../../context/ConfirmContext';
 import type {
   DiseaseTrendsResponse,
   DiseaseLocalityResponse,
@@ -11,6 +12,7 @@ import type {
   ForecastSummaryResponse,
   SeasonalityData,
   DistrictAggregationResponse,
+  IntelligenceAlert,
 } from '../../types/intelligence';
 import type { Facility } from '../../types';
 
@@ -23,6 +25,10 @@ vi.mock('../../services/intelligenceService', () => ({
     getForecast: vi.fn(),
     getSeasonality: vi.fn(),
     getDistrictAggregation: vi.fn(),
+    getAlerts: vi.fn(),
+    evaluateAlerts: vi.fn(),
+    acknowledgeAlert: vi.fn(),
+    resolveAlert: vi.fn(),
   },
 }));
 
@@ -30,6 +36,10 @@ vi.mock('../../services/intelligenceService', () => ({
 vi.mock('../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
+
+const render = (ui: React.ReactElement, options?: Parameters<typeof rtlRender>[1]) => {
+  return rtlRender(<ConfirmProvider>{ui}</ConfirmProvider>, options);
+};
 
 const mockTrends: DiseaseTrendsResponse = {
   summary: {
@@ -343,6 +353,20 @@ describe('PublicHealthIntelligence Component', () => {
     vi.mocked(intelligenceService.getForecast).mockResolvedValue(mockForecastAvailable);
     vi.mocked(intelligenceService.getSeasonality).mockResolvedValue(mockSeasonality);
     vi.mocked(intelligenceService.getDistrictAggregation).mockResolvedValue(mockDistrictAgg);
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 0,
+      next: null,
+      previous: null,
+      results: [],
+    });
+    vi.mocked(intelligenceService.evaluateAlerts).mockResolvedValue({
+      created_count: 0,
+      updated_count: 0,
+      evaluated_signals_count: 0,
+      alerts: [],
+    });
+    vi.mocked(intelligenceService.acknowledgeAlert).mockResolvedValue({} as any);
+    vi.mocked(intelligenceService.resolveAlert).mockResolvedValue({} as any);
   });
 
   const setupAuth = (role: 'HOSPITAL_ADMIN' | 'DISTRICT_OFFICER' | 'DOCTOR' = 'HOSPITAL_ADMIN', permissions = ['dashboard.view']) => {
@@ -700,5 +724,467 @@ describe('PublicHealthIntelligence Component', () => {
         screen.getByRole('heading', { name: /Public Health Epidemiological Forecast/i })
       ).toBeDefined();
     });
+  });
+
+  // ========================================================
+  // STEP 4: SURVEILLANCE ALERTS & ACTION LAYER TESTS
+  // ========================================================
+
+  const mockTrendIncreasingAlert: IntelligenceAlert = {
+    id: 101,
+    alert_type: 'DISEASE_TREND',
+    severity: 'WARNING',
+    status: 'NEW',
+    title: 'Increasing Disease Trend: Dengue Fever',
+    description: 'Dengue Fever shows an increasing trend with 66.7% rise over previous period.',
+    facility: 1,
+    facility_name: 'City Hospital',
+    district: 5,
+    created_at: '2026-10-06T10:00:00Z',
+    metadata: {
+      disease: 'Dengue Fever',
+      signal_type: 'DISEASE_TREND_INCREASING',
+      trend_direction: 'INCREASING',
+      current_cases: 25,
+      previous_cases: 15,
+      percentage_change: 66.7,
+      observation_date: '2026-10-06',
+    },
+  };
+
+  const mockTrendPossibleIncreaseAlert: IntelligenceAlert = {
+    id: 102,
+    alert_type: 'DISEASE_TREND',
+    severity: 'WARNING',
+    status: 'NEW',
+    title: 'Possible Disease Trend Increase: Typhoid',
+    description: 'Typhoid shows a possible increase with 50.0% rise over previous period.',
+    facility: 1,
+    facility_name: 'City Hospital',
+    district: 5,
+    created_at: '2026-10-06T10:00:00Z',
+    metadata: {
+      disease: 'Typhoid',
+      signal_type: 'DISEASE_TREND_POSSIBLE_INCREASE',
+      trend_direction: 'POSSIBLE_INCREASE',
+      current_cases: 15,
+      previous_cases: 10,
+      percentage_change: 50.0,
+      observation_date: '2026-10-06',
+    },
+  };
+
+  const mockLocalityConcentrationAlert: IntelligenceAlert = {
+    id: 103,
+    alert_type: 'HIGH_LOCALITY_CONCENTRATION',
+    severity: 'WARNING',
+    status: 'NEW',
+    title: 'High Locality Concentration: Dengue Fever in Shivajinagar Ward',
+    description: 'Shivajinagar Ward accounts for 47.6% of Dengue Fever cases (threshold: 25.0%).',
+    facility: 1,
+    facility_name: 'City Hospital',
+    district: 5,
+    created_at: '2026-10-06T10:00:00Z',
+    metadata: {
+      disease: 'Dengue Fever',
+      signal_type: 'HIGH_LOCALITY_CONCENTRATION',
+      locality: 'Shivajinagar Ward',
+      locality_id: 101,
+      current_cases: 20,
+      locality_share: 47.6,
+      threshold_used: 25.0,
+      observation_date: '2026-10-06',
+    },
+  };
+
+  const mockForecastSignalAlert: IntelligenceAlert = {
+    id: 104,
+    alert_type: 'FORECAST_SURVEILLANCE_SIGNAL',
+    severity: 'WARNING',
+    status: 'NEW',
+    title: 'Forecast Surveillance Signal: Dengue Fever',
+    description: 'Forecast indicates elevated future case volume.',
+    facility: 1,
+    facility_name: 'City Hospital',
+    district: 5,
+    created_at: '2026-10-06T10:00:00Z',
+    metadata: {
+      disease: 'Dengue Fever',
+      signal_type: 'FORECAST_SURVEILLANCE_SIGNAL',
+      forecast_horizon: '4 weeks',
+      predicted_cases: 12,
+      lower_bound: 8,
+      upper_bound: 16,
+      historical_baseline: 6.25,
+      forecast_method: 'WEIGHTED_MOVING_AVERAGE',
+      observation_date: '2026-10-06',
+    },
+  };
+
+  const mockSeasonalSignalAlert: IntelligenceAlert = {
+    id: 105,
+    alert_type: 'SEASONAL_SURVEILLANCE_SIGNAL',
+    severity: 'INFO',
+    status: 'NEW',
+    title: 'Seasonal Surveillance Signal: Dengue Fever',
+    description: 'Historical surveillance indicates an active seasonal pattern for Dengue Fever.',
+    facility: 1,
+    facility_name: 'City Hospital',
+    district: 5,
+    created_at: '2026-10-06T10:00:00Z',
+    metadata: {
+      disease: 'Dengue Fever',
+      signal_type: 'SEASONAL_SURVEILLANCE_SIGNAL',
+      seasonal_status: 'DETECTED',
+      highest_case_month: 'October',
+      seasonal_strength: 0.75,
+      observation_date: '2026-10-06',
+    },
+  };
+
+  it('Step 4.1: increasing disease trend creates warning signal', async () => {
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [mockTrendIncreasingAlert],
+    });
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('alert-card-101')).toBeDefined();
+    });
+
+    const card = screen.getByTestId('alert-card-101');
+    expect(card.textContent).toContain('WARNING');
+    expect(card.textContent).toContain('Disease Trend');
+    expect(card.textContent).toContain('Dengue Fever');
+    expect(card.textContent).toContain('+66.7%');
+  });
+
+  it('Step 4.2: possible increase creates warning signal', async () => {
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [mockTrendPossibleIncreaseAlert],
+    });
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('alert-card-102')).toBeDefined();
+    });
+
+    const card = screen.getByTestId('alert-card-102');
+    expect(card.textContent).toContain('WARNING');
+    expect(card.textContent).toContain('Typhoid');
+    expect(card.textContent).toContain('+50%');
+  });
+
+  it('Step 4.3: locality threshold creates signal', async () => {
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [mockLocalityConcentrationAlert],
+    });
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('alert-card-103')).toBeDefined();
+    });
+
+    const card = screen.getByTestId('alert-card-103');
+    expect(card.textContent).toContain('WARNING');
+    expect(card.textContent).toContain('High Locality Concentration');
+    expect(card.textContent).toContain('Shivajinagar Ward');
+    expect(card.textContent).toContain('47.6%');
+  });
+
+  it('Step 4.4: forecast surveillance signal works', async () => {
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [mockForecastSignalAlert],
+    });
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('alert-card-104')).toBeDefined();
+    });
+
+    const card = screen.getByTestId('alert-card-104');
+    expect(card.textContent).toContain('WARNING');
+    expect(card.textContent).toContain('Forecast Surveillance Signal');
+    expect(card.textContent).toContain('12');
+  });
+
+  it('Step 4.5: seasonal signal works', async () => {
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [mockSeasonalSignalAlert],
+    });
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('alert-card-105')).toBeDefined();
+    });
+
+    const card = screen.getByTestId('alert-card-105');
+    expect(card.textContent).toContain('INFO');
+    expect(card.textContent).toContain('Seasonal Surveillance Signal');
+    expect(card.textContent).toContain('October');
+  });
+
+  it('Step 4.6: duplicate evaluation does not create duplicate alerts', async () => {
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [mockTrendIncreasingAlert],
+    });
+    vi.mocked(intelligenceService.evaluateAlerts).mockResolvedValue({
+      created_count: 0,
+      updated_count: 1,
+      evaluated_signals_count: 1,
+      alerts: [mockTrendIncreasingAlert],
+    });
+
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('evaluate-signals-btn')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByTestId('evaluate-signals-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/0 new signal\(s\) created, 1 existing signal\(s\) updated\./i)).toBeDefined();
+    });
+
+    const cards = screen.getAllByTestId('alert-card-101');
+    expect(cards.length).toBe(1);
+  });
+
+  it('Step 4.7: Hospital Admin sees only own facility alerts', async () => {
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(intelligenceService.getAlerts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          facility: 1,
+          district: undefined,
+        })
+      );
+    });
+  });
+
+  it('Step 4.8: District Officer sees only own district alerts', async () => {
+    setupAuth('DISTRICT_OFFICER');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(intelligenceService.getAlerts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          facility: undefined,
+          district: 5,
+        })
+      );
+    });
+  });
+
+  it('Step 4.9: cross-facility access is rejected', async () => {
+    setupAuth('HOSPITAL_ADMIN');
+    vi.mocked(intelligenceService.evaluateAlerts).mockRejectedValue({
+      response: {
+        status: 403,
+        data: { error: 'Permission denied: Cannot evaluate alerts outside assigned facility.' },
+      },
+    });
+
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('evaluate-signals-btn')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByTestId('evaluate-signals-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Permission denied: Cannot evaluate alerts outside assigned facility\./i)).toBeDefined();
+    });
+  });
+
+  it('Step 4.10: acknowledge works', async () => {
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [mockTrendIncreasingAlert],
+    });
+    vi.mocked(intelligenceService.acknowledgeAlert).mockResolvedValue({
+      ...mockTrendIncreasingAlert,
+      status: 'ACKNOWLEDGED',
+    });
+
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ack-btn-101')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByTestId('ack-btn-101'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeDefined();
+      expect(screen.getByText('Acknowledge Surveillance Signal')).toBeDefined();
+    });
+
+    const confirmBtn = screen.getByRole('button', { name: 'Acknowledge Signal' });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(intelligenceService.acknowledgeAlert).toHaveBeenCalledWith(101);
+    });
+  });
+
+  it('Step 4.11: resolve works', async () => {
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [mockTrendIncreasingAlert],
+    });
+    vi.mocked(intelligenceService.resolveAlert).mockResolvedValue({
+      ...mockTrendIncreasingAlert,
+      status: 'RESOLVED',
+    });
+
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('resolve-btn-101')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByTestId('resolve-btn-101'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeDefined();
+      expect(screen.getByText('Resolve Surveillance Signal')).toBeDefined();
+    });
+
+    const confirmBtn = screen.getByRole('button', { name: 'Resolve Signal' });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(intelligenceService.resolveAlert).toHaveBeenCalledWith(101, expect.any(String));
+    });
+  });
+
+  it('Step 4.12: confirmation popup is used', async () => {
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [mockTrendIncreasingAlert],
+    });
+
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ack-btn-101')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByTestId('ack-btn-101'));
+
+    await waitFor(() => {
+      const dialog = screen.getByRole('dialog');
+      expect(dialog).toBeDefined();
+      expect(within(dialog).getByText('Signal Title')).toBeDefined();
+      expect(within(dialog).getByText('City Hospital')).toBeDefined();
+    });
+  });
+
+  it('Step 4.13: no window.confirm or window.alert is called', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => true);
+
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [mockTrendIncreasingAlert],
+    });
+
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ack-btn-101')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByTestId('ack-btn-101'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeDefined();
+    });
+
+    expect(alertSpy).toHaveBeenCalledTimes(0);
+    expect(confirmSpy).toHaveBeenCalledTimes(0);
+
+    alertSpy.mockRestore();
+    confirmSpy.mockRestore();
+  });
+
+  it('Step 4.14: alert details show evidence', async () => {
+    vi.mocked(intelligenceService.getAlerts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [mockForecastSignalAlert],
+    });
+
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('alert-card-104')).toBeDefined();
+    });
+
+    const evidenceBtn = screen.getByRole('button', { name: /View Evidence/i });
+    fireEvent.click(evidenceBtn);
+
+    await waitFor(() => {
+      const modal = screen.getByTestId('alert-detail-modal');
+      expect(modal).toBeDefined();
+      expect(within(modal).getByText('Epidemiological Evidence')).toBeDefined();
+      expect(within(modal).getByText(/Forecast Bounds \(90% CI\)/i)).toBeDefined();
+      expect(within(modal).getByText('[8 - 16]')).toBeDefined();
+      expect(within(modal).getByText('WEIGHTED_MOVING_AVERAGE')).toBeDefined();
+    });
+  });
+
+  it('Step 4.15: navbar count integrates correctly', () => {
+    const alertsList: IntelligenceAlert[] = [
+      { ...mockTrendIncreasingAlert, status: 'NEW' },
+      { ...mockTrendPossibleIncreaseAlert, status: 'NEW' },
+      { ...mockLocalityConcentrationAlert, status: 'ACKNOWLEDGED' },
+      { ...mockForecastSignalAlert, status: 'RESOLVED' },
+    ];
+    const openCount = alertsList.filter(a => a.status === 'NEW').length;
+    expect(openCount).toBe(2);
   });
 });

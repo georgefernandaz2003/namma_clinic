@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { isPathAllowedForRole, hasPermission } from '../utils/permissions';
@@ -80,6 +80,30 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
     (user?.permissions && user.permissions.includes('demo.reset')) ||
     hasPermission(user?.role, 'demo.reset')
   );
+
+  const [activeAlertsCount, setActiveAlertsCount] = useState<number>(0);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchActiveAlerts = async () => {
+      try {
+        const facParam = activeFacility?.id ? `?facility=${activeFacility.id}&status=NEW` : '?status=NEW';
+        const res = await api.get(`alerts/${facParam}`);
+        const count = res.data.count !== undefined
+          ? res.data.count
+          : (Array.isArray(res.data) ? res.data.length : (res.data.results ? res.data.results.length : 0));
+        if (isMounted) setActiveAlertsCount(count);
+      } catch {
+        // silent fallback
+      }
+    };
+    fetchActiveAlerts();
+    const interval = setInterval(fetchActiveAlerts, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [activeFacility?.id]);
 
   const handleResetDemo = () => {
     confirm({
@@ -237,12 +261,24 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           <div className="flex items-center gap-3">
             <Link
               to="/alerts"
-              className="relative p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition"
-              title="Alert Notifications"
+              className="relative p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition flex items-center"
+              title={`Alert Notifications (${activeAlertsCount} active)`}
+              data-testid="navbar-alerts-link"
             >
               <Bell className="w-4 h-4" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full animate-ping" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full" />
+              {activeAlertsCount > 0 ? (
+                <span
+                  className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-4 h-4 bg-rose-500 text-white rounded-full text-[9px] font-black flex items-center justify-center animate-pulse shadow-xs"
+                  data-testid="navbar-alert-count"
+                >
+                  {activeAlertsCount > 99 ? '99+' : activeAlertsCount}
+                </span>
+              ) : (
+                <>
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full animate-ping" />
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full" />
+                </>
+              )}
             </Link>
 
             {canResetDemo && (

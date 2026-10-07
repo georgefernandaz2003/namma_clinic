@@ -163,7 +163,10 @@ class HasFacilityScope(permissions.BasePermission):
 
         if request.user.role == 'DISTRICT_OFFICER':
             if request.method not in permissions.SAFE_METHODS:
-                return False
+                # District Officers are permitted to acknowledge and resolve alerts within their assigned district
+                view_name = view.__class__.__name__
+                if view_name not in ['AlertViewSet', 'PublicHealthIntelligenceAlertViewSet', 'PublicHealthIntelligenceAlertsView', 'PublicHealthIntelligenceAlertDetailView']:
+                    return False
 
             if not request.user.assigned_district_id:
                 return False

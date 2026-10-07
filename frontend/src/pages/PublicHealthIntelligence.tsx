@@ -16,9 +16,15 @@ import {
   Layers,
   Sparkles,
   ArrowRight,
-  Info
+  Info,
+  Bell,
+  CheckCircle2,
+  X,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { hasPermission } from '../utils/permissions';
 import intelligenceService from '../services/intelligenceService';
 import {
@@ -39,7 +45,10 @@ import type {
   ForecastSummaryResponse,
   SeasonalityData,
   DistrictAggregationResponse,
-  IntelligenceFilterParams
+  IntelligenceFilterParams,
+  IntelligenceAlert,
+  AlertSeverity,
+  AlertStatus
 } from '../types/intelligence';
 
 export const PublicHealthIntelligence: React.FC = () => {
@@ -103,8 +112,51 @@ export const PublicHealthIntelligence: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isUnauthorized, setIsUnauthorized] = useState<boolean>(false);
 
+  // Step 4: Surveillance Alerts & Signals State
+  const { confirm } = useConfirm();
+  const [alerts, setAlerts] = useState<IntelligenceAlert[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState<boolean>(false);
+  const [evaluatingAlerts, setEvaluatingAlerts] = useState<boolean>(false);
+  const [evaluationFeedback, setEvaluationFeedback] = useState<string | null>(null);
+  const [selectedAlert, setSelectedAlert] = useState<IntelligenceAlert | null>(null);
+  const [alertStatusFilter, setAlertStatusFilter] = useState<'ALL' | 'NEW' | 'ACKNOWLEDGED' | 'RESOLVED'>('ALL');
+
   // Request race condition prevention
   const activeRequestIdRef = useRef<number>(0);
+
+  // Centralized Alerts Fetcher
+  const loadAlerts = useCallback(async () => {
+    setAlertsLoading(true);
+    const effectiveFacility = (isHospitalAdmin || isDoctorOrNurse)
+      ? userAssignedFacilityId || undefined
+      : selectedFacilityId ? Number(selectedFacilityId) : undefined;
+
+    const effectiveDistrict = isDistrictOfficer
+      ? userAssignedDistrictId || undefined
+      : selectedDistrictId ? Number(selectedDistrictId) : undefined;
+
+    try {
+      const res = await intelligenceService.getAlerts({
+        facility: effectiveFacility,
+        district: effectiveDistrict,
+        date: selectedDate || undefined,
+      });
+      setAlerts(res.results || []);
+    } catch {
+      // silent fallback
+    } finally {
+      setAlertsLoading(false);
+    }
+  }, [
+    isHospitalAdmin,
+    isDoctorOrNurse,
+    isDistrictOfficer,
+    userAssignedFacilityId,
+    userAssignedDistrictId,
+    selectedFacilityId,
+    selectedDistrictId,
+    selectedDate
+  ]);
 
   // Centralized Data Fetcher
   const fetchIntelligenceData = useCallback(async () => {
@@ -194,7 +246,168 @@ export const PublicHealthIntelligence: React.FC = () => {
 
   useEffect(() => {
     fetchIntelligenceData();
-  }, [fetchIntelligenceData]);
+    loadAlerts();
+  }, [fetchIntelligenceData, loadAlerts]);
+
+  // Step 4 Handlers: Manual Evaluation, Acknowledge, Resolve
+  const canEvaluateSignals = isDistrictOfficer || isHospitalAdmin || isDoctorOrNurse;
+
+  const handleEvaluateSignals = async () => {
+    if (!canEvaluateSignals) return;
+    setEvaluatingAlerts(true);
+    setEvaluationFeedback(null);
+    try {
+      const effectiveFacility = (isHospitalAdmin || isDoctorOrNurse)
+        ? userAssignedFacilityId || undefined
+        : selectedFacilityId ? Number(selectedFacilityId) : undefined;
+
+      const effectiveDistrict = isDistrictOfficer
+        ? userAssignedDistrictId || undefined
+        : selectedDistrictId ? Number(selectedDistrictId) : undefined;
+
+      const res = await intelligenceService.evaluateAlerts({
+        facility: effectiveFacility,
+        district: effectiveDistrict,
+        date: selectedDate || undefined,
+      });
+      setEvaluationFeedback(
+        `Evaluation complete: ${res.created_count} new signal(s) created, ${res.updated_count} existing signal(s) updated.`
+      );
+      await loadAlerts();
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
+      setEvaluationFeedback(apiErr.response?.data?.error || 'Failed to evaluate surveillance signals.');
+    } finally {
+      setEvaluatingAlerts(false);
+    }
+  };
+
+  const handleAcknowledgeAlert = (alertItem: IntelligenceAlert) => {
+    confirm({
+      title: 'Acknowledge Surveillance Signal',
+      message: 'Are you sure you want to mark this surveillance alert as acknowledged? This signals that an authorized human reviewer has inspected the data.',
+      confirmText: 'Acknowledge Signal',
+      cancelText: 'Cancel',
+      variant: 'warning',
+      loadingText: 'Acknowledging Signal...',
+      details: [
+        { label: 'Signal Title', value: alertItem.title },
+        { label: 'Severity', value: alertItem.severity },
+        { label: 'Disease', value: alertItem.metadata?.disease || 'Monitored Disease' },
+        { label: 'Facility', value: alertItem.facility_name || String(alertItem.facility) },
+        { label: 'Observation Date', value: alertItem.metadata?.observation_date || alertItem.created_at },
+      ],
+      onConfirm: async () => {
+        await intelligenceService.acknowledgeAlert(alertItem.id);
+        await loadAlerts();
+        if (selectedAlert?.id === alertItem.id) {
+          setSelectedAlert(prev => prev ? { ...prev, status: 'ACKNOWLEDGED' } : null);
+        }
+      },
+    });
+  };
+
+  const handleResolveAlert = (alertItem: IntelligenceAlert) => {
+    confirm({
+      title: 'Resolve Surveillance Signal',
+      message: 'Are you sure you want to mark this surveillance signal as resolved? Resolution indicates review and appropriate clinical/public health actions are complete.',
+      confirmText: 'Resolve Signal',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      loadingText: 'Resolving Signal...',
+      details: [
+        { label: 'Signal Title', value: alertItem.title },
+        { label: 'Severity', value: alertItem.severity },
+        { label: 'Disease', value: alertItem.metadata?.disease || 'Monitored Disease' },
+        { label: 'Facility', value: alertItem.facility_name || String(alertItem.facility) },
+        { label: 'Resolution Note', value: 'Surveillance signal reviewed and addressed' },
+      ],
+      onConfirm: async () => {
+        await intelligenceService.resolveAlert(alertItem.id, 'Surveillance signal reviewed and addressed');
+        await loadAlerts();
+        if (selectedAlert?.id === alertItem.id) {
+          setSelectedAlert(prev => prev ? { ...prev, status: 'RESOLVED' } : null);
+        }
+      },
+    });
+  };
+
+  const filteredAlerts = useMemo(() => {
+    if (alertStatusFilter === 'ALL') return alerts;
+    return alerts.filter(a => a.status === alertStatusFilter);
+  }, [alerts, alertStatusFilter]);
+
+  const alertCounts = useMemo(() => {
+    return {
+      all: alerts.length,
+      open: alerts.filter(a => a.status === 'NEW').length,
+      acknowledged: alerts.filter(a => a.status === 'ACKNOWLEDGED').length,
+      resolved: alerts.filter(a => a.status === 'RESOLVED').length,
+    };
+  }, [alerts]);
+
+  const renderAlertSeverityBadge = (severity: AlertSeverity | string) => {
+    switch (severity) {
+      case 'CRITICAL':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 shadow-xs">
+            <AlertTriangle className="w-3 h-3 text-rose-600" /> CRITICAL
+          </span>
+        );
+      case 'WARNING':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-xs">
+            <AlertTriangle className="w-3 h-3 text-amber-600" /> WARNING
+          </span>
+        );
+      case 'INFO':
+      default:
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide bg-blue-100 text-blue-800 border border-blue-300 flex items-center gap-1 shadow-xs">
+            <Info className="w-3 h-3 text-blue-600" /> INFO
+          </span>
+        );
+    }
+  };
+
+  const renderAlertStatusBadge = (statusVal: AlertStatus | string) => {
+    switch (statusVal) {
+      case 'NEW':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> OPEN
+          </span>
+        );
+      case 'ACKNOWLEDGED':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3 text-amber-600" /> ACKNOWLEDGED
+          </span>
+        );
+      case 'RESOLVED':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-300 flex items-center gap-1">
+            <ShieldCheck className="w-3 h-3 text-slate-500" /> RESOLVED
+          </span>
+        );
+      default:
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-300">
+            {statusVal}
+          </span>
+        );
+    }
+  };
+
+  const getSignalTypeDisplay = (alertType: string, metaSignal?: string) => {
+    const raw = metaSignal || alertType;
+    if (raw === 'DISEASE_TREND' || raw === 'INTELLIGENCE_TREND' || raw === 'DISEASE_TREND_INCREASING') return 'Increasing Disease Trend';
+    if (raw === 'DISEASE_TREND_POSSIBLE_INCREASE') return 'Possible Disease Trend Increase';
+    if (raw === 'HIGH_LOCALITY_CONCENTRATION' || raw === 'INTELLIGENCE_LOCALITY') return 'High Locality Concentration';
+    if (raw === 'FORECAST_SURVEILLANCE_SIGNAL' || raw === 'INTELLIGENCE_FORECAST') return 'Forecast Surveillance Signal';
+    if (raw === 'SEASONAL_SURVEILLANCE_SIGNAL' || raw === 'INTELLIGENCE_SEASONALITY') return 'Seasonal Surveillance Signal';
+    return raw;
+  };
 
   // Helpers for Trend Badges
   const renderTrendBadge = (direction: TrendDirection | string | undefined) => {
@@ -610,6 +823,251 @@ export const PublicHealthIntelligence: React.FC = () => {
               <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-500 font-medium truncate">
                 Observation window: {trendsData?.summary.observation_period?.duration_days ?? 7} days
               </div>
+            </div>
+          </div>
+
+          {/* STEP 4: SURVEILLANCE ALERTS & ACTION LAYER */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden" data-testid="surveillance-alerts-panel">
+            <div className="p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-amber-100 text-amber-800 border border-amber-200">
+                    <Bell className="w-4 h-4 text-amber-700" />
+                  </span>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Surveillance Alerts & Signals
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200">
+                    Step 4
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Actionable, human-reviewable surveillance alerts derived strictly from authoritative database signals.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Status Filter Pills */}
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+                  <button
+                    onClick={() => setAlertStatusFilter('ALL')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      alertStatusFilter === 'ALL'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    All ({alertCounts.all})
+                  </button>
+                  <button
+                    onClick={() => setAlertStatusFilter('NEW')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      alertStatusFilter === 'NEW'
+                        ? 'bg-white text-emerald-800 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Open ({alertCounts.open})
+                  </button>
+                  <button
+                    onClick={() => setAlertStatusFilter('ACKNOWLEDGED')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      alertStatusFilter === 'ACKNOWLEDGED'
+                        ? 'bg-white text-amber-800 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Ack ({alertCounts.acknowledged})
+                  </button>
+                  <button
+                    onClick={() => setAlertStatusFilter('RESOLVED')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      alertStatusFilter === 'RESOLVED'
+                        ? 'bg-white text-slate-800 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Resolved ({alertCounts.resolved})
+                  </button>
+                </div>
+
+                {/* Evaluate Surveillance Signals Action */}
+                {canEvaluateSignals && (
+                  <button
+                    onClick={handleEvaluateSignals}
+                    disabled={evaluatingAlerts}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition cursor-pointer disabled:opacity-60 shadow-xs"
+                    data-testid="evaluate-signals-btn"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${evaluatingAlerts ? 'animate-spin' : ''}`} />
+                    <span>{evaluatingAlerts ? 'Evaluating Signals...' : 'Evaluate Surveillance Signals'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Evaluation Feedback Banner */}
+            {evaluationFeedback && (
+              <div className="px-5 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between text-xs text-indigo-900">
+                <span className="font-semibold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  {evaluationFeedback}
+                </span>
+                <button
+                  onClick={() => setEvaluationFeedback(null)}
+                  className="text-indigo-400 hover:text-indigo-700 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Alerts List */}
+            <div className="p-5">
+              {alertsLoading ? (
+                <div className="py-8 text-center text-xs text-slate-500 font-medium flex items-center justify-center gap-2">
+                  <Activity className="w-4 h-4 animate-spin text-indigo-600" />
+                  Loading surveillance alerts...
+                </div>
+              ) : filteredAlerts.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 font-medium text-xs">
+                  <ShieldCheck className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
+                  No surveillance alerts matching the current filters.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredAlerts.map(alert => (
+                    <div
+                      key={alert.id}
+                      className={`p-4 rounded-xl border transition flex flex-col justify-between gap-3 shadow-xs ${
+                        alert.severity === 'CRITICAL'
+                          ? 'bg-rose-50/60 border-rose-200'
+                          : alert.severity === 'WARNING'
+                          ? 'bg-amber-50/60 border-amber-200'
+                          : 'bg-slate-50/60 border-slate-200'
+                      }`}
+                      data-testid={`alert-card-${alert.id}`}
+                    >
+                      <div className="space-y-2">
+                        {/* Header Badges */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5">
+                            {renderAlertSeverityBadge(alert.severity)}
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white text-slate-700 border border-slate-200">
+                              {getSignalTypeDisplay(alert.alert_type, alert.metadata?.signal_type)}
+                            </span>
+                          </div>
+                          {renderAlertStatusBadge(alert.status)}
+                        </div>
+
+                        {/* Title & Scope */}
+                        <div>
+                          <h4 className="font-bold text-slate-900 text-sm">
+                            {alert.metadata?.disease || alert.title}
+                          </h4>
+                          <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
+                            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                            {alert.metadata?.locality ? `${alert.metadata.locality} • ` : ''}
+                            {alert.facility_name || `Facility #${alert.facility}`}
+                            {alert.metadata?.observation_date && (
+                              <span className="ml-1 text-slate-400">• Obs: {alert.metadata.observation_date}</span>
+                            )}
+                          </p>
+                        </div>
+
+                        {/* Metrics Summary Strip */}
+                        {alert.metadata && (
+                          <div className="p-2.5 rounded-lg bg-white/80 border border-slate-200/80 text-[11px] text-slate-700 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {alert.metadata.current_cases !== undefined && (
+                              <div>
+                                <span className="text-[10px] text-slate-400 uppercase font-bold block">Current</span>
+                                <span className="font-black text-slate-900">{alert.metadata.current_cases}</span>
+                              </div>
+                            )}
+                            {alert.metadata.previous_cases !== undefined && (
+                              <div>
+                                <span className="text-[10px] text-slate-400 uppercase font-bold block">Previous</span>
+                                <span className="font-bold text-slate-800">{alert.metadata.previous_cases}</span>
+                              </div>
+                            )}
+                            {alert.metadata.percentage_change !== undefined && (
+                              <div>
+                                <span className="text-[10px] text-slate-400 uppercase font-bold block">Change</span>
+                                <span className={`font-black ${
+                                  (alert.metadata.percentage_change ?? 0) > 0 ? 'text-rose-600' : 'text-emerald-600'
+                                }`}>
+                                  {alert.metadata.percentage_change !== null ? `${alert.metadata.percentage_change > 0 ? '+' : ''}${alert.metadata.percentage_change}%` : 'N/A'}
+                                </span>
+                              </div>
+                            )}
+                            {alert.metadata.locality_share !== undefined && (
+                              <div>
+                                <span className="text-[10px] text-slate-400 uppercase font-bold block">Locality Share</span>
+                                <span className="font-black text-amber-700">{alert.metadata.locality_share}%</span>
+                              </div>
+                            )}
+                            {alert.metadata.predicted_cases !== undefined && (
+                              <div>
+                                <span className="text-[10px] text-slate-400 uppercase font-bold block">Predicted</span>
+                                <span className="font-black text-indigo-700">{alert.metadata.predicted_cases}</span>
+                              </div>
+                            )}
+                            {alert.metadata.historical_baseline !== undefined && (
+                              <div>
+                                <span className="text-[10px] text-slate-400 uppercase font-bold block">Baseline</span>
+                                <span className="font-bold text-slate-800">{alert.metadata.historical_baseline}</span>
+                              </div>
+                            )}
+                            {alert.metadata.highest_case_month && (
+                              <div className="col-span-2">
+                                <span className="text-[10px] text-slate-400 uppercase font-bold block">Seasonal Peak</span>
+                                <span className="font-bold text-blue-700">{alert.metadata.highest_case_month}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Explanation */}
+                        <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                          {alert.description}
+                        </p>
+                      </div>
+
+                      {/* Card Action Buttons */}
+                      <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-2 flex-wrap">
+                        <button
+                          onClick={() => setSelectedAlert(alert)}
+                          className="px-2.5 py-1 text-xs font-bold text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <Info className="w-3.5 h-3.5" />
+                          <span>View Evidence</span>
+                        </button>
+
+                        <div className="flex items-center gap-1.5">
+                          {alert.status === 'NEW' && (
+                            <button
+                              onClick={() => handleAcknowledgeAlert(alert)}
+                              className="px-2.5 py-1 bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+                              data-testid={`ack-btn-${alert.id}`}
+                            >
+                              Acknowledge
+                            </button>
+                          )}
+                          {alert.status !== 'RESOLVED' && (
+                            <button
+                              onClick={() => handleResolveAlert(alert)}
+                              className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+                              data-testid={`resolve-btn-${alert.id}`}
+                            >
+                              Resolve
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1121,6 +1579,208 @@ export const PublicHealthIntelligence: React.FC = () => {
             </div>
           )}
         </>
+      )}
+
+      {/* ALERT DETAILS & EVIDENCE MODAL */}
+      {selectedAlert && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+          data-testid="alert-detail-modal"
+        >
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 p-6 space-y-5">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  {renderAlertSeverityBadge(selectedAlert.severity)}
+                  {renderAlertStatusBadge(selectedAlert.status)}
+                  <span className="text-[11px] font-bold text-slate-500 font-mono">#{selectedAlert.id}</span>
+                </div>
+                <h3 className="text-lg font-black text-slate-900">{selectedAlert.title}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Signal Type: {getSignalTypeDisplay(selectedAlert.alert_type, selectedAlert.metadata?.signal_type)}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedAlert(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                data-testid="close-modal-btn"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scope Information */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Disease</span>
+                <span className="font-bold text-slate-900">{selectedAlert.metadata?.disease || 'Monitored'}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Facility</span>
+                <span className="font-bold text-slate-900 truncate block">{selectedAlert.facility_name || `#${selectedAlert.facility}`}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">District</span>
+                <span className="font-bold text-slate-900">{selectedAlert.district_name || selectedAlert.metadata?.district_name || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Observation Date</span>
+                <span className="font-mono text-slate-900">{selectedAlert.metadata?.observation_date || 'N/A'}</span>
+              </div>
+            </div>
+
+            {/* Diagnostic Evidence Details */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Epidemiological Evidence
+              </h4>
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 text-xs">
+                <p className="text-slate-700 font-medium leading-relaxed">
+                  {selectedAlert.metadata?.explanation || selectedAlert.description}
+                </p>
+
+                {/* Structured metrics breakdown */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-200">
+                  {selectedAlert.metadata?.current_cases !== undefined && (
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Current Cases</span>
+                      <span className="font-black text-slate-900 text-base">{selectedAlert.metadata.current_cases}</span>
+                    </div>
+                  )}
+                  {selectedAlert.metadata?.previous_cases !== undefined && (
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Previous Cases</span>
+                      <span className="font-bold text-slate-800 text-base">{selectedAlert.metadata.previous_cases}</span>
+                    </div>
+                  )}
+                  {selectedAlert.metadata?.percentage_change !== undefined && (
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Percentage Change</span>
+                      <span className={`font-black text-base ${
+                        (selectedAlert.metadata.percentage_change ?? 0) > 0 ? 'text-rose-600' : 'text-emerald-600'
+                      }`}>
+                        {selectedAlert.metadata.percentage_change !== null ? `${selectedAlert.metadata.percentage_change > 0 ? '+' : ''}${selectedAlert.metadata.percentage_change}%` : 'N/A'}
+                      </span>
+                    </div>
+                  )}
+                  {selectedAlert.metadata?.locality && (
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Locality</span>
+                      <span className="font-bold text-slate-900">{selectedAlert.metadata.locality}</span>
+                    </div>
+                  )}
+                  {selectedAlert.metadata?.locality_share !== undefined && (
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Locality Share</span>
+                      <span className="font-black text-amber-700">{selectedAlert.metadata.locality_share}%</span>
+                    </div>
+                  )}
+                  {selectedAlert.metadata?.predicted_cases !== undefined && (
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Predicted Volume</span>
+                      <span className="font-black text-indigo-700">{selectedAlert.metadata.predicted_cases}</span>
+                    </div>
+                  )}
+                  {selectedAlert.metadata?.lower_bound !== undefined && selectedAlert.metadata?.upper_bound !== undefined && (
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Forecast Bounds (90% CI)</span>
+                      <span className="font-mono text-slate-800">[{selectedAlert.metadata.lower_bound} - {selectedAlert.metadata.upper_bound}]</span>
+                    </div>
+                  )}
+                  {selectedAlert.metadata?.historical_baseline !== undefined && (
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Historical Baseline</span>
+                      <span className="font-bold text-slate-800">{selectedAlert.metadata.historical_baseline}</span>
+                    </div>
+                  )}
+                  {selectedAlert.metadata?.forecast_method && (
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Forecast Model</span>
+                      <span className="font-mono text-slate-700">{selectedAlert.metadata.forecast_method}</span>
+                    </div>
+                  )}
+                  {selectedAlert.metadata?.highest_case_month && (
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Peak Seasonal Month</span>
+                      <span className="font-bold text-blue-700">{selectedAlert.metadata.highest_case_month}</span>
+                    </div>
+                  )}
+                  {selectedAlert.metadata?.seasonal_strength !== undefined && (
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Seasonal Strength</span>
+                      <span className="font-bold text-slate-900">{selectedAlert.metadata.seasonal_strength}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Lifecycle & Audit History */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Lifecycle & Review Tracking
+              </h4>
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2 text-slate-600">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-slate-500">Created:</span>
+                  <span className="font-mono text-slate-800">{selectedAlert.created_at}</span>
+                </div>
+                {selectedAlert.acknowledged_at && (
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-slate-500">Acknowledged:</span>
+                    <span className="font-mono text-slate-800">
+                      {selectedAlert.acknowledged_at} {selectedAlert.acknowledged_by_username ? `by ${selectedAlert.acknowledged_by_username}` : ''}
+                    </span>
+                  </div>
+                )}
+                {selectedAlert.resolved_at && (
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-slate-500">Resolved:</span>
+                    <span className="font-mono text-slate-800">
+                      {selectedAlert.resolved_at} {selectedAlert.resolved_by_username ? `by ${selectedAlert.resolved_by_username}` : ''}
+                    </span>
+                  </div>
+                )}
+                {selectedAlert.resolution_notes && (
+                  <div className="pt-2 border-t border-slate-200">
+                    <span className="font-semibold text-slate-500 block mb-0.5">Resolution Notes:</span>
+                    <span className="text-slate-800 font-medium">{selectedAlert.resolution_notes}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+              <button
+                onClick={() => setSelectedAlert(null)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition cursor-pointer"
+              >
+                Close
+              </button>
+
+              <div className="flex items-center gap-2">
+                {selectedAlert.status === 'NEW' && (
+                  <button
+                    onClick={() => handleAcknowledgeAlert(selectedAlert)}
+                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                  >
+                    Acknowledge Signal
+                  </button>
+                )}
+                {selectedAlert.status !== 'RESOLVED' && (
+                  <button
+                    onClick={() => handleResolveAlert(selectedAlert)}
+                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                  >
+                    Resolve Signal
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

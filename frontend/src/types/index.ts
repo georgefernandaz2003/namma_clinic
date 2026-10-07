@@ -563,14 +563,25 @@ export interface OutreachActivity {
 export interface Alert {
   id: number;
   alert_type: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  severity: 'INFO' | 'LOW' | 'MEDIUM' | 'WARNING' | 'HIGH' | 'CRITICAL';
   facility: number;
   facility_name?: string;
+  district?: number | null;
+  district_name?: string;
   patient?: number | null;
   title: string;
   description: string;
   status: 'NEW' | 'ACKNOWLEDGED' | 'RESOLVED';
   created_at: string;
+  fingerprint?: string;
+  metadata?: Record<string, any>;
+  acknowledged_at?: string | null;
+  acknowledged_by?: number | null;
+  acknowledged_by_username?: string;
+  resolved_at?: string | null;
+  resolved_by?: number | null;
+  resolved_by_username?: string;
+  resolution_notes?: string;
 }
 
 export interface IntegrationConfiguration {

@@ -36,6 +36,13 @@ from apps.surveillance.intelligence_forecast_views import (
     PublicHealthForecastView,
     PublicHealthSeasonalityView
 )
+from apps.surveillance.intelligence_alert_views import (
+    PublicHealthIntelligenceAlertsView,
+    PublicHealthIntelligenceEvaluateView,
+    PublicHealthIntelligenceAlertDetailView,
+    PublicHealthIntelligenceAlertAcknowledgeView,
+    PublicHealthIntelligenceAlertResolveView
+)
 from apps.telemedicine.views import TeleconsultationViewSet
 from apps.outreach.views import OutreachActivityViewSet
 from apps.wellness.views import WellnessSessionViewSet
@@ -132,6 +139,13 @@ urlpatterns = [
     path('surveillance/intelligence/forecast/', PublicHealthForecastView.as_view(), name='intelligence_forecast'),
     path('surveillance/intelligence/seasonality/', PublicHealthSeasonalityView.as_view(), name='intelligence_seasonality'),
 
+    # Public Health Intelligence Alerts & Action Layer - Step 4
+    path('surveillance/intelligence/alerts/', PublicHealthIntelligenceAlertsView.as_view(), name='intelligence_alerts'),
+    path('surveillance/intelligence/alerts/evaluate/', PublicHealthIntelligenceEvaluateView.as_view(), name='intelligence_alerts_evaluate'),
+    path('surveillance/intelligence/alerts/<int:pk>/', PublicHealthIntelligenceAlertDetailView.as_view(), name='intelligence_alert_detail'),
+    path('surveillance/intelligence/alerts/<int:pk>/acknowledge/', PublicHealthIntelligenceAlertAcknowledgeView.as_view(), name='intelligence_alert_acknowledge'),
+    path('surveillance/intelligence/alerts/<int:pk>/resolve/', PublicHealthIntelligenceAlertResolveView.as_view(), name='intelligence_alert_resolve'),
+
     # Direct Alias /api/intelligence/...
     path('intelligence/summary/', PublicHealthIntelligenceSummaryView.as_view(), name='intelligence_summary_alias'),
     path('intelligence/overview/', PublicHealthIntelligenceSummaryView.as_view(), name='intelligence_overview_alias'),
@@ -142,6 +156,11 @@ urlpatterns = [
     path('intelligence/district-aggregation/', PublicHealthDistrictAggregationView.as_view(), name='intelligence_district_aggregation_alias'),
     path('intelligence/forecast/', PublicHealthForecastView.as_view(), name='intelligence_forecast_alias'),
     path('intelligence/seasonality/', PublicHealthSeasonalityView.as_view(), name='intelligence_seasonality_alias'),
+    path('intelligence/alerts/', PublicHealthIntelligenceAlertsView.as_view(), name='intelligence_alerts_alias'),
+    path('intelligence/alerts/evaluate/', PublicHealthIntelligenceEvaluateView.as_view(), name='intelligence_alerts_evaluate_alias'),
+    path('intelligence/alerts/<int:pk>/', PublicHealthIntelligenceAlertDetailView.as_view(), name='intelligence_alert_detail_alias'),
+    path('intelligence/alerts/<int:pk>/acknowledge/', PublicHealthIntelligenceAlertAcknowledgeView.as_view(), name='intelligence_alert_acknowledge_alias'),
+    path('intelligence/alerts/<int:pk>/resolve/', PublicHealthIntelligenceAlertResolveView.as_view(), name='intelligence_alert_resolve_alias'),
 
     # Router URLs
     path('', include(router.urls)),

@@ -223,3 +223,80 @@ export interface DistrictAggregationResponse {
   localities: LocalityAggregationItem[];
   hospital_comparison: HospitalComparisonItem[];
 }
+
+// ---------------------------------------------------------------------------
+// Step 4: Public Health Intelligence Alerts & Action Layer
+// ---------------------------------------------------------------------------
+export type IntelligenceAlertType =
+  | 'INTELLIGENCE_TREND'
+  | 'INTELLIGENCE_LOCALITY'
+  | 'INTELLIGENCE_FORECAST'
+  | 'INTELLIGENCE_SEASONALITY';
+
+export type AlertSeverity = 'INFO' | 'LOW' | 'MEDIUM' | 'WARNING' | 'HIGH' | 'CRITICAL';
+export type AlertStatus = 'NEW' | 'ACKNOWLEDGED' | 'RESOLVED';
+
+export interface IntelligenceAlertEvidence {
+  [key: string]: any;
+  signal_type?: string;
+  disease?: string;
+  facility_id?: number;
+  facility_name?: string;
+  district_id?: number | null;
+  district_name?: string | null;
+  locality?: string;
+  locality_id?: number | null;
+  observation_date?: string;
+  current_cases?: number;
+  previous_cases?: number;
+  percentage_change?: number | null;
+  trend_direction?: string;
+  locality_share?: number;
+  threshold_used?: number;
+  reporting_hospitals?: string[];
+  observation_period?: Record<string, any>;
+  forecast_horizon?: string;
+  predicted_cases?: number;
+  lower_bound?: number;
+  upper_bound?: number;
+  historical_baseline?: number;
+  forecast_method?: string;
+  seasonal_status?: string;
+  seasonal_strength?: number;
+  highest_case_month?: string;
+  current_month?: number;
+  explanation?: string;
+}
+
+export interface IntelligenceAlert {
+  id: number;
+  alert_type: IntelligenceAlertType | string;
+  severity: AlertSeverity;
+  facility: number;
+  facility_name?: string;
+  district?: number | null;
+  district_name?: string;
+  title: string;
+  description: string;
+  status: AlertStatus;
+  fingerprint?: string;
+  metadata?: IntelligenceAlertEvidence;
+  created_at: string;
+  acknowledged_at?: string | null;
+  acknowledged_by?: number | null;
+  acknowledged_by_username?: string;
+  resolved_at?: string | null;
+  resolved_by?: number | null;
+  resolved_by_username?: string;
+  resolution_notes?: string;
+}
+
+export interface EvaluateAlertsResponse {
+  status: string;
+  as_of_date: string;
+  facilities_evaluated: number;
+  total_alerts: number;
+  created_count: number;
+  updated_count: number;
+  alerts: IntelligenceAlert[];
+}
