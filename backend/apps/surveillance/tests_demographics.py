@@ -56,8 +56,23 @@ from apps.surveillance.demographic_services import (
     matches_demographic_criteria,
     filter_cases_by_demographics,
     build_age_gender_matrix,
+    SEVERITY_CHOICES,
+    SEVERITY_MILD,
+    SEVERITY_MODERATE,
+    SEVERITY_SEVERE,
+    SEVERITY_UNKNOWN,
+    normalize_severity,
+    validate_severity_param,
+    build_severity_demographic_matrices,
 )
-from apps.surveillance.intelligence_services import calculate_disease_trends
+from apps.surveillance.intelligence_services import (
+    calculate_disease_trends,
+    aggregate_disease_by_locality,
+    aggregate_historical_disease,
+    aggregate_hospital_level,
+    aggregate_district_level,
+    get_public_health_intelligence_summary,
+)
 
 User = get_user_model()
 
@@ -1895,6 +1910,616 @@ class PublicHealthHistoricalDemographicsTestCase(TestCase):
             self.assertIn('historical_gender', res.data)
             self.assertIn('age_gender_matrix', res.data)
             self.assertIn('monthly_demographic_trends', res.data)
+
+
+# ===========================================================================
+# PROMPT 4: Severity Analysis Test Suite
+# ===========================================================================
+
+class PublicHealthSeverityDemographicsTestCase(TestCase):
+    """
+    Comprehensive test suite for Prompt 4 Severity Analysis in tests_demographics.py.
+    Implements all 15 required test scenarios:
+    1. Severity filter validation (MILD/MODERATE/SEVERE -> 200, UNKNOWN/INVALID -> 400).
+    2. Severity filtering correctness (MILD, MODERATE, SEVERE include only matching cases).
+    3. Historical severity output fields (historical_severity, monthly_severity_trends,
+       severity_age_groups, severity_gender, severity_age_gender, severity_breakdown).
+    4. Historical severity counts (MILD+MODERATE+SEVERE+UNKNOWN sum correctly, monthly sums).
+    5. Severity + age_group combination (AND semantics).
+    6. Severity + gender combination (AND semantics).
+    7. Severity + age_group + gender combination (all three combined).
+    8. Severity + disease combination (Dengue + SEVERE).
+    9. Severity + facility scope (Hospital Admin: assigned works, cross-facility 403).
+    10. Severity + district scope (District Officer: assigned works, cross-district 403).
+    11. Missing/invalid severity data (classified as UNKNOWN, never converted to MILD).
+    12. Backward compatibility (requests without severity return full counts and fields).
+    13. Endpoint coverage (trends, locality, historical, hospital, district, summary).
+    14. Severity not silently ignored (verifies filtered result differs from unfiltered result).
+    15. Query efficiency (select_related('patient'), no N+1 query loop).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        # Geography
+        cls.state = State.objects.create(name='Karnataka', code='KA')
+        cls.district_central = District.objects.create(state=cls.state, name='BBMP Central', code='KA-CEN')
+        cls.district_rural = District.objects.create(state=cls.state, name='Bengaluru Rural', code='KA-RUR')
+
+        cls.zone_central = Zone.objects.create(district=cls.district_central, name='Central Zone', code='Z-CEN')
+        cls.zone_rural = Zone.objects.create(district=cls.district_rural, name='Rural Zone', code='Z-RUR')
+
+        cls.ward_central = Ward.objects.create(zone=cls.zone_central, ward_number=10, name='Indiranagar', population=20000)
+        cls.ward_rural = Ward.objects.create(zone=cls.zone_rural, ward_number=20, name='Varthur', population=15000)
+
+        # Facilities
+        cls.fac_c1 = Facility.objects.create(
+            facility_code='HOSP-C1', facility_name='Victoria General Hospital', facility_type='MAIN_HOSPITAL',
+            district=cls.district_central, ward=cls.ward_central, state=cls.state
+        )
+        cls.fac_c2 = Facility.objects.create(
+            facility_code='CLINIC-C2', facility_name='Indiranagar Namma Clinic', facility_type='NAMMA_CLINIC',
+            district=cls.district_central, ward=cls.ward_central, state=cls.state
+        )
+        cls.fac_r1 = Facility.objects.create(
+            facility_code='RURAL-R1', facility_name='Varthur Health Centre', facility_type='RURAL_CLINIC',
+            district=cls.district_rural, ward=cls.ward_rural, state=cls.state
+        )
+
+        # Users
+        cls.admin_c1 = User.objects.create_user(
+            username='sev_admin_c1', password='Password123!', role='HOSPITAL_ADMIN',
+            assigned_facility=cls.fac_c1
+        )
+        cls.officer_c = User.objects.create_user(
+            username='sev_officer_c', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_central
+        )
+        cls.officer_r = User.objects.create_user(
+            username='sev_officer_r', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_rural
+        )
+
+        # Reference date
+        cls.as_of = datetime.date(2026, 10, 4)
+
+        # Deterministic Patients
+        cls.p_0_5_m = Patient.objects.create(
+            patient_id='P-SD01', name='Infant Boy',
+            date_of_birth=datetime.date(2024, 5, 15), age=2, gender='MALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_c1
+        )
+        cls.p_6_14_f = Patient.objects.create(
+            patient_id='P-SD02', name='School Girl',
+            date_of_birth=datetime.date(2016, 5, 15), age=10, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_c1
+        )
+        cls.p_15_24_f = Patient.objects.create(
+            patient_id='P-SD03', name='Young Female',
+            date_of_birth=datetime.date(2006, 5, 15), age=20, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_c1
+        )
+        cls.p_15_24_m = Patient.objects.create(
+            patient_id='P-SD04', name='Young Male',
+            date_of_birth=datetime.date(2008, 5, 15), age=18, gender='MALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_c1
+        )
+        cls.p_25_44_m = Patient.objects.create(
+            patient_id='P-SD05', name='Adult Male',
+            date_of_birth=datetime.date(1996, 5, 15), age=30, gender='MALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_c1
+        )
+        cls.p_25_44_f = Patient.objects.create(
+            patient_id='P-SD06', name='Adult Female',
+            date_of_birth=datetime.date(1991, 5, 15), age=35, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_c1
+        )
+        cls.p_45_59_o = Patient.objects.create(
+            patient_id='P-SD07', name='Middle Aged Other',
+            date_of_birth=datetime.date(1976, 5, 15), age=50, gender='OTHER',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_c1
+        )
+        cls.p_60_plus_m = Patient.objects.create(
+            patient_id='P-SD08', name='Senior Male',
+            date_of_birth=datetime.date(1956, 5, 15), age=70, gender='MALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_c1
+        )
+        cls.p_no_dob = Patient.objects.create(
+            patient_id='P-SD09', name='Missing DOB Patient',
+            date_of_birth=None, age=30, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_c1
+        )
+        cls.p_no_gender = Patient.objects.create(
+            patient_id='P-SD10', name='Missing Gender Patient',
+            date_of_birth=datetime.date(2000, 5, 15), age=26, gender='',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_c1
+        )
+        cls.p_aging = Patient.objects.create(
+            patient_id='P-SD11', name='Aging Patient',
+            date_of_birth=datetime.date(2010, 7, 1), age=16, gender='FEMALE',
+            district=cls.district_central, ward=cls.ward_central, registered_at_facility=cls.fac_c1
+        )
+        cls.p_rural = Patient.objects.create(
+            patient_id='P-SD12', name='Rural Patient',
+            date_of_birth=datetime.date(1995, 1, 1), age=31, gender='FEMALE',
+            district=cls.district_rural, ward=cls.ward_rural, registered_at_facility=cls.fac_r1
+        )
+
+        # Historical cases across 6 calendar months (May - Oct 2026) at fac_c1
+        # May 2026: 1 MILD Dengue case
+        cls.c_may_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_0_5_m, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 5, 10), severity='MILD'
+        )
+        # June 2026: 1 MODERATE Dengue case
+        cls.c_jun_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_6_14_f, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 6, 12), severity='MODERATE'
+        )
+        # July 2026: 2 SEVERE Dengue cases
+        cls.c_jul_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_15_24_f, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 7, 15), severity='SEVERE'
+        )
+        cls.c_jul_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_15_24_m, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 7, 20), severity='SEVERE'
+        )
+        # August 2026: 1 MILD, 1 MODERATE Dengue case
+        cls.c_aug_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_25_44_f, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 8, 10), severity='MILD'
+        )
+        cls.c_aug_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_no_gender, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 8, 25), severity='MODERATE'
+        )
+        # September 2026: 1 SEVERE, 1 MILD, 1 missing severity, 1 invalid severity
+        cls.c_sep_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_25_44_m, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 9, 5), severity='SEVERE'
+        )
+        cls.c_sep_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_no_dob, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 9, 20), severity='MILD'
+        )
+        cls.c_sep_3_missing = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_45_59_o, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 9, 25), severity=''
+        )
+        cls.c_sep_4_invalid = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_60_plus_m, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 9, 28), severity='CRITICAL'
+        )
+        # October 2026: 1 MODERATE, 1 MILD Dengue case
+        cls.c_oct_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_45_59_o, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 10, 1), severity='MODERATE'
+        )
+        cls.c_oct_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_60_plus_m, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 10, 3), severity='MILD'
+        )
+
+        # Cross-facility case (same district)
+        cls.c_fac_c2_dengue = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_25_44_f, facility=cls.fac_c2,
+            ward=cls.ward_central, report_date=datetime.date(2026, 9, 15), severity='SEVERE'
+        )
+
+        # Cross-disease case
+        cls.c_malaria = DiseaseCase.objects.create(
+            disease_name='Malaria', patient=cls.p_0_5_m, facility=cls.fac_c1,
+            ward=cls.ward_central, report_date=datetime.date(2026, 9, 18), severity='SEVERE'
+        )
+
+        # Cross-district case
+        cls.c_rural_dengue = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_rural, facility=cls.fac_r1,
+            ward=cls.ward_rural, report_date=datetime.date(2026, 9, 15), severity='MILD'
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin_c1)
+
+    # 1. Severity filter validation
+    def test_01_severity_filter_validation(self):
+        """
+        - severity=MILD -> 200
+        - severity=MODERATE -> 200
+        - severity=SEVERE -> 200
+        - severity=UNKNOWN -> 400
+        - severity=INVALID -> 400
+        - invalid severity must never silently return unfiltered data.
+        """
+        hist_url = reverse('intelligence_historical_disease')
+
+        # Valid severities return 200
+        for s in ['MILD', 'MODERATE', 'SEVERE']:
+            res = self.client.get(f"{hist_url}?disease=Dengue&severity={s}&date={self.as_of}")
+            self.assertEqual(res.status_code, status.HTTP_200_OK, f"severity={s} failed to return 200")
+
+        # Case-insensitive valid parameter returns 200
+        res_lower = self.client.get(f"{hist_url}?disease=Dengue&severity=severe&date={self.as_of}")
+        self.assertEqual(res_lower.status_code, status.HTTP_200_OK)
+
+        # UNKNOWN is rejected with HTTP 400
+        res_unk = self.client.get(f"{hist_url}?disease=Dengue&severity=UNKNOWN&date={self.as_of}")
+        self.assertEqual(res_unk.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', res_unk.data)
+
+        # INVALID / unsupported severity is rejected with HTTP 400
+        for bad_val in ['INVALID', 'CRITICAL', 'NONE', '123']:
+            res_bad = self.client.get(f"{hist_url}?disease=Dengue&severity={bad_val}&date={self.as_of}")
+            self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn('error', res_bad.data)
+            # Must NEVER silently return unfiltered 200 data
+            self.assertNotEqual(res_bad.status_code, status.HTTP_200_OK)
+
+    # 2. Severity filtering correctness
+    def test_02_severity_filtering_correctness(self):
+        """
+        Deterministic cases containing MILD, MODERATE, and SEVERE.
+        Verify severity=MILD only includes MILD cases (4).
+        Verify severity=MODERATE only includes MODERATE cases (3).
+        Verify severity=SEVERE only includes SEVERE cases (3).
+        """
+        hist_url = reverse('intelligence_historical_disease')
+
+        # MILD filter
+        res_mild = self.client.get(f"{hist_url}?disease=Dengue&severity=MILD&date={self.as_of}&months=6")
+        self.assertEqual(res_mild.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_mild.data['total_cases_in_history'], 4)
+        sev_map = {item['severity']: item['total_cases'] for item in res_mild.data['historical_severity']}
+        self.assertEqual(sev_map['MILD'], 4)
+        self.assertEqual(sev_map['MODERATE'], 0)
+        self.assertEqual(sev_map['SEVERE'], 0)
+
+        # MODERATE filter
+        res_mod = self.client.get(f"{hist_url}?disease=Dengue&severity=MODERATE&date={self.as_of}&months=6")
+        self.assertEqual(res_mod.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_mod.data['total_cases_in_history'], 3)
+        sev_map_mod = {item['severity']: item['total_cases'] for item in res_mod.data['historical_severity']}
+        self.assertEqual(sev_map_mod['MODERATE'], 3)
+        self.assertEqual(sev_map_mod['MILD'], 0)
+        self.assertEqual(sev_map_mod['SEVERE'], 0)
+
+        # SEVERE filter
+        res_sev = self.client.get(f"{hist_url}?disease=Dengue&severity=SEVERE&date={self.as_of}&months=6")
+        self.assertEqual(res_sev.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_sev.data['total_cases_in_history'], 3)
+        sev_map_sev = {item['severity']: item['total_cases'] for item in res_sev.data['historical_severity']}
+        self.assertEqual(sev_map_sev['SEVERE'], 3)
+        self.assertEqual(sev_map_sev['MILD'], 0)
+        self.assertEqual(sev_map_sev['MODERATE'], 0)
+
+    # 3. Historical severity output fields
+    def test_03_historical_severity_output_fields(self):
+        """
+        Verify historical endpoint contains:
+        - historical_severity
+        - monthly_severity_trends
+        - severity_age_groups
+        - severity_gender
+        - severity_age_gender
+        - severity_breakdown
+        """
+        res = self.client.get(f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        for field in [
+            'historical_severity',
+            'monthly_severity_trends',
+            'severity_age_groups',
+            'severity_gender',
+            'severity_age_gender',
+            'severity_breakdown'
+        ]:
+            self.assertIn(field, res.data, f"Required severity field '{field}' missing from response.")
+
+    # 4. Historical severity counts
+    def test_04_historical_severity_counts(self):
+        """
+        Verify:
+        - MILD + MODERATE + SEVERE + UNKNOWN counts are correct (4 + 3 + 3 + 2 = 12).
+        - Monthly severity counts sum correctly to total monthly cases.
+        - Historical severity totals sum correctly to total historical cases.
+        """
+        res = self.client.get(f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        sev_map = {item['severity']: item['total_cases'] for item in res.data['historical_severity']}
+        self.assertEqual(sev_map['MILD'], 4)
+        self.assertEqual(sev_map['MODERATE'], 3)
+        self.assertEqual(sev_map['SEVERE'], 3)
+        self.assertEqual(sev_map['UNKNOWN'], 2)
+
+        # Historical severity totals sum correctly to total historical cases
+        total_from_severities = sum(sev_map.values())
+        self.assertEqual(total_from_severities, res.data['total_cases_in_history'])
+        self.assertEqual(res.data['total_cases_in_history'], 12)
+
+        # Monthly severity counts sum correctly to total monthly cases
+        for m_trend in res.data['monthly_severity_trends']:
+            m_sum = sum(m_trend['severity'].values())
+            self.assertEqual(
+                m_sum, m_trend['total_cases'],
+                f"Month {m_trend['month']} severity sum ({m_sum}) != total_cases ({m_trend['total_cases']})"
+            )
+
+    # 5. Severity + age_group combination
+    def test_05_severity_plus_age_group_combination(self):
+        """
+        Example: severity=SEVERE&age_group=15-24
+        Verify AND semantics: only cases matching BOTH severity and age group are included.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&severity=SEVERE&age_group=15-24&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # July Dengue cases matching SEVERE and 15-24: p_15_24_f and p_15_24_m = 2 cases
+        self.assertEqual(res.data['total_cases_in_history'], 2)
+
+    # 6. Severity + gender combination
+    def test_06_severity_plus_gender_combination(self):
+        """
+        Example: severity=SEVERE&gender=FEMALE
+        Verify AND semantics: only cases matching BOTH severity and gender are included.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&severity=SEVERE&gender=FEMALE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # July Dengue cases matching SEVERE and FEMALE: p_15_24_f = 1 case
+        self.assertEqual(res.data['total_cases_in_history'], 1)
+
+    # 7. Severity + age_group + gender combination
+    def test_07_severity_plus_age_group_plus_gender_combination(self):
+        """
+        Example: severity=SEVERE&age_group=15-24&gender=FEMALE
+        Verify all three filters apply together with strict AND logic.
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&severity=SEVERE&age_group=15-24&gender=FEMALE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 1)
+
+        # MALE variation: p_15_24_m = 1 case
+        res_m = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&severity=SEVERE&age_group=15-24&gender=MALE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res_m.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_m.data['total_cases_in_history'], 1)
+
+    # 8. Severity + disease combination
+    def test_08_severity_plus_disease_combination(self):
+        """
+        Verify: disease=Dengue&severity=SEVERE
+        returns only Dengue cases whose severity is SEVERE (excludes Malaria SEVERE case).
+        """
+        res = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?disease=Dengue&severity=SEVERE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # 3 SEVERE Dengue cases; Malaria SEVERE case is excluded
+        self.assertEqual(res.data['total_cases_in_history'], 3)
+        self.assertEqual(res.data['disease'], 'Dengue')
+
+    # 9. Severity + facility scope
+    def test_09_severity_plus_facility_scope(self):
+        """
+        For Hospital Admin:
+        - assigned facility + severity filter works.
+        - another facility remains 403.
+        """
+        # Assigned facility fac_c1
+        res_ok = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?facility={self.fac_c1.id}&disease=Dengue&severity=SEVERE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res_ok.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_ok.data['total_cases_in_history'], 3)
+
+        # Another facility fac_c2 remains 403
+        res_forbidden = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?facility={self.fac_c2.id}&severity=SEVERE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res_forbidden.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('error', res_forbidden.data)
+
+    # 10. Severity + district scope
+    def test_10_severity_plus_district_scope(self):
+        """
+        For District Officer:
+        - assigned district + severity filter works.
+        - another district remains 403.
+        """
+        self.client.force_authenticate(user=self.officer_c)
+
+        # Assigned district (central) includes fac_c1 (3) + fac_c2 (1) = 4 SEVERE Dengue cases
+        res_ok = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?district={self.district_central.id}&disease=Dengue&severity=SEVERE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res_ok.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_ok.data['total_cases_in_history'], 4)
+
+        # Rural District Officer attempting to access Central District receives 403
+        self.client.force_authenticate(user=self.officer_r)
+        res_forbidden = self.client.get(
+            f"{reverse('intelligence_historical_disease')}?district={self.district_central.id}&severity=SEVERE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res_forbidden.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('error', res_forbidden.data)
+
+    # 11. Missing/invalid severity data
+    def test_11_missing_and_invalid_severity_data_handling(self):
+        """
+        Verify missing or unsupported severity is represented as UNKNOWN.
+        Never convert missing/invalid severity to MILD.
+        """
+        # Unit normalization check
+        self.assertEqual(normalize_severity(None), SEVERITY_UNKNOWN)
+        self.assertEqual(normalize_severity(''), SEVERITY_UNKNOWN)
+        self.assertEqual(normalize_severity('INVALID_VALUE'), SEVERITY_UNKNOWN)
+        self.assertNotEqual(normalize_severity(None), SEVERITY_MILD)
+
+        # Analytical response check
+        res = self.client.get(f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        sev_map = {item['severity']: item['total_cases'] for item in res.data['historical_severity']}
+        self.assertIn('UNKNOWN', sev_map)
+        self.assertEqual(sev_map['UNKNOWN'], 2)
+
+    # 12. Backward compatibility
+    def test_12_backward_compatibility_without_severity(self):
+        """
+        Existing requests without severity must continue returning the same total case counts
+        and existing response fields intact.
+        """
+        res = self.client.get(f"{reverse('intelligence_historical_disease')}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # All 12 cases returned without severity filter
+        self.assertEqual(res.data['total_cases_in_history'], 12)
+
+        # All existing legacy and demographic response fields preserved
+        for required_key in [
+            'total_cases_in_history',
+            'monthly_series',
+            'historical_series',
+            'observation_period',
+            'months_analyzed',
+            'monthly_average',
+            'mean_monthly_cases',
+            'current_month_cases',
+            'previous_month_cases',
+            'percentage_change',
+            'trend_direction',
+            'explanation',
+            'severity_breakdown',
+            'historical_age_groups',
+            'historical_gender',
+            'age_gender_matrix',
+            'monthly_demographic_trends'
+        ]:
+            self.assertIn(required_key, res.data, f"Field '{required_key}' missing from backward-compatible response.")
+
+    # 13. Endpoint coverage
+    def test_13_endpoint_coverage_severity_filtering(self):
+        """
+        Add tests for severity filtering on every logically applicable existing intelligence endpoint:
+        - trends
+        - locality
+        - historical
+        - hospital
+        - district
+        - summary
+        """
+        endpoints = [
+            (reverse('intelligence_disease_trends'), {'disease': 'Dengue', 'date': str(self.as_of), 'severity': 'SEVERE'}),
+            (reverse('intelligence_disease_by_locality'), {'disease': 'Dengue', 'date': str(self.as_of), 'severity': 'SEVERE'}),
+            (reverse('intelligence_historical_disease'), {'disease': 'Dengue', 'date': str(self.as_of), 'severity': 'SEVERE'}),
+            (reverse('intelligence_hospital_aggregation'), {'facility': self.fac_c1.id, 'date': str(self.as_of), 'severity': 'SEVERE'}),
+            (reverse('intelligence_district_aggregation'), {'district': self.district_central.id, 'date': str(self.as_of), 'severity': 'SEVERE'}),
+            (reverse('intelligence_summary'), {'date': str(self.as_of), 'severity': 'SEVERE'}),
+        ]
+
+        # Authenticate district officer so both hospital and district endpoints succeed
+        self.client.force_authenticate(user=self.officer_c)
+
+        for url, params in endpoints:
+            query_str = '&'.join(f"{k}={v}" for k, v in params.items())
+            res = self.client.get(f"{url}?{query_str}")
+            self.assertEqual(res.status_code, status.HTTP_200_OK, f"Endpoint {url} failed with severity filter.")
+
+    # 14. Test that severity is NOT silently ignored
+    def test_14_severity_not_silently_ignored_across_endpoints(self):
+        """
+        For trends, locality, historical, hospital, district, and summary:
+        compare an unfiltered request with a severity-filtered request and verify
+        the filtered result changes according to the deterministic test data.
+        """
+        self.client.force_authenticate(user=self.officer_c)
+
+        # 1. Trends: unfiltered current cases vs SEVERE current cases
+        url_trends = reverse('intelligence_disease_trends')
+        res_t_all = self.client.get(f"{url_trends}?disease=Dengue&facility={self.fac_c1.id}&start_date=2026-09-01&end_date=2026-10-04")
+        res_t_sev = self.client.get(f"{url_trends}?disease=Dengue&facility={self.fac_c1.id}&start_date=2026-09-01&end_date=2026-10-04&severity=SEVERE")
+        self.assertEqual(res_t_all.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_t_sev.status_code, status.HTTP_200_OK)
+        cases_all_t = res_t_all.data['summary']['total_current_cases']
+        cases_sev_t = res_t_sev.data['summary']['total_current_cases']
+        self.assertGreater(cases_all_t, cases_sev_t, "Trends endpoint silently ignored severity filter.")
+        self.assertEqual(cases_sev_t, 1) # Only Sep 5 case is SEVERE in Sep-Oct window
+
+        # 2. Locality: unfiltered vs SEVERE
+        url_loc = reverse('intelligence_disease_by_locality')
+        res_l_all = self.client.get(f"{url_loc}?disease=Dengue&facility={self.fac_c1.id}&start_date=2026-09-01&end_date=2026-10-04")
+        res_l_sev = self.client.get(f"{url_loc}?disease=Dengue&facility={self.fac_c1.id}&start_date=2026-09-01&end_date=2026-10-04&severity=SEVERE")
+        self.assertEqual(res_l_all.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_l_sev.status_code, status.HTTP_200_OK)
+        cases_all_l = res_l_all.data['total_cases_in_period']
+        cases_sev_l = res_l_sev.data['total_cases_in_period']
+        self.assertGreater(cases_all_l, cases_sev_l, "Locality endpoint silently ignored severity filter.")
+        self.assertEqual(cases_sev_l, 1)
+
+        # 3. Historical: unfiltered vs SEVERE
+        url_hist = reverse('intelligence_historical_disease')
+        res_h_all = self.client.get(f"{url_hist}?disease=Dengue&facility={self.fac_c1.id}&date={self.as_of}&months=6")
+        res_h_sev = self.client.get(f"{url_hist}?disease=Dengue&facility={self.fac_c1.id}&date={self.as_of}&months=6&severity=SEVERE")
+        self.assertEqual(res_h_all.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_h_sev.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_h_all.data['total_cases_in_history'], 12)
+        self.assertEqual(res_h_sev.data['total_cases_in_history'], 3)
+        self.assertGreater(res_h_all.data['total_cases_in_history'], res_h_sev.data['total_cases_in_history'])
+
+        # 4. Hospital: unfiltered vs SEVERE
+        url_hosp = reverse('intelligence_hospital_aggregation')
+        res_hosp_all = self.client.get(f"{url_hosp}?facility={self.fac_c1.id}&start_date=2026-09-01&end_date=2026-10-04")
+        res_hosp_sev = self.client.get(f"{url_hosp}?facility={self.fac_c1.id}&start_date=2026-09-01&end_date=2026-10-04&severity=SEVERE")
+        self.assertEqual(res_hosp_all.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_hosp_sev.status_code, status.HTTP_200_OK)
+        hosp_all_cnt = res_hosp_all.data['summary']['total_current_cases']
+        hosp_sev_cnt = res_hosp_sev.data['summary']['total_current_cases']
+        self.assertGreater(hosp_all_cnt, hosp_sev_cnt, "Hospital endpoint silently ignored severity filter.")
+
+        # 5. District: unfiltered vs SEVERE
+        url_dist = reverse('intelligence_district_aggregation')
+        res_dist_all = self.client.get(f"{url_dist}?district={self.district_central.id}&start_date=2026-09-01&end_date=2026-10-04")
+        res_dist_sev = self.client.get(f"{url_dist}?district={self.district_central.id}&start_date=2026-09-01&end_date=2026-10-04&severity=SEVERE")
+        self.assertEqual(res_dist_all.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_dist_sev.status_code, status.HTTP_200_OK)
+        dist_all_cnt = res_dist_all.data['summary']['total_current_cases']
+        dist_sev_cnt = res_dist_sev.data['summary']['total_current_cases']
+        self.assertGreater(dist_all_cnt, dist_sev_cnt, "District endpoint silently ignored severity filter.")
+
+        # 6. Summary: unfiltered vs SEVERE
+        url_sum = reverse('intelligence_summary')
+        res_sum_all = self.client.get(f"{url_sum}?district={self.district_central.id}&start_date=2026-09-01&end_date=2026-10-04")
+        res_sum_sev = self.client.get(f"{url_sum}?district={self.district_central.id}&start_date=2026-09-01&end_date=2026-10-04&severity=SEVERE")
+        self.assertEqual(res_sum_all.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_sum_sev.status_code, status.HTTP_200_OK)
+        sum_all_cnt = res_sum_all.data['summary']['total_current_cases']
+        sum_sev_cnt = res_sum_sev.data['summary']['total_current_cases']
+        self.assertGreater(sum_all_cnt, sum_sev_cnt, "Summary endpoint silently ignored severity filter.")
+
+    # 15. Query efficiency
+    def test_15_query_efficiency_no_n_plus_one(self):
+        """
+        Verify that historical severity aggregation does not execute an N+1 query loop per case/patient.
+        Uses select_related('patient') to load historical cases and patient relations in strictly 1 query.
+        """
+        with self.assertNumQueries(1):
+            aggregate_historical_disease(
+                facility_ids=[self.fac_c1.id],
+                disease_name='Dengue',
+                months=6,
+                as_of_date=self.as_of
+            )
 
 
 
