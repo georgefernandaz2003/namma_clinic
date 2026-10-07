@@ -288,7 +288,7 @@ def generate_trend_dataset():
 
     for idx, (pname, gender, age, mobile) in enumerate(karnataka_names, start=11):
         uhid = f"NC-KA-2026-{idx:04d}"
-        reg_fac = fac_local
+        reg_fac = fac_local if idx % 2 == 0 else fac_lag
         p, _ = Patient.objects.get_or_create(
             patient_id=uhid,
             defaults={
