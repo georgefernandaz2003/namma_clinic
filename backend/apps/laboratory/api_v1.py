@@ -124,6 +124,7 @@ class TestRequestViewSet(viewsets.ModelViewSet):
     queryset = TestRequest.objects.all().select_related('diagnostic_order', 'test_master', 'specimen')
     serializer_class = TestRequestSerializer
     permission_classes = [IsActiveStaff, DiagnosticAccessPermission]
+    pagination_class = None
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -152,6 +153,7 @@ class SpecimenViewSet(viewsets.ModelViewSet):
     queryset = Specimen.objects.all().select_related('diagnostic_order', 'collected_by_staff')
     serializer_class = SpecimenSerializer
     permission_classes = [IsActiveStaff, DiagnosticAccessPermission]
+    pagination_class = None
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -192,6 +194,7 @@ class DiagnosticResultViewSet(viewsets.ModelViewSet):
     queryset = DiagnosticResult.objects.all().select_related('test_request', 'entered_by_staff', 'verified_by_staff')
     serializer_class = DiagnosticResultSerializer
     permission_classes = [IsActiveStaff, DiagnosticAccessPermission]
+    pagination_class = None
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):

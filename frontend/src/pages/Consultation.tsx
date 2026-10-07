@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -139,10 +139,10 @@ export const Consultation: React.FC = () => {
     loadQueue();
   }, [activeFacility?.id, selectedVisitId]);
 
-  const loadClinicalContext = useCallback(async (vId: number) => {
+  const loadClinicalContext = useCallback(async (vId: number, clearSuccess = true) => {
     setLoadingContext(true);
     setError(null);
-    setSuccessMessage(null);
+    if (clearSuccess) setSuccessMessage(null);
 
     try {
       const visitData = await getVisit(vId);
@@ -304,7 +304,7 @@ export const Consultation: React.FC = () => {
         `Consultation recorded successfully for ${patient.name} (Visit #${visit.visit_id}). Workflow advanced to ${nextStatus}.`
       );
 
-      await loadClinicalContext(visit.id);
+      await loadClinicalContext(visit.id, false);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to save clinical consultation record.';
       setError(msg);

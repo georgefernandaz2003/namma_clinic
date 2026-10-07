@@ -175,9 +175,10 @@ class MedicineBatchViewSet(viewsets.ReadOnlyModelViewSet):
         })
 
 class PrescriptionViewSet(viewsets.ModelViewSet):
-    queryset = Prescription.objects.all().select_related('consultation', 'patient', 'facility').prefetch_related('items')
+    queryset = Prescription.objects.all().order_by('-id').select_related('consultation', 'patient', 'facility').prefetch_related('items')
     serializer_class = PrescriptionSerializer
     permission_classes = [IsActiveStaff, PharmacyAccessPermission, FacilityScopedPermission]
+    pagination_class = None
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -188,14 +189,15 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        from apps.pharmacy.models import MedicineMaster, MedicineBatch
+        from apps.consultations.models import PrescriptionItem
+
         staff = get_request_staff(self.request)
         fac = serializer.validated_data['facility']
         check_facility_permission(fac, staff, self.request.user)
         rx = serializer.save(doctor=self.request.user, doctor_staff=staff)
         items_data = self.request.data.get('items', [])
         if items_data:
-            from apps.pharmacy.models import MedicineMaster
-            from apps.consultations.models import PrescriptionItem
             for itm in items_data:
                 med_id = itm.get('medicine') or itm.get('medicine_id')
                 med = MedicineMaster.objects.get(pk=med_id)
@@ -210,7 +212,6 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                     status='PENDING'
                 )
         elif not rx.items.exists():
-            from apps.pharmacy.models import MedicineMaster, MedicineBatch
             matched_batch = MedicineBatch.objects.filter(
                 facility=fac,
                 status='AVAILABLE',
@@ -317,9 +318,10 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(prescription).data)
 
 class DispensationViewSet(viewsets.ModelViewSet):
-    queryset = Dispensation.objects.all().select_related('prescription', 'facility', 'dispensed_by_staff').prefetch_related('items')
+    queryset = Dispensation.objects.all().order_by('-id').select_related('prescription', 'facility', 'dispensed_by_staff').prefetch_related('items')
     serializer_class = DispensationSerializer
     permission_classes = [IsActiveStaff, PharmacyAccessPermission, FacilityScopedPermission]
+    pagination_class = None
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):
@@ -376,9 +378,10 @@ class DispensationViewSet(viewsets.ModelViewSet):
 
 class InventoryLedgerViewSet(viewsets.ReadOnlyModelViewSet):
     """Read-only ledger audit trail."""
-    queryset = InventoryLedger.objects.all().select_related('batch', 'facility', 'performed_by_staff')
+    queryset = InventoryLedger.objects.all().order_by('-id').select_related('batch', 'facility', 'performed_by_staff')
     serializer_class = InventoryLedgerSerializer
     permission_classes = [IsActiveStaff, FacilityScopedPermission]
+    pagination_class = None
 
     def get_queryset(self):
         qs = super().get_queryset()
