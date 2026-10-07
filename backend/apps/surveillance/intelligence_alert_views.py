@@ -138,28 +138,35 @@ class PublicHealthIntelligenceEvaluateView(BaseIntelligenceAlertView):
         }, status=status.HTTP_200_OK)
 
 
+def get_intelligence_alert_or_404(pk, user):
+    """
+    Retrieves an alert by pk strictly requiring alert_type__startswith='INTELLIGENCE_'.
+    Returns 404 if the alert does not exist or is not an intelligence alert (preventing
+    information leakage about non-intelligence alerts).
+    Enforces cross-facility/district access control, returning 403 Forbidden on violation.
+    """
+    alert = get_object_or_404(
+        Alert.objects.select_related('facility', 'district', 'acknowledged_by', 'resolved_by').filter(
+            alert_type__startswith='INTELLIGENCE_'
+        ),
+        pk=pk
+    )
+    if not getattr(user, 'is_superuser', False) and not can_access_facility(user, alert.facility_id):
+        raise PermissionDenied("You do not have authorization to access this facility alert.")
+    return alert
+
+
 class PublicHealthIntelligenceAlertDetailView(BaseIntelligenceAlertView):
     """
     GET, PATCH /api/surveillance/intelligence/alerts/<id>/
     Retrieves or updates an individual surveillance alert's status.
     """
-    def get_alert_object(self, pk, user):
-        alert = get_object_or_404(
-            Alert.objects.select_related('facility', 'district', 'acknowledged_by', 'resolved_by'),
-            pk=pk
-        )
-        # Check facility authorization
-        if not getattr(user, 'is_superuser', False):
-            if not can_access_facility(user, alert.facility_id):
-                raise PermissionDenied("You do not have authorization to access resources outside your assigned facility.")
-        return alert
-
     def get(self, request, pk):
-        alert = self.get_alert_object(pk, request.user)
+        alert = get_intelligence_alert_or_404(pk, request.user)
         return Response(AlertSerializer(alert).data)
 
     def patch(self, request, pk):
-        alert = self.get_alert_object(pk, request.user)
+        alert = get_intelligence_alert_or_404(pk, request.user)
         new_status = request.data.get('status')
         notes = request.data.get('resolution_notes', '')
 
@@ -189,10 +196,7 @@ class PublicHealthIntelligenceAlertAcknowledgeView(BaseIntelligenceAlertView):
     POST /api/surveillance/intelligence/alerts/<id>/acknowledge/
     """
     def post(self, request, pk):
-        alert = get_object_or_404(Alert, pk=pk)
-        if not getattr(request.user, 'is_superuser', False) and not can_access_facility(request.user, alert.facility_id):
-            return Response({'error': 'You do not have authorization to access this facility alert.'}, status=status.HTTP_403_FORBIDDEN)
-
+        alert = get_intelligence_alert_or_404(pk, request.user)
         try:
             acknowledge_alert(alert, request.user)
         except ValueError as e:
@@ -206,10 +210,7 @@ class PublicHealthIntelligenceAlertResolveView(BaseIntelligenceAlertView):
     POST /api/surveillance/intelligence/alerts/<id>/resolve/
     """
     def post(self, request, pk):
-        alert = get_object_or_404(Alert, pk=pk)
-        if not getattr(request.user, 'is_superuser', False) and not can_access_facility(request.user, alert.facility_id):
-            return Response({'error': 'You do not have authorization to access this facility alert.'}, status=status.HTTP_403_FORBIDDEN)
-
+        alert = get_intelligence_alert_or_404(pk, request.user)
         notes = request.data.get('resolution_notes', '')
         resolve_alert(alert, request.user, resolution_notes=notes)
         return Response(AlertSerializer(alert).data)

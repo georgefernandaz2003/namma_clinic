@@ -424,3 +424,323 @@ class PublicHealthIntelligenceAlertsTestCase(TestCase):
         # Hospital Admin evaluates another facility: 403
         resp_bad = self.client.post(url, {'facility': self.hospital_rural.id, 'date': '2026-10-06'}, format='json')
         self.assertEqual(resp_bad.status_code, status.HTTP_403_FORBIDDEN)
+
+    # -----------------------------------------------------------------------
+    # Step 4 Correction: Boundary Hardening & Field Immutability Tests
+    # -----------------------------------------------------------------------
+
+    def test_intelligence_acknowledge_endpoint_works_for_intelligence_alert(self):
+        """1. intelligence acknowledge endpoint works for an intelligence alert."""
+        alert = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Dengue Signal',
+            description='Active surveillance signal',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        url = f'/api/surveillance/intelligence/alerts/{alert.id}/acknowledge/'
+        resp = self.client.post(url, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, 'ACKNOWLEDGED')
+        self.assertIsNotNone(alert.acknowledged_at)
+        self.assertEqual(alert.acknowledged_by, self.user_admin_a)
+
+    def test_intelligence_resolve_endpoint_works_for_intelligence_alert(self):
+        """2. intelligence resolve endpoint works for an intelligence alert."""
+        alert = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Dengue Signal',
+            description='Active surveillance signal',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        url = f'/api/surveillance/intelligence/alerts/{alert.id}/resolve/'
+        resp = self.client.post(url, {'resolution_notes': 'Investigation complete and verified.'}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, 'RESOLVED')
+        self.assertIsNotNone(alert.resolved_at)
+        self.assertEqual(alert.resolved_by, self.user_admin_a)
+        self.assertEqual(alert.resolution_notes, 'Investigation complete and verified.')
+
+    def test_intelligence_detail_endpoint_rejects_low_stock_alert(self):
+        """3. intelligence detail endpoint rejects a LOW_STOCK alert with 404."""
+        low_stock = Alert.objects.create(
+            alert_type='LOW_STOCK',
+            severity='HIGH',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Paracetamol Stock Low',
+            description='Only 10 strips left',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        # GET on detail
+        resp_get = self.client.get(f'/api/surveillance/intelligence/alerts/{low_stock.id}/')
+        self.assertEqual(resp_get.status_code, status.HTTP_404_NOT_FOUND)
+        # PATCH on detail
+        resp_patch = self.client.patch(f'/api/surveillance/intelligence/alerts/{low_stock.id}/', {'status': 'ACKNOWLEDGED'}, format='json')
+        self.assertEqual(resp_patch.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_intelligence_acknowledge_endpoint_rejects_low_stock_alert(self):
+        """4. intelligence acknowledge endpoint rejects a LOW_STOCK alert with 404."""
+        low_stock = Alert.objects.create(
+            alert_type='LOW_STOCK',
+            severity='HIGH',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Amoxicillin Stock Low',
+            description='Batch below reorder level',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        url = f'/api/surveillance/intelligence/alerts/{low_stock.id}/acknowledge/'
+        resp = self.client.post(url, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_intelligence_resolve_endpoint_rejects_low_stock_alert(self):
+        """5. intelligence resolve endpoint rejects a LOW_STOCK alert with 404."""
+        low_stock = Alert.objects.create(
+            alert_type='LOW_STOCK',
+            severity='HIGH',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='ORS Stock Low',
+            description='ORS sachets exhausted',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        url = f'/api/surveillance/intelligence/alerts/{low_stock.id}/resolve/'
+        resp = self.client.post(url, {'resolution_notes': 'Stock received'}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_generic_alert_patch_cannot_change_facility(self):
+        """6. generic Alert PATCH cannot change facility."""
+        alert = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Test Facility Immutability',
+            description='Facility test',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        url = f'/api/alerts/{alert.id}/'
+        resp = self.client.patch(url, {'facility': self.hospital_rural.id}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertEqual(alert.facility, self.hospital_a)
+
+    def test_generic_alert_patch_cannot_change_alert_type(self):
+        """7. generic Alert PATCH cannot change alert_type."""
+        alert = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Test Alert Type Immutability',
+            description='Alert type test',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        url = f'/api/alerts/{alert.id}/'
+        resp = self.client.patch(url, {'alert_type': 'LOW_STOCK'}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertEqual(alert.alert_type, 'INTELLIGENCE_TREND')
+
+    def test_generic_alert_patch_cannot_change_metadata(self):
+        """8. generic Alert PATCH cannot change metadata."""
+        original_metadata = {'disease': 'Dengue Fever', 'current_cases': 10}
+        alert = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Test Metadata Immutability',
+            description='Metadata test',
+            status='NEW',
+            metadata=original_metadata
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        url = f'/api/alerts/{alert.id}/'
+        resp = self.client.patch(url, {'metadata': {'disease': 'Cholera', 'hacked': True}}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertEqual(alert.metadata, original_metadata)
+
+    def test_generic_alert_patch_cannot_change_fingerprint(self):
+        """9. generic Alert PATCH cannot change fingerprint."""
+        alert = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Test Fingerprint Immutability',
+            description='Fingerprint test',
+            status='NEW',
+            fingerprint='valid_sha256_fp'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        url = f'/api/alerts/{alert.id}/'
+        resp = self.client.patch(url, {'fingerprint': 'tampered_fp'}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertEqual(alert.fingerprint, 'valid_sha256_fp')
+
+    def test_generic_alert_patch_cannot_change_district(self):
+        """10. generic Alert PATCH cannot change district."""
+        alert = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Test District Immutability',
+            description='District test',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        url = f'/api/alerts/{alert.id}/'
+        resp = self.client.patch(url, {'district': self.district_rural.id}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertEqual(alert.district, self.district_central)
+
+    def test_generic_alert_patch_cannot_directly_change_acknowledged_by(self):
+        """11. generic Alert PATCH cannot directly change acknowledged_by."""
+        alert = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Test Acknowledged By Immutability',
+            description='Ack test',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        url = f'/api/alerts/{alert.id}/'
+        resp = self.client.patch(url, {'acknowledged_by': self.user_admin_rural.id}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertIsNone(alert.acknowledged_by)
+
+    def test_generic_alert_patch_cannot_directly_change_resolved_by(self):
+        """12. generic Alert PATCH cannot directly change resolved_by."""
+        alert = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Test Resolved By Immutability',
+            description='Resolve test',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        url = f'/api/alerts/{alert.id}/'
+        resp = self.client.patch(url, {'resolved_by': self.user_admin_rural.id}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertIsNone(alert.resolved_by)
+
+    def test_lifecycle_changes_still_work_through_acknowledge_resolve_actions(self):
+        """13. lifecycle changes still work through acknowledge/resolve actions."""
+        alert = Alert.objects.create(
+            alert_type='LOW_STOCK',
+            severity='WARNING',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Low Stock Paracetamol',
+            description='Stock alert',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        # Acknowledge action
+        ack_url = f'/api/alerts/{alert.id}/acknowledge/'
+        resp_ack = self.client.post(ack_url, format='json')
+        self.assertEqual(resp_ack.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, 'ACKNOWLEDGED')
+        self.assertEqual(alert.acknowledged_by, self.user_admin_a)
+
+        # Resolve action
+        res_url = f'/api/alerts/{alert.id}/resolve/'
+        resp_res = self.client.post(res_url, {'resolution_notes': 'Stock replenished.'}, format='json')
+        self.assertEqual(resp_res.status_code, status.HTTP_200_OK)
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, 'RESOLVED')
+        self.assertEqual(alert.resolved_by, self.user_admin_a)
+        self.assertEqual(alert.resolution_notes, 'Stock replenished.')
+
+    def test_cross_facility_intelligence_alert_access_remains_http_403(self):
+        """14. cross-facility intelligence alert access remains HTTP 403."""
+        alert_rural = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_rural,
+            district=self.district_rural,
+            title='Rural Hospital Alert',
+            description='Test Rural',
+            status='NEW'
+        )
+        self.client.force_authenticate(user=self.user_admin_a)
+        # Detail GET
+        resp_get = self.client.get(f'/api/surveillance/intelligence/alerts/{alert_rural.id}/')
+        self.assertEqual(resp_get.status_code, status.HTTP_403_FORBIDDEN)
+        # Detail PATCH
+        resp_patch = self.client.patch(f'/api/surveillance/intelligence/alerts/{alert_rural.id}/', {'status': 'ACKNOWLEDGED'}, format='json')
+        self.assertEqual(resp_patch.status_code, status.HTTP_403_FORBIDDEN)
+        # Acknowledge
+        resp_ack = self.client.post(f'/api/surveillance/intelligence/alerts/{alert_rural.id}/acknowledge/', format='json')
+        self.assertEqual(resp_ack.status_code, status.HTTP_403_FORBIDDEN)
+        # Resolve
+        resp_res = self.client.post(f'/api/surveillance/intelligence/alerts/{alert_rural.id}/resolve/', {'resolution_notes': 'test'}, format='json')
+        self.assertEqual(resp_res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_district_officer_can_only_acknowledge_resolve_inside_assigned_district(self):
+        """15. District Officer can only acknowledge/resolve intelligence alerts inside their assigned district."""
+        alert_central = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_a,
+            district=self.district_central,
+            title='Central Alert',
+            description='In district',
+            status='NEW'
+        )
+        alert_rural = Alert.objects.create(
+            alert_type='INTELLIGENCE_TREND',
+            severity='WARNING',
+            facility=self.hospital_rural,
+            district=self.district_rural,
+            title='Rural Alert',
+            description='Out of district',
+            status='NEW'
+        )
+
+        self.client.force_authenticate(user=self.user_dist_central)
+
+        # Inside assigned district -> OK
+        ack_ok = self.client.post(f'/api/surveillance/intelligence/alerts/{alert_central.id}/acknowledge/', format='json')
+        self.assertEqual(ack_ok.status_code, status.HTTP_200_OK)
+        alert_central.refresh_from_db()
+        self.assertEqual(alert_central.status, 'ACKNOWLEDGED')
+
+        res_ok = self.client.post(f'/api/surveillance/intelligence/alerts/{alert_central.id}/resolve/', {'resolution_notes': 'Officer approved'}, format='json')
+        self.assertEqual(res_ok.status_code, status.HTTP_200_OK)
+        alert_central.refresh_from_db()
+        self.assertEqual(alert_central.status, 'RESOLVED')
+
+        # Outside assigned district -> 403 Forbidden
+        ack_bad = self.client.post(f'/api/surveillance/intelligence/alerts/{alert_rural.id}/acknowledge/', format='json')
+        self.assertEqual(ack_bad.status_code, status.HTTP_403_FORBIDDEN)
+
+        res_bad = self.client.post(f'/api/surveillance/intelligence/alerts/{alert_rural.id}/resolve/', {'resolution_notes': 'Illegal action'}, format='json')
+        self.assertEqual(res_bad.status_code, status.HTTP_403_FORBIDDEN)

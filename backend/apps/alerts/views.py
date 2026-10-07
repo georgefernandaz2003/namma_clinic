@@ -22,6 +22,26 @@ class AlertSerializer(serializers.ModelSerializer):
     class Meta:
         model = Alert
         fields = '__all__'
+        read_only_fields = [
+            'id',
+            'alert_type',
+            'facility',
+            'district',
+            'patient',
+            'title',
+            'description',
+            'status',
+            'severity',
+            'fingerprint',
+            'metadata',
+            'created_at',
+            'assigned_user',
+            'acknowledged_at',
+            'acknowledged_by',
+            'resolved_at',
+            'resolved_by',
+            'resolution_notes',
+        ]
 
 
 class AlertViewSet(viewsets.ModelViewSet):
@@ -48,6 +68,9 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def update(self, request, *args, **kwargs):
+        return self.partial_update(request, *args, **kwargs)
+
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         new_status = request.data.get('status')
@@ -63,7 +86,16 @@ class AlertViewSet(viewsets.ModelViewSet):
             resolve_alert(instance, request.user, resolution_notes=notes)
             serializer = self.get_serializer(instance)
             return Response(serializer.data)
-        return super().partial_update(request, *args, **kwargs)
+        elif new_status:
+            return Response(
+                {'error': f"Invalid status '{new_status}'. Use ACKNOWLEDGED or RESOLVED."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post', 'patch'], url_path='acknowledge')
     def acknowledge(self, request, pk=None):
