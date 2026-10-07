@@ -60,16 +60,23 @@ GENDER_CHOICES = [GENDER_MALE, GENDER_FEMALE, GENDER_OTHER]
 # Core Demographic Utilities
 # ---------------------------------------------------------------------------
 
-def calculate_age(date_of_birth=None, fallback_age=None, reference_date=None):
+def calculate_age(date_of_birth=None, reference_date=None, allow_stored_age_fallback=False, fallback_age=None):
     """
-    Determines patient age in completed years from authoritative fields:
-    1. Primary: date_of_birth relative to reference_date (defaults to today).
-    2. Fallback: fallback_age (Patient.age) if date_of_birth is missing or invalid.
-    3. Returns None if both are missing, invalid, or negative.
+    Authoritative Age Calculation:
+    Calculates patient age strictly in completed calendar years from date_of_birth
+    relative to reference_date (such as DiseaseCase.report_date).
 
-    Safety:
-    - Rejects future date_of_birth (where dob > reference_date) as invalid, falling back to fallback_age.
-    - Gracefully handles strings, datetimes, dates, and None.
+    Rules:
+    1. Primary source is date_of_birth. Stored Patient.age is NOT used as primary source
+       when date_of_birth is available because stored registration age can quickly become stale over time.
+    2. Missing DOB (None, blank):
+       Does NOT fabricate an age. Returns None (and age_group 'UNKNOWN').
+       Fallback behavior: Stored Patient.age is only used if allow_stored_age_fallback=True
+       is explicitly passed and fallback_age is a valid non-negative integer.
+    3. Future DOB (date_of_birth > reference_date):
+       Safely rejected as invalid. Returns None (and age_group 'UNKNOWN').
+    4. Reference Date:
+       Calculated strictly relative to reference_date (defaults to today if None).
     """
     ref_date = reference_date
     if ref_date is None:
@@ -104,10 +111,15 @@ def calculate_age(date_of_birth=None, fallback_age=None, reference_date=None):
             )
             if age >= 0:
                 return age
-        # If parsed_dob > ref_date, DOB is invalid (future date).
-        # Fall through to fallback_age.
+        # If parsed_dob > ref_date: Future DOB, reject safely
+        return None
 
-    # Fallback to existing Patient.age field
+    # Missing or invalid DOB
+    if not allow_stored_age_fallback:
+        # Do not fabricate an age; return explicit None
+        return None
+
+    # Explicit fallback to stored age only if allowed
     if fallback_age is not None:
         try:
             val = int(fallback_age)
@@ -117,6 +129,49 @@ def calculate_age(date_of_birth=None, fallback_age=None, reference_date=None):
             pass
 
     return None
+
+
+def get_case_patient_age(disease_case, allow_stored_age_fallback=False):
+    """
+    Calculates age strictly from disease_case.patient.date_of_birth
+    using disease_case.report_date as the reference date.
+    Does NOT use stored Patient.age as primary source.
+    """
+    if not disease_case or not getattr(disease_case, 'patient', None):
+        return None
+    patient = disease_case.patient
+    return calculate_age(
+        date_of_birth=getattr(patient, 'date_of_birth', None),
+        reference_date=getattr(disease_case, 'report_date', None),
+        allow_stored_age_fallback=allow_stored_age_fallback,
+        fallback_age=getattr(patient, 'age', None)
+    )
+
+
+def get_case_demographics(disease_case, allow_stored_age_fallback=False):
+    """
+    Extracts authoritative demographics for a DiseaseCase:
+    - Calculates age strictly from patient.date_of_birth using disease_case.report_date
+    - Assigns age_group into 0-5, 6-14, 15-24, 25-44, 45-59, 60+ (or UNKNOWN)
+    - Uses existing Patient.gender choices (MALE, FEMALE, OTHER, or UNKNOWN)
+    """
+    if not disease_case or not getattr(disease_case, 'patient', None):
+        return {
+            'age': None,
+            'age_group': AGE_GROUP_UNKNOWN,
+            'gender': GENDER_UNKNOWN,
+            'date_of_birth': None,
+            'report_date': None
+        }
+    patient = disease_case.patient
+    report_date = getattr(disease_case, 'report_date', None) or datetime.date.today()
+    demo = resolve_patient_demographics(
+        patient,
+        reference_date=report_date,
+        allow_stored_age_fallback=allow_stored_age_fallback
+    )
+    demo['report_date'] = report_date.strftime('%Y-%m-%d') if hasattr(report_date, 'strftime') else str(report_date)
+    return demo
 
 
 def get_age_group(age):
@@ -171,7 +226,7 @@ def normalize_gender(gender):
     return GENDER_UNKNOWN
 
 
-def resolve_patient_demographics(patient, reference_date=None):
+def resolve_patient_demographics(patient, reference_date=None, allow_stored_age_fallback=False):
     """
     Extracts authoritative demographics from a Patient model instance or dictionary.
     Returns:
@@ -200,7 +255,12 @@ def resolve_patient_demographics(patient, reference_date=None):
         fallback_age = patient.get('age')
         raw_gender = patient.get('gender')
 
-    age = calculate_age(date_of_birth=dob, fallback_age=fallback_age, reference_date=reference_date)
+    age = calculate_age(
+        date_of_birth=dob,
+        reference_date=reference_date,
+        allow_stored_age_fallback=allow_stored_age_fallback,
+        fallback_age=fallback_age
+    )
     age_group = get_age_group(age)
     gender = normalize_gender(raw_gender)
 
@@ -223,7 +283,7 @@ def resolve_patient_demographics(patient, reference_date=None):
 # Demographic Aggregation for Surveillance Datasets
 # ---------------------------------------------------------------------------
 
-def aggregate_demographics(disease_cases_qs, reference_date=None):
+def aggregate_demographics(disease_cases_qs, reference_date=None, allow_stored_age_fallback=False):
     """
     Computes demographic distribution across a queryset or list of DiseaseCase instances.
     Safely handles missing DOB, missing gender, and invalid data.
@@ -280,7 +340,11 @@ def aggregate_demographics(disease_cases_qs, reference_date=None):
         total_cases += 1
         patient = getattr(case, 'patient', None)
         case_ref_date = getattr(case, 'report_date', reference_date) or reference_date
-        demo = resolve_patient_demographics(patient, reference_date=case_ref_date)
+        demo = resolve_patient_demographics(
+            patient,
+            reference_date=case_ref_date,
+            allow_stored_age_fallback=allow_stored_age_fallback
+        )
 
         ag = demo['age_group']
         age_group_counts[ag] = age_group_counts.get(ag, 0) + 1
@@ -367,14 +431,18 @@ def get_demographic_intelligence(facility_ids=None, district_id=None, disease_na
 # Reusable Utilities for Demographic Filtering & Combinations
 # ---------------------------------------------------------------------------
 
-def matches_demographic_criteria(patient, age_groups=None, genders=None, reference_date=None):
+def matches_demographic_criteria(patient, age_groups=None, genders=None, reference_date=None, allow_stored_age_fallback=False):
     """
     Evaluates whether a patient record matches requested demographic criteria:
     - age_groups: list, set, or single age group string, e.g. ['0-5', '6-14']
     - genders: list, set, or single gender string, e.g. ['MALE', 'FEMALE']
     - reference_date: reference date for age calculation (e.g. disease report_date)
     """
-    demo = resolve_patient_demographics(patient, reference_date=reference_date)
+    demo = resolve_patient_demographics(
+        patient,
+        reference_date=reference_date,
+        allow_stored_age_fallback=allow_stored_age_fallback
+    )
 
     if age_groups:
         if isinstance(age_groups, str):
@@ -393,7 +461,7 @@ def matches_demographic_criteria(patient, age_groups=None, genders=None, referen
     return True
 
 
-def filter_cases_by_demographics(disease_cases_qs, age_groups=None, genders=None, reference_date=None):
+def filter_cases_by_demographics(disease_cases_qs, age_groups=None, genders=None, reference_date=None, allow_stored_age_fallback=False):
     """
     Filters DiseaseCase instances matching age groups and/or gender criteria.
     Determines age relative to each case's report_date (or provided reference_date)
@@ -413,7 +481,8 @@ def filter_cases_by_demographics(disease_cases_qs, age_groups=None, genders=None
             patient=getattr(case, 'patient', None),
             age_groups=age_groups,
             genders=genders,
-            reference_date=case_ref
+            reference_date=case_ref,
+            allow_stored_age_fallback=allow_stored_age_fallback
         ):
             matching_ids.append(case.id)
 
@@ -422,7 +491,7 @@ def filter_cases_by_demographics(disease_cases_qs, age_groups=None, genders=None
     return [c for c in cases if c.id in matching_ids]
 
 
-def build_age_gender_matrix(disease_cases_qs, reference_date=None):
+def build_age_gender_matrix(disease_cases_qs, reference_date=None, allow_stored_age_fallback=False):
     """
     Builds a 2D cross-tabulation matrix of case counts combining age groups and genders:
     Rows: AGE_GROUPS (0-5, 6-14, 15-24, 25-44, 45-59, 60+, UNKNOWN)
@@ -443,7 +512,11 @@ def build_age_gender_matrix(disease_cases_qs, reference_date=None):
 
     for case in cases:
         case_ref = getattr(case, 'report_date', reference_date) or reference_date
-        demo = resolve_patient_demographics(getattr(case, 'patient', None), reference_date=case_ref)
+        demo = resolve_patient_demographics(
+            getattr(case, 'patient', None),
+            reference_date=case_ref,
+            allow_stored_age_fallback=allow_stored_age_fallback
+        )
         ag = demo['age_group']
         g = demo['gender']
 

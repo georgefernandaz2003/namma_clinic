@@ -45,6 +45,8 @@ from apps.surveillance.demographic_services import (
     GENDER_OTHER,
     GENDER_UNKNOWN,
     calculate_age,
+    get_case_patient_age,
+    get_case_demographics,
     get_age_group,
     normalize_gender,
     resolve_patient_demographics,
@@ -183,45 +185,66 @@ class DemographicUtilitiesTestCase(TestCase):
         self.assertEqual(age, 24)
         self.assertEqual(get_age_group(age), AGE_GROUP_15_24)
 
-    def test_fallback_to_patient_age_when_dob_missing(self):
+    def test_missing_dob_returns_none_and_no_fabricated_age(self):
         """
-        When date_of_birth is None or blank string, safely falls back to fallback_age.
+        Requirement 4: If date_of_birth is missing:
+        - do not fabricate an age
+        - return an explicit unknown/None age result
+        - document the fallback behavior.
         """
-        # None DOB with valid fallback
-        age1 = calculate_age(date_of_birth=None, fallback_age=32, reference_date=self.ref_date)
-        self.assertEqual(age1, 32)
-        self.assertEqual(get_age_group(age1), AGE_GROUP_25_44)
+        # None DOB returns None by default without fabricating an age
+        self.assertIsNone(calculate_age(date_of_birth=None, reference_date=self.ref_date))
+        self.assertEqual(get_age_group(None), AGE_GROUP_UNKNOWN)
 
-        # Blank string DOB with valid fallback
-        age2 = calculate_age(date_of_birth="", fallback_age=12, reference_date=self.ref_date)
-        self.assertEqual(age2, 12)
-        self.assertEqual(get_age_group(age2), AGE_GROUP_6_14)
+        # Blank / whitespace string DOB returns None
+        self.assertIsNone(calculate_age(date_of_birth="", reference_date=self.ref_date))
+        self.assertIsNone(calculate_age(date_of_birth="   ", reference_date=self.ref_date))
 
-    def test_invalid_future_dob_safely_falls_back(self):
+        # Stored age is NOT used by default when DOB is missing
+        age_with_stored = calculate_age(
+            date_of_birth=None,
+            reference_date=self.ref_date,
+            allow_stored_age_fallback=False,
+            fallback_age=32
+        )
+        self.assertIsNone(age_with_stored)
+
+        # Documented fallback behavior:
+        # If allow_stored_age_fallback=True is explicitly passed by callers requiring legacy compatibility,
+        # valid non-negative fallback_age is returned.
+        age_fallback_enabled = calculate_age(
+            date_of_birth=None,
+            reference_date=self.ref_date,
+            allow_stored_age_fallback=True,
+            fallback_age=32
+        )
+        self.assertEqual(age_fallback_enabled, 32)
+        self.assertEqual(get_age_group(age_fallback_enabled), AGE_GROUP_25_44)
+
+    def test_future_dob_safely_rejected(self):
         """
-        A date of birth in the future (after reference_date) is invalid.
-        It must safely fall back to fallback_age, or return None if fallback_age is missing.
+        Requirement 5: Reject/handle future DOB safely.
+        Returns None and AGE_GROUP_UNKNOWN.
         """
         future_dob = datetime.date(2030, 1, 1)
-        # Future DOB with fallback
-        age_with_fallback = calculate_age(date_of_birth=future_dob, fallback_age=42, reference_date=self.ref_date)
-        self.assertEqual(age_with_fallback, 42)
-        self.assertEqual(get_age_group(age_with_fallback), AGE_GROUP_25_44)
+        age = calculate_age(date_of_birth=future_dob, reference_date=self.ref_date)
+        self.assertIsNone(age)
+        self.assertEqual(get_age_group(age), AGE_GROUP_UNKNOWN)
 
-        # Future DOB without fallback
-        age_no_fallback = calculate_age(date_of_birth=future_dob, fallback_age=None, reference_date=self.ref_date)
-        self.assertIsNone(age_no_fallback)
-        self.assertEqual(get_age_group(age_no_fallback), AGE_GROUP_UNKNOWN)
+        # Future DOB is safely rejected even if fallback_age is provided with allow_stored_age_fallback=True
+        age_future_with_fallback = calculate_age(
+            date_of_birth=future_dob,
+            reference_date=self.ref_date,
+            allow_stored_age_fallback=True,
+            fallback_age=42
+        )
+        self.assertIsNone(age_future_with_fallback)
 
-    def test_invalid_string_dob_safely_falls_back(self):
+    def test_invalid_string_dob_safely_handled(self):
         """
-        Unparseable date string falls back to fallback_age or returns None.
+        Unparseable date string returns None and AGE_GROUP_UNKNOWN by default.
         """
-        age = calculate_age(date_of_birth="not-a-valid-date", fallback_age=50, reference_date=self.ref_date)
-        self.assertEqual(age, 50)
-        self.assertEqual(get_age_group(age), AGE_GROUP_45_59)
-
-        age_none = calculate_age(date_of_birth="not-a-valid-date", fallback_age=None, reference_date=self.ref_date)
+        age_none = calculate_age(date_of_birth="not-a-valid-date", reference_date=self.ref_date)
         self.assertIsNone(age_none)
         self.assertEqual(get_age_group(age_none), AGE_GROUP_UNKNOWN)
 
@@ -237,26 +260,28 @@ class DemographicUtilitiesTestCase(TestCase):
         self.assertIsNone(calculate_age(date_of_birth=None, fallback_age=-10))
         self.assertIsNone(calculate_age(date_of_birth=None, fallback_age="invalid"))
 
-    def test_gender_normalization_and_validation(self):
+    def test_gender_choices_male_female_other(self):
         """
-        Tests existing application gender values (MALE, FEMALE, OTHER) and safe UNKNOWN fallback.
+        Requirements 7 & 8: Use existing Patient.gender choices:
+        MALE, FEMALE, OTHER.
+        Do not create new gender values. Missing/invalid values normalize to UNKNOWN.
         """
         # Exact valid enum values
         self.assertEqual(normalize_gender('MALE'), GENDER_MALE)
         self.assertEqual(normalize_gender('FEMALE'), GENDER_FEMALE)
         self.assertEqual(normalize_gender('OTHER'), GENDER_OTHER)
 
-        # Case-insensitivity & whitespace
+        # Case-insensitivity & whitespace normalization for existing values
         self.assertEqual(normalize_gender(' male '), GENDER_MALE)
         self.assertEqual(normalize_gender('female'), GENDER_FEMALE)
         self.assertEqual(normalize_gender('Other'), GENDER_OTHER)
 
-        # Missing / blank values
+        # Missing / blank values safely classified as UNKNOWN
         self.assertEqual(normalize_gender(None), GENDER_UNKNOWN)
         self.assertEqual(normalize_gender(''), GENDER_UNKNOWN)
         self.assertEqual(normalize_gender('   '), GENDER_UNKNOWN)
 
-        # Invalid / unknown choices
+        # Do not create new gender values; unrecognized values normalize to UNKNOWN
         self.assertEqual(normalize_gender('NON_BINARY'), GENDER_UNKNOWN)
         self.assertEqual(normalize_gender('UNKNOWN_VAL'), GENDER_UNKNOWN)
 
@@ -479,11 +504,11 @@ class DemographicSurveillanceIntegrationTestCase(TestCase):
         self.assertEqual(data_senior['patient_age_group'], AGE_GROUP_60_PLUS)
         self.assertEqual(data_senior['patient_gender'], GENDER_MALE)
 
-        # Patient without DOB falls back to age
+        # Patient without DOB: does not fabricate an age, returns explicit None and UNKNOWN
         serializer_nodob = DiseaseCaseSerializer(self.case_fever_nodob)
         data_nodob = serializer_nodob.data
-        self.assertEqual(data_nodob['patient_age'], 40)
-        self.assertEqual(data_nodob['patient_age_group'], AGE_GROUP_25_44)
+        self.assertIsNone(data_nodob['patient_age'])
+        self.assertEqual(data_nodob['patient_age_group'], AGE_GROUP_UNKNOWN)
         self.assertEqual(data_nodob['patient_gender'], GENDER_FEMALE)
 
         # Unknown demographics
@@ -504,10 +529,10 @@ class DemographicSurveillanceIntegrationTestCase(TestCase):
         self.assertEqual(summary['age_groups'][AGE_GROUP_0_5], 1)    # Infant (2)
         self.assertEqual(summary['age_groups'][AGE_GROUP_6_14], 1)   # Child (10)
         self.assertEqual(summary['age_groups'][AGE_GROUP_15_24], 1)  # Youth (20)
-        self.assertEqual(summary['age_groups'][AGE_GROUP_25_44], 2)  # Adult (35) + No DOB (40)
+        self.assertEqual(summary['age_groups'][AGE_GROUP_25_44], 1)  # Adult (35)
         self.assertEqual(summary['age_groups'][AGE_GROUP_45_59], 1)  # Middle (52)
         self.assertEqual(summary['age_groups'][AGE_GROUP_60_PLUS], 1)# Senior (68)
-        self.assertEqual(summary['age_groups'][AGE_GROUP_UNKNOWN], 1)# Unknown (-1)
+        self.assertEqual(summary['age_groups'][AGE_GROUP_UNKNOWN], 2)# No DOB (None) + Unknown (-1)
 
         self.assertEqual(summary['gender'][GENDER_MALE], 3)
         self.assertEqual(summary['gender'][GENDER_FEMALE], 3)
@@ -609,7 +634,7 @@ class DemographicSurveillanceIntegrationTestCase(TestCase):
             age_groups=[AGE_GROUP_25_44],
             genders=[GENDER_FEMALE]
         )
-        self.assertEqual(female_adults.count(), 2) # p_adult (35 F) and p_no_dob (40 F)
+        self.assertEqual(female_adults.count(), 1) # p_adult (35 F) only, since p_no_dob has missing DOB (UNKNOWN)
 
         # Filter with criteria yielding 0 matches
         no_matches = filter_cases_by_demographics(
@@ -636,8 +661,8 @@ class DemographicSurveillanceIntegrationTestCase(TestCase):
         # 15-24 has 1 MALE
         self.assertEqual(matrix[AGE_GROUP_15_24][GENDER_MALE], 1)
 
-        # 25-44 has 2 FEMALE (p_adult and p_no_dob)
-        self.assertEqual(matrix[AGE_GROUP_25_44][GENDER_FEMALE], 2)
+        # 25-44 has 1 FEMALE (p_adult)
+        self.assertEqual(matrix[AGE_GROUP_25_44][GENDER_FEMALE], 1)
 
         # 45-59 has 1 OTHER
         self.assertEqual(matrix[AGE_GROUP_45_59][GENDER_OTHER], 1)
@@ -645,6 +670,114 @@ class DemographicSurveillanceIntegrationTestCase(TestCase):
         # 60+ has 1 MALE
         self.assertEqual(matrix[AGE_GROUP_60_PLUS][GENDER_MALE], 1)
 
-        # UNKNOWN has 1 UNKNOWN gender
+        # UNKNOWN has 1 FEMALE (p_no_dob) and 1 UNKNOWN gender (p_unknown)
+        self.assertEqual(matrix[AGE_GROUP_UNKNOWN][GENDER_FEMALE], 1)
         self.assertEqual(matrix[AGE_GROUP_UNKNOWN][GENDER_UNKNOWN], 1)
+
+    def test_age_calculated_relative_to_disease_case_report_date_not_today(self):
+        """
+        Requirement 11: Add tests proving age is calculated relative to the
+        DiseaseCase/report date rather than today's date.
+        """
+        # Patient born 2010-06-15
+        patient = Patient.objects.create(
+            patient_id='P-TIMETRAVEL-01',
+            name='Historical Timeline Patient',
+            date_of_birth=datetime.date(2010, 6, 15),
+            age=30, # Stale stored registration age
+            gender='FEMALE',
+            registered_at_facility=self.facility,
+            ward=self.ward,
+            district=self.district
+        )
+
+        # Case 1 reported on 2015-06-15: exactly 5 completed years old at report_date
+        case_at_age_5 = DiseaseCase.objects.create(
+            disease_name='Dengue',
+            patient=patient,
+            facility=self.facility,
+            ward=self.ward,
+            report_date=datetime.date(2015, 6, 15),
+            severity='MILD'
+        )
+
+        # Case 2 reported on 2024-06-15: exactly 14 completed years old at report_date
+        case_at_age_14 = DiseaseCase.objects.create(
+            disease_name='Dengue',
+            patient=patient,
+            facility=self.facility,
+            ward=self.ward,
+            report_date=datetime.date(2024, 6, 15),
+            severity='MILD'
+        )
+
+        # Case 3 reported on 2026-06-15: exactly 16 completed years old at report_date
+        case_at_age_16 = DiseaseCase.objects.create(
+            disease_name='Dengue',
+            patient=patient,
+            facility=self.facility,
+            ward=self.ward,
+            report_date=datetime.date(2026, 6, 15),
+            severity='MILD'
+        )
+
+        # If age were calculated relative to today's date, all 3 cases would have the exact
+        # same age. Instead, each must evaluate strictly according to its report_date:
+        age_1 = get_case_patient_age(case_at_age_5)
+        demo_1 = get_case_demographics(case_at_age_5)
+        self.assertEqual(age_1, 5)
+        self.assertEqual(demo_1['age_group'], AGE_GROUP_0_5)
+
+        age_2 = get_case_patient_age(case_at_age_14)
+        demo_2 = get_case_demographics(case_at_age_14)
+        self.assertEqual(age_2, 14)
+        self.assertEqual(demo_2['age_group'], AGE_GROUP_6_14)
+
+        age_3 = get_case_patient_age(case_at_age_16)
+        demo_3 = get_case_demographics(case_at_age_16)
+        self.assertEqual(age_3, 16)
+        self.assertEqual(demo_3['age_group'], AGE_GROUP_15_24)
+
+        # Serializer also reflects report_date-based age
+        s1 = DiseaseCaseSerializer(case_at_age_5).data
+        self.assertEqual(s1['patient_age'], 5)
+        self.assertEqual(s1['patient_age_group'], AGE_GROUP_0_5)
+
+        s2 = DiseaseCaseSerializer(case_at_age_14).data
+        self.assertEqual(s2['patient_age'], 14)
+        self.assertEqual(s2['patient_age_group'], AGE_GROUP_6_14)
+
+        s3 = DiseaseCaseSerializer(case_at_age_16).data
+        self.assertEqual(s3['patient_age'], 16)
+        self.assertEqual(s3['patient_age_group'], AGE_GROUP_15_24)
+
+    def test_stored_age_not_used_when_dob_available(self):
+        """
+        Requirement 3: Do NOT use the stored Patient.age as the primary source
+        when date_of_birth is available because stored age can become stale.
+        """
+        patient_stale = Patient.objects.create(
+            patient_id='P-STALE-01',
+            name='Stale Age Patient',
+            date_of_birth=datetime.date(2020, 1, 1), # 6 years old on 2026-01-01
+            age=45, # Stale registration age stored in DB
+            gender='MALE',
+            registered_at_facility=self.facility,
+            ward=self.ward,
+            district=self.district
+        )
+        case = DiseaseCase.objects.create(
+            disease_name='Dengue',
+            patient=patient_stale,
+            facility=self.facility,
+            ward=self.ward,
+            report_date=datetime.date(2026, 1, 1),
+            severity='MILD'
+        )
+        calculated_age = get_case_patient_age(case)
+        self.assertEqual(calculated_age, 6) # Calculated from DOB
+        self.assertNotEqual(calculated_age, 45) # Stored age 45 is NOT used
+        demo = get_case_demographics(case)
+        self.assertEqual(demo['age_group'], AGE_GROUP_6_14)
+        self.assertNotEqual(demo['age_group'], AGE_GROUP_45_59)
 

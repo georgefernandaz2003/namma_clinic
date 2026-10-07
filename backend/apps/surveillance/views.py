@@ -2,6 +2,7 @@ from rest_framework import serializers, viewsets, permissions
 from apps.surveillance.models import DiseaseCase
 from apps.surveillance.demographic_services import (
     calculate_age,
+    get_case_patient_age,
     get_age_group,
     normalize_gender
 )
@@ -19,13 +20,7 @@ class DiseaseCaseSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_patient_age(self, obj):
-        if obj.patient:
-            return calculate_age(
-                date_of_birth=obj.patient.date_of_birth,
-                fallback_age=obj.patient.age,
-                reference_date=obj.report_date
-            )
-        return None
+        return get_case_patient_age(obj)
 
     def get_patient_age_group(self, obj):
         age = self.get_patient_age(obj)
