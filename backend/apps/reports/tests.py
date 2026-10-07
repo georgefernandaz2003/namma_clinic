@@ -159,6 +159,7 @@ class ResetDemoSecurityTests(APITestCase):
 
 
 import datetime
+from django.utils import timezone
 from apps.patients.models import Patient
 from apps.visits.models import Visit
 from apps.pharmacy.models import MedicineMaster, MedicineBatch, InventoryTransaction
@@ -854,6 +855,16 @@ class HospitalAdminReportTests(APITestCase):
             quantity=100, expiry_date=self.today + datetime.timedelta(days=180), status='ACTIVE'
         )
 
+        # Initial stock received prior to reporting period
+        tx_init = InventoryTransaction.objects.create(
+            facility=self.fac_1a, medicine=med, batch=batch,
+            transaction_type='PURCHASE_RECEIVED', quantity=70
+        )
+        InventoryTransaction.objects.filter(pk=tx_init.pk).update(
+            created_at=timezone.make_aware(datetime.datetime.combine(self.today - datetime.timedelta(days=5), datetime.time(9, 0)))
+        )
+
+        # Transactions in reporting period
         InventoryTransaction.objects.create(
             facility=self.fac_1a, medicine=med, batch=batch,
             transaction_type='PURCHASE_RECEIVED', quantity=50
@@ -1078,11 +1089,37 @@ class ReconciledDashboardAndReportsTests(APITestCase):
     # G. Inventory movement: opening + received - dispensed +/- adjustment = closing where historical data is reconstructable.
     def test_g_inventory_movement_reconstructable(self):
         med = MedicineMaster.objects.create(generic_name='Azithromycin-Recon', minimum_stock=10)
-        batch = MedicineBatch.objects.create(facility=self.fac_1a, medicine=med, batch_number='B-AZ-R', quantity=100, expiry_date=self.today + datetime.timedelta(days=200))
+        # Expected sequence:
+        # Initial receipt prior to period: 100
+        # In reporting period: +40 received, -15 dispensed, -5 adjusted
+        # Closing balance: 100 + 40 - 15 - 5 = 120
+        batch = MedicineBatch.objects.create(
+            facility=self.fac_1a, medicine=med, batch_number='B-AZ-R',
+            quantity=120, expiry_date=self.today + datetime.timedelta(days=200)
+        )
 
-        InventoryTransaction.objects.create(facility=self.fac_1a, medicine=med, batch=batch, transaction_type='PURCHASE_RECEIVED', quantity=40)
-        InventoryTransaction.objects.create(facility=self.fac_1a, medicine=med, batch=batch, transaction_type='DISPENSED', quantity=15)
-        InventoryTransaction.objects.create(facility=self.fac_1a, medicine=med, batch=batch, transaction_type='ADJUSTMENT', quantity=-5)
+        # Initial receipt before reporting period
+        tx_init = InventoryTransaction.objects.create(
+            facility=self.fac_1a, medicine=med, batch=batch,
+            transaction_type='PURCHASE_RECEIVED', quantity=100
+        )
+        InventoryTransaction.objects.filter(pk=tx_init.pk).update(
+            created_at=timezone.make_aware(datetime.datetime.combine(self.past_date, datetime.time(9, 0)))
+        )
+
+        # Transactions in reporting period (today)
+        InventoryTransaction.objects.create(
+            facility=self.fac_1a, medicine=med, batch=batch,
+            transaction_type='PURCHASE_RECEIVED', quantity=40
+        )
+        InventoryTransaction.objects.create(
+            facility=self.fac_1a, medicine=med, batch=batch,
+            transaction_type='DISPENSED', quantity=15
+        )
+        InventoryTransaction.objects.create(
+            facility=self.fac_1a, medicine=med, batch=batch,
+            transaction_type='ADJUSTMENT', quantity=-5
+        )
 
         self.client.force_authenticate(user=self.hospital_admin)
         rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}').data
@@ -1098,6 +1135,11 @@ class ReconciledDashboardAndReportsTests(APITestCase):
         adjusted = item['adjusted']
         closing = item['closing_stock']
 
+        self.assertEqual(opening, 100)
+        self.assertEqual(received, 40)
+        self.assertEqual(dispensed, 15)
+        self.assertEqual(adjusted, -5)
+        self.assertEqual(closing, 120)
         self.assertEqual(opening + received - dispensed + adjusted, closing)
 
     # H. Insufficient transaction history: System does not fabricate an exact historical opening balance.
@@ -1182,6 +1224,188 @@ class ReconciledDashboardAndReportsTests(APITestCase):
         # Sum equality check
         self.assertEqual(res_dist['visits']['total'], res_1a['visits']['total'] + res_1b['visits']['total'])
         self.assertEqual(res_dist['queues']['triage_waiting'], res_1a['queues']['triage_waiting'] + res_1b['queues']['triage_waiting'])
+
+    # N. Current date dashboard: inventory_type == REAL_TIME
+    def test_n_current_date_dashboard_inventory_real_time(self):
+        self.client.force_authenticate(user=self.hospital_admin)
+        dash = self.client.get(f'/api/dashboard/summary/?date={self.today.isoformat()}').data
+        self.assertEqual(dash['pharmacy']['inventory_type'], 'REAL_TIME')
+        self.assertTrue(dash['pharmacy']['historical_available'])
+        self.assertEqual(dash['inventory_summary']['inventory_type'], 'REAL_TIME')
+
+    # O. Historical dashboard: must NOT report today's inventory as historical.
+    def test_o_historical_dashboard_no_todays_inventory(self):
+        med = MedicineMaster.objects.create(generic_name='TodayOnlyMed', minimum_stock=10)
+        MedicineBatch.objects.create(
+            facility=self.fac_1a, medicine=med, batch_number='B-TODAY-ONLY',
+            quantity=50, expiry_date=self.today + datetime.timedelta(days=120)
+        )
+        # Note: No transaction history exists for this batch!
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        dash = self.client.get(f'/api/dashboard/summary/?date={self.past_date.isoformat()}').data
+
+        # Must report HISTORICAL with historical_available=False
+        self.assertEqual(dash['pharmacy']['inventory_type'], 'HISTORICAL')
+        self.assertFalse(dash['pharmacy']['historical_available'])
+        self.assertEqual(dash['pharmacy']['metric_source'], 'HISTORICAL_TRANSACTION_RECONSTRUCTION')
+        self.assertIsNotNone(dash['pharmacy']['historical_unavailable_reason'])
+
+        # Must NOT fabricate today's 50 quantity or inventory KPIs
+        self.assertIsNone(dash['pharmacy']['total_available_units'])
+        self.assertIsNone(dash['pharmacy']['low_stock'])
+        self.assertIsNone(dash['pharmacy']['out_of_stock'])
+        self.assertIsNone(dash['pharmacy']['expired'])
+        self.assertIsNone(dash['pharmacy']['expiring_soon'])
+        self.assertIsNone(dash['inventory_summary']['low_stock'])
+
+    # P. Historical report with insufficient transaction history: historical_available == False and no fabricated values.
+    def test_p_historical_report_insufficient_history_unavailable(self):
+        med = MedicineMaster.objects.create(generic_name='NoHistoryMed', minimum_stock=10)
+        MedicineBatch.objects.create(
+            facility=self.fac_1a, medicine=med, batch_number='B-NO-TX',
+            quantity=75, expiry_date=self.today + datetime.timedelta(days=120)
+        )
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.past_date.isoformat()}').data
+
+        inv = rep['pharmacy']['inventory']
+        self.assertEqual(inv['inventory_type'], 'HISTORICAL')
+        self.assertFalse(inv['historical_available'])
+        self.assertEqual(inv['metric_source'], 'HISTORICAL_TRANSACTION_RECONSTRUCTION')
+        self.assertIsNone(inv['total_available_units'])
+        self.assertIsNone(inv['low_stock_medicines'])
+        self.assertIsNone(inv['out_of_stock_medicines'])
+        self.assertIsNone(inv['expired_batches'])
+        self.assertIsNone(inv['expiring_soon_batches'])
+        # Summary cards also reflect None without fabrication
+        self.assertIsNone(rep['summary_cards']['pharmacy']['low_stock_medicines'])
+        self.assertIsNone(rep['summary_cards']['pharmacy']['expiring_soon_batches'])
+
+    # Q. Historical report with sufficient complete transaction history: historical values marked EXACT.
+    def test_q_historical_report_complete_history_marked_exact(self):
+        fac_iso = Facility.objects.create(
+            facility_code='F-ISO-Q', facility_name='Isolated Facility Q',
+            facility_type=FacilityTypeChoices.UPHC, state=self.state, district=self.district_1
+        )
+        ha_iso = User.objects.create_user(
+            username='ha_iso_q', password='password123',
+            role=RoleChoices.HOSPITAL_ADMIN, assigned_facility=fac_iso
+        )
+
+        med = MedicineMaster.objects.create(generic_name='ExactMed-Q', minimum_stock=20)
+        batch = MedicineBatch.objects.create(
+            facility=fac_iso, medicine=med, batch_number='B-EXACT-Q',
+            quantity=90, expiry_date=self.today + datetime.timedelta(days=180)
+        )
+
+        # Complete unbroken transaction sequence:
+        # Received 100 at past_date - 5 days
+        tx1 = InventoryTransaction.objects.create(
+            facility=fac_iso, medicine=med, batch=batch,
+            transaction_type='PURCHASE_RECEIVED', quantity=100
+        )
+        InventoryTransaction.objects.filter(pk=tx1.pk).update(
+            created_at=timezone.make_aware(datetime.datetime.combine(self.past_date - datetime.timedelta(days=5), datetime.time(9, 0)))
+        )
+        # Dispensed 10 at past_date - 2 days
+        tx2 = InventoryTransaction.objects.create(
+            facility=fac_iso, medicine=med, batch=batch,
+            transaction_type='DISPENSED', quantity=10
+        )
+        InventoryTransaction.objects.filter(pk=tx2.pk).update(
+            created_at=timezone.make_aware(datetime.datetime.combine(self.past_date - datetime.timedelta(days=2), datetime.time(9, 0)))
+        )
+        # Running balance = 100 - 10 = 90 == batch.quantity (90)
+
+        self.client.force_authenticate(user=ha_iso)
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.past_date.isoformat()}').data
+
+        inv = rep['pharmacy']['inventory']
+        self.assertTrue(inv['historical_available'])
+        self.assertEqual(inv['inventory_type'], 'HISTORICAL')
+        self.assertEqual(inv['metric_source'], 'HISTORICAL_TRANSACTION_RECONSTRUCTION')
+        self.assertEqual(inv['total_available_units'], 90)
+        self.assertEqual(inv['low_stock_medicines'], 0) # 90 > minimum 20
+
+    # R. Dashboard and Reports use the same inventory truthfulness rules.
+    def test_r_dashboard_and_reports_inventory_truthfulness_match(self):
+        self.client.force_authenticate(user=self.hospital_admin)
+        dash = self.client.get(f'/api/dashboard/summary/?date={self.past_date.isoformat()}').data
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.past_date.isoformat()}').data
+
+        self.assertEqual(dash['pharmacy']['inventory_type'], rep['pharmacy']['inventory']['inventory_type'])
+        self.assertEqual(dash['pharmacy']['historical_available'], rep['pharmacy']['inventory']['historical_available'])
+        self.assertEqual(dash['pharmacy']['low_stock'], rep['pharmacy']['inventory']['low_stock_medicines'])
+        self.assertEqual(dash['pharmacy']['expired'], rep['pharmacy']['inventory']['expired_batches'])
+        self.assertEqual(dash['pharmacy']['expiring_soon'], rep['pharmacy']['inventory']['expiring_soon_batches'])
+
+    # S. Historical expiry metrics must NOT silently use today's date.
+    def test_s_historical_expiry_does_not_use_todays_date(self):
+        fac_exp = Facility.objects.create(
+            facility_code='F-EXP-ISO-S', facility_name='Expiry Iso Facility S',
+            facility_type=FacilityTypeChoices.UPHC, state=self.state, district=self.district_1
+        )
+        ha_exp = User.objects.create_user(
+            username='ha_exp_s', password='password123',
+            role=RoleChoices.HOSPITAL_ADMIN, assigned_facility=fac_exp
+        )
+        med = MedicineMaster.objects.create(generic_name='ExpiryTestMed-S', minimum_stock=5)
+
+        # Batch expires today - 5 days (so it IS expired as of today)
+        exp_date = self.today - datetime.timedelta(days=5)
+        batch = MedicineBatch.objects.create(
+            facility=fac_exp, medicine=med, batch_number='B-EXP-ISO-S',
+            quantity=50, expiry_date=exp_date
+        )
+        # Complete transaction record received on past_date - 15 days
+        tx = InventoryTransaction.objects.create(
+            facility=fac_exp, medicine=med, batch=batch,
+            transaction_type='PURCHASE_RECEIVED', quantity=50
+        )
+        query_date = self.today - datetime.timedelta(days=20) # 20 days ago, it was NOT yet expired!
+        InventoryTransaction.objects.filter(pk=tx.pk).update(
+            created_at=timezone.make_aware(datetime.datetime.combine(query_date - datetime.timedelta(days=2), datetime.time(9, 0)))
+        )
+
+        self.client.force_authenticate(user=ha_exp)
+        # When querying historical date (20 days ago)
+        rep_hist = self.client.get(f'/api/reports/hospital/?period=day&date={query_date.isoformat()}').data
+        # At query_date, expiry_date (today - 5) was 15 days in the future! Not expired!
+        self.assertEqual(rep_hist['pharmacy']['inventory']['expired_batches'], 0)
+        self.assertEqual(rep_hist['pharmacy']['inventory']['expiring_soon_batches'], 1)
+
+        # When querying today: it IS expired!
+        rep_today = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}').data
+        self.assertEqual(rep_today['pharmacy']['inventory']['expired_batches'], 1)
+
+    # T. No negative reconstructed balances are accepted.
+    def test_t_no_negative_reconstructed_balances_accepted(self):
+        med = MedicineMaster.objects.create(generic_name='NegativeStockMed-T', minimum_stock=5)
+        batch = MedicineBatch.objects.create(
+            facility=self.fac_1a, medicine=med, batch_number='B-NEG-T',
+            quantity=10, expiry_date=self.today + datetime.timedelta(days=100)
+        )
+        # Sequence: Received 10, then Dispensed 50 (balance would become -40)
+        InventoryTransaction.objects.create(
+            facility=self.fac_1a, medicine=med, batch=batch,
+            transaction_type='PURCHASE_RECEIVED', quantity=10
+        )
+        InventoryTransaction.objects.create(
+            facility=self.fac_1a, medicine=med, batch=batch,
+            transaction_type='DISPENSED', quantity=50
+        )
+
+        self.client.force_authenticate(user=self.hospital_admin)
+        rep = self.client.get(f'/api/reports/hospital/?period=day&date={self.today.isoformat()}').data
+
+        item = next(it for it in rep['pharmacy']['stock_movement']['items'] if it['medicine_id'] == med.id)
+        self.assertFalse(item['reconstructable'])
+        self.assertFalse(item['historical_opening_exact'])
+        self.assertIsNone(item['opening_stock'])
+        self.assertEqual(item['derivation_status'], 'UNAVAILABLE')
+
 
 
 

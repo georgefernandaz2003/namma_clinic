@@ -439,23 +439,253 @@ def calculate_dispensing_metrics(target_fac_ids, start_date, end_date):
     }
 
 
+def can_reconstruct_inventory_for_date(target_fac_ids, as_of_date):
+    """
+    Evaluates whether historical inventory can be deterministically reconstructed
+    from complete InventoryTransaction history for target facilities as of as_of_date.
+    
+    Requirements:
+    A. Batches exist for stocked medicines.
+    B. Transaction history exists for every stocked medicine.
+    C. Earliest transaction is an inflow (PURCHASE_RECEIVED or RETURNED).
+    D. Running balance across all transactions never drops below 0 at any point.
+    E. Running balance across all transactions up to now balances with current batch stock.
+    """
+    batch_qs = MedicineBatch.objects.filter(facility_id__in=target_fac_ids)
+    if not batch_qs.exists():
+        return True, "Zero batches at facility"
+
+    stocked_med_ids = set(batch_qs.values_list('medicine_id', flat=True).distinct())
+    all_tx = InventoryTransaction.objects.filter(facility_id__in=target_fac_ids)
+
+    for med_id in stocked_med_ids:
+        med_batches = batch_qs.filter(medicine_id=med_id)
+        current_qty = med_batches.aggregate(t=Sum('quantity'))['t'] or 0
+        med_tx = all_tx.filter(medicine_id=med_id).order_by('created_at', 'id')
+
+        if not med_tx.exists():
+            return False, "Insufficient inventory transaction history: batch exists without transactions"
+
+        earliest = med_tx.first()
+        if earliest.transaction_type not in ['PURCHASE_RECEIVED', 'RETURNED']:
+            return False, "Insufficient inventory transaction history: initial transaction is not a receipt"
+
+        bal = 0
+        for tx in med_tx:
+            if tx.transaction_type in ['PURCHASE_RECEIVED', 'RETURNED']:
+                bal += tx.quantity
+            elif tx.transaction_type in ['DISPENSED', 'DAMAGED', 'EXPIRED', 'ISSUED', 'TRANSFERRED']:
+                bal -= tx.quantity
+            elif tx.transaction_type == 'ADJUSTMENT':
+                bal += tx.quantity
+            if bal < 0:
+                return False, "Insufficient inventory transaction history: reconstructed balance became negative"
+
+        if bal != current_qty:
+            return False, "Insufficient inventory transaction history: ledger does not reconcile with batch quantities"
+
+    return True, "Complete transaction ledger available"
+
+
 def calculate_inventory_kpis(target_fac_ids, as_of_date=None):
     """
     Authoritative single-source calculation for Drug Inventory KPIs.
-    - Expiry threshold: EXPIRING_SOON_DAYS = 60
-    - Status evaluation: get_stock_status(quantity, minimum_stock, reorder_level)
-    - Expired definition: expiry_date <= as_of_date or status == 'EXPIRED'
-    - Expiring soon definition: quantity > 0, expiry_date > as_of_date, expiry_date <= as_of_date + 60 days
+    Reconciled across Dashboard and Hospital Admin Reports:
+    
+    - If as_of_date == today:
+        Returns real-time snapshot (inventory_type='REAL_TIME', metric_source='REAL_TIME_SNAPSHOT')
+        using current physical batch quantities and 60-day expiry window.
+    - If as_of_date < today:
+        Evaluates whether complete transaction history allows deterministic historical reconstruction.
+        If history is sufficient and exact:
+            Reconstructs historical stock per batch/medicine relative to as_of_date.
+            Evaluates expiry relative to as_of_date (NOT today).
+            inventory_type='HISTORICAL', metric_source='HISTORICAL_TRANSACTION_RECONSTRUCTION', historical_available=True.
+        If history is insufficient or missing:
+            Returns explicit unavailable metadata without fabricating numbers:
+            inventory_type='HISTORICAL', metric_source='HISTORICAL_TRANSACTION_RECONSTRUCTION', historical_available=False,
+            all quantities = None.
     """
+    today = datetime.date.today()
     if as_of_date is None:
-        as_of_date = datetime.date.today()
+        as_of_date = today
 
-    expiring_threshold = as_of_date + datetime.timedelta(days=EXPIRING_SOON_DAYS)
-
-    batch_qs = MedicineBatch.objects.filter(facility_id__in=target_fac_ids).select_related('medicine')
+    is_today = (as_of_date == today)
     all_master_meds = MedicineMaster.objects.all().order_by('generic_name')
     total_medicine_master_records = all_master_meds.count()
+    batch_qs = MedicineBatch.objects.filter(facility_id__in=target_fac_ids).select_related('medicine')
 
+    if not is_today:
+        can_recon, reason = can_reconstruct_inventory_for_date(target_fac_ids, as_of_date)
+        if not can_recon:
+            return {
+                'inventory_as_of': as_of_date.isoformat(),
+                'inventory_type': 'HISTORICAL',
+                'metric_source': 'HISTORICAL_TRANSACTION_RECONSTRUCTION',
+                'historical_available': False,
+                'historical_unavailable_reason': reason,
+                'inventory_snapshot_note': f"Historical inventory as of {as_of_date.isoformat()} is unavailable: {reason}",
+                'expiry_window_days': EXPIRING_SOON_DAYS,
+                'total_medicine_master_records': total_medicine_master_records,
+                'total_medicines_stocked_at_facility': None,
+                'total_medicines': total_medicine_master_records,
+                'stocked_medicines': None,
+                'total_available_units': None,
+                'out_of_stock_medicines': None,
+                'out_of_stock': None,
+                'low_stock_medicines': None,
+                'low_stock': None,
+                'low_stock_batches': None,
+                'expiring_soon_batches': None,
+                'expiring_soon': None,
+                'expired_batches': None,
+                'expired': None,
+                'expiry_breakdown': {
+                    'expired': None,
+                    'expires_within_7_days': None,
+                    'expires_within_30_days': None,
+                    'expires_within_60_days': None,
+                    'expires_within_90_days': None
+                },
+                'monitoring_batches_list': [],
+                'low_stock_table': []
+            }
+
+        # Deterministic historical reconstruction from complete ledger
+        all_tx = InventoryTransaction.objects.filter(facility_id__in=target_fac_ids)
+        tx_up_to_date = all_tx.filter(created_at__date__lte=as_of_date)
+
+        stocked_medicines_ids = set()
+        total_available_units = 0
+        low_stock_medicines = 0
+        out_of_stock_medicines = 0
+        low_stock_table = []
+        low_stock_batches = 0
+
+        # Reconstruct batch quantities at as_of_date
+        reconstructed_batches = []
+        for b in batch_qs:
+            b_tx = tx_up_to_date.filter(batch=b).order_by('created_at', 'id')
+            b_qty = 0
+            for tx in b_tx:
+                if tx.transaction_type in ['PURCHASE_RECEIVED', 'RETURNED']:
+                    b_qty += tx.quantity
+                elif tx.transaction_type in ['DISPENSED', 'DAMAGED', 'EXPIRED', 'ISSUED', 'TRANSFERRED']:
+                    b_qty -= tx.quantity
+                elif tx.transaction_type == 'ADJUSTMENT':
+                    b_qty += tx.quantity
+            if b_qty > 0:
+                reconstructed_batches.append((b, b_qty))
+                stocked_medicines_ids.add(b.medicine_id)
+                threshold = b.medicine.minimum_stock or b.medicine.reorder_level or 0
+                if threshold > 0 and b_qty <= threshold:
+                    low_stock_batches += 1
+
+        for m in all_master_meds:
+            m_qty = sum(qty for b, qty in reconstructed_batches if b.medicine_id == m.id)
+            st = get_stock_status(m_qty, m.minimum_stock, m.reorder_level)
+            if st == 'OUT_OF_STOCK':
+                out_of_stock_medicines += 1
+            elif st == 'LOW_STOCK':
+                low_stock_medicines += 1
+
+            low_stock_table.append({
+                'id': m.id,
+                'generic_name': m.generic_name,
+                'brand_name': m.brand_name,
+                'category': m.category,
+                'unit': m.unit,
+                'current_stock': m_qty,
+                'minimum_stock': m.minimum_stock,
+                'reorder_level': m.reorder_level,
+                'status': st
+            })
+
+        # Evaluate expiry relative to as_of_date (NOT today!)
+        date_7d = as_of_date + datetime.timedelta(days=7)
+        date_30d = as_of_date + datetime.timedelta(days=30)
+        date_60d = as_of_date + datetime.timedelta(days=60)
+        date_90d = as_of_date + datetime.timedelta(days=90)
+
+        expired_batches_count = 0
+        exp_7_count = 0
+        exp_30_count = 0
+        exp_60_count = 0
+        exp_90_count = 0
+        monitoring_batches_list = []
+
+        for b, qty in reconstructed_batches:
+            days_left = (b.expiry_date - as_of_date).days
+            is_exp = b.expiry_date <= as_of_date or b.status == 'EXPIRED'
+            if is_exp:
+                expired_batches_count += 1
+                cat = 'EXPIRED'
+            else:
+                total_available_units += qty
+                if days_left <= 7:
+                    exp_7_count += 1
+                    cat = 'EXPIRES_7_DAYS'
+                elif days_left <= 30:
+                    exp_30_count += 1
+                    cat = 'EXPIRES_30_DAYS'
+                elif days_left <= 60:
+                    exp_60_count += 1
+                    cat = 'EXPIRES_60_DAYS'
+                elif days_left <= 90:
+                    exp_90_count += 1
+                    cat = 'EXPIRES_90_DAYS'
+                else:
+                    cat = 'ACTIVE'
+
+            if is_exp or days_left <= 90:
+                monitoring_batches_list.append({
+                    'batch_id': b.id,
+                    'medicine_name': b.medicine.generic_name,
+                    'brand_name': b.medicine.brand_name,
+                    'batch_number': b.batch_number,
+                    'quantity': qty,
+                    'expiry_date': b.expiry_date.strftime('%Y-%m-%d'),
+                    'days_remaining': days_left,
+                    'status': 'EXPIRED' if is_exp else ('EXPIRING_SOON' if days_left <= EXPIRING_SOON_DAYS else 'ACTIVE'),
+                    'category': cat
+                })
+
+        expiring_soon_batches = exp_7_count + exp_30_count + exp_60_count
+
+        return {
+            'inventory_as_of': as_of_date.isoformat(),
+            'inventory_type': 'HISTORICAL',
+            'metric_source': 'HISTORICAL_TRANSACTION_RECONSTRUCTION',
+            'historical_available': True,
+            'derivation_status': 'EXACT',
+            'inventory_snapshot_note': f"Reconstructed historical inventory as of {as_of_date.isoformat()}",
+            'expiry_window_days': EXPIRING_SOON_DAYS,
+            'total_medicine_master_records': total_medicine_master_records,
+            'total_medicines_stocked_at_facility': len(stocked_medicines_ids),
+            'total_medicines': total_medicine_master_records,
+            'stocked_medicines': len(stocked_medicines_ids),
+            'total_available_units': total_available_units,
+            'out_of_stock_medicines': out_of_stock_medicines,
+            'out_of_stock': out_of_stock_medicines,
+            'low_stock_medicines': low_stock_medicines,
+            'low_stock': low_stock_medicines,
+            'low_stock_batches': low_stock_batches,
+            'expiring_soon_batches': expiring_soon_batches,
+            'expiring_soon': expiring_soon_batches,
+            'expired_batches': expired_batches_count,
+            'expired': expired_batches_count,
+            'expiry_breakdown': {
+                'expired': expired_batches_count,
+                'expires_within_7_days': exp_7_count,
+                'expires_within_30_days': exp_30_count,
+                'expires_within_60_days': exp_60_count,
+                'expires_within_90_days': exp_90_count
+            },
+            'monitoring_batches_list': monitoring_batches_list,
+            'low_stock_table': low_stock_table
+        }
+
+    # REAL_TIME snapshot (as_of_date == today)
     stocked_medicines_ids = set(batch_qs.values_list('medicine_id', flat=True).distinct())
     total_medicines_stocked_at_facility = len(stocked_medicines_ids)
 
@@ -547,12 +777,12 @@ def calculate_inventory_kpis(target_fac_ids, as_of_date=None):
             'category': cat
         })
 
-    is_today = as_of_date == datetime.date.today()
-
     return {
         'inventory_as_of': as_of_date.isoformat(),
         'inventory_snapshot_note': f"Inventory as of {as_of_date.isoformat()}",
-        'metric_source': 'REAL_TIME_SNAPSHOT' if is_today else 'HISTORICAL_SNAPSHOT',
+        'metric_source': 'REAL_TIME_SNAPSHOT',
+        'inventory_type': 'REAL_TIME',
+        'historical_available': True,
         'expiry_window_days': EXPIRING_SOON_DAYS,
         'total_medicine_master_records': total_medicine_master_records,
         'total_medicines_stocked_at_facility': total_medicines_stocked_at_facility,
@@ -584,13 +814,24 @@ def calculate_stock_movement_for_period(target_fac_ids, start_date, end_date):
     """
     Deterministic period-based stock movement:
     Opening Stock + Received - Dispensed +/- Adjustments = Closing Stock.
-    Uses InventoryTransaction records and MedicineBatch records.
-    If exact historical opening stock cannot be reconstructed from existing transaction
-    history (e.g. transactions missing, negative math, or reporting period begins prior to
-    earliest recorded transaction), does NOT fabricate a number. Explicitly sets
-    reconstructable=False and opening_stock=None.
+    
+    Exact historical reconstruction is allowed only when transaction history is sufficient:
+    A. Current batch quantity exists (or batches exist).
+    B. Transaction history exists for the medicine.
+    C. There is sufficient transaction history before/covering the reporting period.
+    D. Every relevant stock movement type is represented (earliest is inflow, ledger reconciles with current batch stock).
+    E. Reconstructed balance never becomes negative at any step.
+    
+    Only then:
+        historical_opening_exact = True
+        reconstructable = True
+        derivation_status = "EXACT"
+    Otherwise:
+        historical_opening_exact = False
+        reconstructable = False
+        opening_stock = None
+        derivation_status = "UNAVAILABLE"
     """
-    today = datetime.date.today()
     all_master = MedicineMaster.objects.all().order_by('generic_name')
     batch_qs = MedicineBatch.objects.filter(facility_id__in=target_fac_ids)
     all_tx = InventoryTransaction.objects.filter(facility_id__in=target_fac_ids)
@@ -607,12 +848,13 @@ def calculate_stock_movement_for_period(target_fac_ids, start_date, end_date):
     tot_close = 0
     tot_open = 0
     all_reconstructable = True
+    any_item_reconstructed = False
 
     for m in all_master:
-        m_batches = batch_qs.filter(medicine=m, quantity__gt=0)
+        m_batches = batch_qs.filter(medicine=m)
         current_batch_stock = m_batches.aggregate(t=Sum('quantity'))['t'] or 0
 
-        m_tx_all = all_tx.filter(medicine=m)
+        m_tx_all = all_tx.filter(medicine=m).order_by('created_at', 'id')
         m_tx_period = tx_period.filter(medicine=m)
 
         rec = m_tx_period.filter(transaction_type='PURCHASE_RECEIVED').aggregate(t=Sum('quantity'))['t'] or 0
@@ -628,64 +870,83 @@ def calculate_stock_movement_for_period(target_fac_ids, start_date, end_date):
 
         adj = m_tx_period.filter(transaction_type='ADJUSTMENT').aggregate(t=Sum('quantity'))['t'] or 0
 
-        # Check if medicine has any activity or stock
         has_activity = (current_batch_stock > 0 or m_tx_all.exists())
         if not has_activity:
             continue
 
-        # Determine closing stock at end_date
+        # Evaluate conditions A through E:
         is_reconstructable = True
         is_exact = True
 
-        if end_date >= today:
-            closing_stock = current_batch_stock
+        # B. Transaction history must exist
+        if not m_tx_all.exists():
+            is_reconstructable = False
+            is_exact = False
         else:
-            # Reconstruct closing stock backwards from current stock
-            tx_after = m_tx_all.filter(created_at__date__gt=end_date)
-            rec_after = (tx_after.filter(transaction_type__in=['PURCHASE_RECEIVED', 'RETURNED']).aggregate(t=Sum('quantity'))['t'] or 0)
-            disp_after = (tx_after.filter(transaction_type__in=['DISPENSED', 'DAMAGED', 'EXPIRED', 'ISSUED', 'TRANSFERRED']).aggregate(t=Sum('quantity'))['t'] or 0)
-            adj_after = (tx_after.filter(transaction_type='ADJUSTMENT').aggregate(t=Sum('quantity'))['t'] or 0)
-
-            closing_stock = current_batch_stock - rec_after + disp_after - adj_after
-            if closing_stock < 0:
+            earliest_tx = m_tx_all.first()
+            # D. Earliest transaction must be an inflow
+            if earliest_tx.transaction_type not in ['PURCHASE_RECEIVED', 'RETURNED']:
                 is_reconstructable = False
+                is_exact = False
+
+            # E. Verify running balance never becomes negative and balances with current_batch_stock
+            running_bal = 0
+            for tx in m_tx_all:
+                if tx.transaction_type in ['PURCHASE_RECEIVED', 'RETURNED']:
+                    running_bal += tx.quantity
+                elif tx.transaction_type in ['DISPENSED', 'DAMAGED', 'EXPIRED', 'ISSUED', 'TRANSFERRED']:
+                    running_bal -= tx.quantity
+                elif tx.transaction_type == 'ADJUSTMENT':
+                    running_bal += tx.quantity
+                if running_bal < 0:
+                    is_reconstructable = False
+                    is_exact = False
+                    break
+
+            if is_reconstructable and running_bal != current_batch_stock:
+                is_reconstructable = False
+                is_exact = False
+
+            # C. Sufficient transaction history before reporting period:
+            if is_reconstructable and start_date < earliest_tx.created_at.date():
+                is_reconstructable = False
+                is_exact = False
 
         if is_reconstructable:
-            # Check transaction history sufficiency:
-            # If there are NO transactions ever for this medicine, but current_batch_stock > 0:
-            if not m_tx_all.exists():
-                is_reconstructable = False
-            else:
-                earliest_tx = m_tx_all.order_by('created_at').first()
-                # If the reporting period starts strictly BEFORE the earliest transaction,
-                # we have no history prior to that transaction
-                if earliest_tx and start_date < earliest_tx.created_at.date():
-                    tx_prior = m_tx_all.filter(created_at__date__lt=start_date)
-                    if not tx_prior.exists():
-                        is_reconstructable = False
+            # Calculate opening stock: cumulative balance of transactions prior to start_date
+            tx_prior = m_tx_all.filter(created_at__date__lt=start_date)
+            opening_stock = 0
+            for tx in tx_prior:
+                if tx.transaction_type in ['PURCHASE_RECEIVED', 'RETURNED']:
+                    opening_stock += tx.quantity
+                elif tx.transaction_type in ['DISPENSED', 'DAMAGED', 'EXPIRED', 'ISSUED', 'TRANSFERRED']:
+                    opening_stock -= tx.quantity
+                elif tx.transaction_type == 'ADJUSTMENT':
+                    opening_stock += tx.quantity
 
-        if is_reconstructable:
-            # Mathematical formula: opening + rec - disp + adj = closing
-            # => opening = closing - rec + disp - adj
-            opening_stock = closing_stock - rec_total + disp_total - adj
             if opening_stock < 0:
                 is_reconstructable = False
                 is_exact = False
+                opening_stock = None
+                closing_stock = None
+            else:
+                closing_stock = opening_stock + rec_total - disp_total + adj
+                if closing_stock < 0:
+                    is_reconstructable = False
+                    is_exact = False
+                    opening_stock = None
+                    closing_stock = None
+                else:
+                    tot_rec += rec_total
+                    tot_disp += disp_total
+                    tot_adj += adj
+                    tot_close += closing_stock
+                    tot_open += opening_stock
+                    any_item_reconstructed = True
         else:
             opening_stock = None
-            is_exact = False
-
-        if not is_reconstructable:
-            opening_stock = None
+            closing_stock = None
             all_reconstructable = False
-            status_str = 'UNAVAILABLE'
-        else:
-            tot_rec += rec_total
-            tot_disp += disp_total
-            tot_adj += adj
-            tot_close += closing_stock
-            tot_open += opening_stock
-            status_str = 'RECONSTRUCTED'
 
         stock_movement_items.append({
             'medicine_id': m.id,
@@ -697,24 +958,25 @@ def calculate_stock_movement_for_period(target_fac_ids, start_date, end_date):
             'received': rec_total,
             'dispensed': disp_total,
             'adjusted': adj,
-            'closing_stock': closing_stock if is_reconstructable else None,
+            'closing_stock': closing_stock,
             'historical_opening_exact': is_exact and is_reconstructable,
             'reconstructable': is_reconstructable,
             'derivation_status': 'EXACT' if (is_exact and is_reconstructable) else 'UNAVAILABLE',
-            'status': status_str
+            'status': 'RECONSTRUCTED' if is_reconstructable else 'UNAVAILABLE'
         })
 
     stock_movement_items.sort(key=lambda x: (x['dispensed'], x['closing_stock'] or 0), reverse=True)
 
+    summary_reconstructable = all_reconstructable and any_item_reconstructed
     return {
         'summary': {
-            'opening_stock': tot_open if all_reconstructable else None,
+            'opening_stock': tot_open if summary_reconstructable else None,
             'stock_received': tot_rec,
             'stock_dispensed': tot_disp,
             'stock_adjusted': tot_adj,
-            'closing_stock': tot_close if all_reconstructable else None,
-            'reconstructable': all_reconstructable,
-            'historical_opening_available': all_reconstructable
+            'closing_stock': tot_close if summary_reconstructable else None,
+            'reconstructable': summary_reconstructable,
+            'historical_opening_available': summary_reconstructable
         },
         'items': stock_movement_items
     }
@@ -722,18 +984,14 @@ def calculate_stock_movement_for_period(target_fac_ids, start_date, end_date):
 
 def get_pharmacy_and_inventory_metrics(target_fac_ids, target_date):
     """
-    Authoritative pharmacy prescription orders and facility drug inventory metrics.
-    Reconciled with Hospital Admin Reports:
-    - Shared calculate_prescription_metrics()
-    - Shared calculate_dispensing_metrics()
-    - Shared calculate_inventory_kpis()
-    - Distinct real-time snapshot metadata: inventory_as_of, metric_source
+    Authoritative pharmacy prescription orders and facility drug inventory metrics for Dashboard.
+    - If target_date == today: returns real-time inventory snapshot (inventory_type='REAL_TIME')
+    - If target_date < today: returns historical reconstructed inventory or explicit unavailable metadata.
+    Preserves operational metrics for target_date.
     """
-    today = datetime.date.today()
-
     rx_metrics = calculate_prescription_metrics(target_fac_ids, target_date, target_date)
     disp_metrics = calculate_dispensing_metrics(target_fac_ids, target_date, target_date)
-    inv_metrics = calculate_inventory_kpis(target_fac_ids, as_of_date=today)
+    inv_metrics = calculate_inventory_kpis(target_fac_ids, as_of_date=target_date)
 
     pharmacy_waiting_visits = Visit.objects.filter(
         facility_id__in=target_fac_ids,
@@ -742,7 +1000,7 @@ def get_pharmacy_and_inventory_metrics(target_fac_ids, target_date):
     ).filter(Q_PHARMACY_WAITING).count()
 
     return {
-        # Prescription metrics
+        # Prescription metrics (for target_date)
         'total_prescriptions': rx_metrics['total_prescriptions'],
         'pending_prescriptions': rx_metrics['pending_prescriptions'],
         'partially_dispensed': rx_metrics['partially_dispensed'],
@@ -752,22 +1010,25 @@ def get_pharmacy_and_inventory_metrics(target_fac_ids, target_date):
         'dispensed': rx_metrics['dispensed_prescriptions'],
         'pharmacy_waiting_visits': pharmacy_waiting_visits,
 
-        # Dispensing metrics
+        # Dispensing metrics (for target_date)
         'total_medicines_dispensed': disp_metrics['total_medicines_dispensed'],
         'medicines_dispensed': disp_metrics['total_medicines_dispensed'],
         'total_dispensing_transactions': disp_metrics['total_dispensing_transactions'],
         'dispensing_transactions': disp_metrics['total_dispensing_transactions'],
         'patients_served': disp_metrics['patients_served'],
 
-        # Inventory metrics (real-time snapshot as of today)
+        # Inventory metadata
         'inventory_as_of': inv_metrics['inventory_as_of'],
         'inventory_snapshot_note': inv_metrics['inventory_snapshot_note'],
-        'metric_source': 'AUTHORITATIVE_BACKEND',
-        'inventory_type': 'REAL_TIME_SNAPSHOT',
+        'metric_source': inv_metrics['metric_source'],
+        'inventory_type': inv_metrics['inventory_type'],
+        'historical_available': inv_metrics.get('historical_available', True),
+        'historical_unavailable_reason': inv_metrics.get('historical_unavailable_reason'),
         'report_period_start': target_date.strftime('%Y-%m-%d') if hasattr(target_date, 'strftime') else str(target_date),
         'report_period_end': target_date.strftime('%Y-%m-%d') if hasattr(target_date, 'strftime') else str(target_date),
         'expiry_window_days': inv_metrics['expiry_window_days'],
 
+        # Inventory KPI numbers
         'total_medicine_master_records': inv_metrics['total_medicine_master_records'],
         'total_medicines_stocked_at_facility': inv_metrics['total_medicines_stocked_at_facility'],
         'total_medicines': inv_metrics['total_medicines'],
@@ -782,7 +1043,9 @@ def get_pharmacy_and_inventory_metrics(target_fac_ids, target_date):
         'expiring_soon': inv_metrics['expiring_soon'],
         'expired_batches': inv_metrics['expired_batches'],
         'expired': inv_metrics['expired'],
-        'expiry_breakdown': inv_metrics['expiry_breakdown']
+        'expiry_breakdown': inv_metrics['expiry_breakdown'],
+        'monitoring_batches_list': inv_metrics.get('monitoring_batches_list', []),
+        'low_stock_table': inv_metrics.get('low_stock_table', [])
     }
 
 
@@ -926,7 +1189,7 @@ def get_action_required(role, v_metrics, lab_metrics, pharm_metrics, ref_metrics
                 'severity': 'HIGH',
                 'module': 'Referrals'
             })
-        if low_stock > 0:
+        if low_stock and low_stock > 0:
             action_required.append({
                 'id': 'act-dist-2',
                 'title': f'{low_stock} Essential Drug Stocks Below Critical Threshold',
@@ -948,7 +1211,7 @@ def get_action_required(role, v_metrics, lab_metrics, pharm_metrics, ref_metrics
                 'severity': 'HIGH',
                 'module': 'OPD Triage'
             })
-        if low_stock > 0:
+        if low_stock and low_stock > 0:
             action_required.append({
                 'id': 'act-adm-2',
                 'title': f'{low_stock} Medicines Below Reorder Threshold',
@@ -1008,7 +1271,7 @@ def get_action_required(role, v_metrics, lab_metrics, pharm_metrics, ref_metrics
                 'severity': 'HIGH',
                 'module': 'Pharmacy Queue'
             })
-        if low_stock > 0:
+        if low_stock and low_stock > 0:
             action_required.append({
                 'id': 'act-pha-2',
                 'title': f'{low_stock} Medicines Low on Stock',
@@ -1057,8 +1320,11 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
         'date': target_date.strftime('%Y-%m-%d'),
         'report_period_start': target_date.strftime('%Y-%m-%d'),
         'report_period_end': target_date.strftime('%Y-%m-%d'),
-        'inventory_as_of': datetime.date.today().strftime('%Y-%m-%d'),
-        'metric_source': 'AUTHORITATIVE_BACKEND',
+        'inventory_as_of': pharmacy['inventory_as_of'],
+        'inventory_type': pharmacy['inventory_type'],
+        'historical_available': pharmacy.get('historical_available', True),
+        'historical_unavailable_reason': pharmacy.get('historical_unavailable_reason'),
+        'metric_source': pharmacy['metric_source'],
         'is_today': is_today,
         'scope': {
             'role': role,
@@ -1146,10 +1412,15 @@ def get_full_dashboard_summary(user, requested_facility_id=None, target_date=Non
         'staff_status': staff,
         'inventory_summary': {
             'inventory_as_of': pharmacy['inventory_as_of'],
+            'inventory_type': pharmacy['inventory_type'],
+            'metric_source': pharmacy['metric_source'],
+            'historical_available': pharmacy.get('historical_available', True),
+            'historical_unavailable_reason': pharmacy.get('historical_unavailable_reason'),
             'total_medicines': pharmacy['total_medicine_master_records'],
             'total_medicine_master_records': pharmacy['total_medicine_master_records'],
             'total_medicines_stocked_at_facility': pharmacy['total_medicines_stocked_at_facility'],
-            'stocked_medicines': pharmacy['total_medicines_stocked_at_facility'],
+            'stocked_medicines': pharmacy['stocked_medicines'],
+            'total_available_units': pharmacy['total_available_units'],
             'low_stock': pharmacy['low_stock_medicines'],
             'low_stock_medicines': pharmacy['low_stock_medicines'],
             'low_stock_batches': pharmacy['low_stock_batches'],
@@ -1546,7 +1817,8 @@ def get_pharmacy_report_metrics_for_period(target_fac_ids, start_date, end_date,
 
     rx_metrics = calculate_prescription_metrics(target_fac_ids, start_date, end_date)
     disp_metrics = calculate_dispensing_metrics(target_fac_ids, start_date, end_date)
-    inv_metrics = calculate_inventory_kpis(target_fac_ids, as_of_date=today)
+    inv_as_of = today if end_date >= today else end_date
+    inv_metrics = calculate_inventory_kpis(target_fac_ids, as_of_date=inv_as_of)
     stock_movement = calculate_stock_movement_for_period(target_fac_ids, start_date, end_date)
 
     # 4. Purchases in reporting period
@@ -1602,8 +1874,11 @@ def get_pharmacy_report_metrics_for_period(target_fac_ids, start_date, end_date,
         },
         'inventory': {
             'inventory_as_of': inv_metrics['inventory_as_of'],
+            'inventory_type': inv_metrics['inventory_type'],
+            'metric_source': inv_metrics['metric_source'],
+            'historical_available': inv_metrics.get('historical_available', True),
+            'historical_unavailable_reason': inv_metrics.get('historical_unavailable_reason'),
             'inventory_snapshot_note': inv_metrics['inventory_snapshot_note'],
-            'metric_source': 'AUTHORITATIVE_BACKEND',
             'total_medicines_master': inv_metrics['total_medicine_master_records'],
             'medicines_currently_stocked': inv_metrics['total_medicines_stocked_at_facility'],
             'total_available_units': inv_metrics['total_available_units'],
@@ -1636,7 +1911,11 @@ def get_pharmacy_report_metrics_for_period(target_fac_ids, start_date, end_date,
         'low_stock_report': inv_metrics['low_stock_table'],
         'report_period_start': start_date.strftime('%Y-%m-%d'),
         'report_period_end': end_date.strftime('%Y-%m-%d'),
-        'inventory_as_of': inv_metrics['inventory_as_of']
+        'inventory_as_of': inv_metrics['inventory_as_of'],
+        'inventory_type': inv_metrics['inventory_type'],
+        'metric_source': inv_metrics['metric_source'],
+        'historical_available': inv_metrics.get('historical_available', True),
+        'historical_unavailable_reason': inv_metrics.get('historical_unavailable_reason')
     }
 
 
