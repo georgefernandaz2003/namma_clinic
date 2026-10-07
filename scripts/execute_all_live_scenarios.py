@@ -300,33 +300,33 @@ def scenario_4_nurse_front_desk_officer():
     log("S4", 2, f"Assign NURSE status: {res_nurse.status_code}")
     assert res_nurse.status_code in [200, 201], f"Assign NURSE failed: {res_nurse.data}"
     
-    # 3. Assign COMPOUNDER separately
+    # 3. Assign FRONT_DESK_OFFICER separately
     res_cmp = client.post(f'/api/v1/accounts/staff-profiles/{sp.id}/assign-role/', {
-        'role_code': 'COMPOUNDER',
+        'role_code': 'FRONT_DESK_OFFICER',
         'facility_id': fac.id,
         'effective_from': str(datetime.date.today())
     }, format='json')
-    log("S4", 3, f"Assign COMPOUNDER status: {res_cmp.status_code}")
-    assert res_cmp.status_code in [200, 201], f"Assign COMPOUNDER failed: {res_cmp.data}"
+    log("S4", 3, f"Assign FRONT_DESK_OFFICER status: {res_cmp.status_code}")
+    assert res_cmp.status_code in [200, 201], f"Assign FRONT_DESK_OFFICER failed: {res_cmp.data}"
     
     # 4. Verify in PostgreSQL
     assignments = list(StaffRoleAssignment.objects.filter(staff=sp, is_active=True).values('id', 'role__code', 'is_active'))
     log("S4", 4, f"PostgreSQL Active Role Assignments: {assignments}")
     assert len(assignments) == 2, f"Expected 2 assignments, got {len(assignments)}"
     role_codes = [a['role__code'] for a in assignments]
-    assert 'NURSE' in role_codes and 'COMPOUNDER' in role_codes, "Both NURSE and COMPOUNDER must be active!"
+    assert 'NURSE' in role_codes and 'FRONT_DESK_OFFICER' in role_codes, "Both NURSE and COMPOUNDER must be active!"
     
-    # 5. End COMPOUNDER role
-    cmp_assignment = next(a for a in assignments if a['role__code'] == 'COMPOUNDER')
+    # 5. End FRONT_DESK_OFFICER role
+    cmp_assignment = next(a for a in assignments if a['role__code'] == 'FRONT_DESK_OFFICER')
     res_end = client.post(f'/api/v1/accounts/role-assignments/{cmp_assignment["id"]}/end-assignment/', {
         'end_date': str(datetime.date.today())
     }, format='json')
-    log("S4", 5, f"End COMPOUNDER assignment {cmp_assignment['id']} status: {res_end.status_code}")
+    log("S4", 5, f"End FRONT_DESK_OFFICER assignment {cmp_assignment['id']} status: {res_end.status_code}")
     assert res_end.status_code == 200, f"End role failed: {res_end.data}"
     
     # 6. Verify in PostgreSQL that NURSE remains active
     live_roles = list(StaffRoleAssignment.objects.filter(staff=sp, is_active=True).values('id', 'role__code', 'is_active'))
-    log("S4", 6, f"PostgreSQL Active Roles after ending COMPOUNDER: {live_roles}")
+    log("S4", 6, f"PostgreSQL Active Roles after ending FRONT_DESK_OFFICER: {live_roles}")
     assert len(live_roles) == 1, f"Expected exactly 1 active role, got {len(live_roles)}"
     assert live_roles[0]['role__code'] == 'NURSE', f"Expected active role to be NURSE, got {live_roles[0]['role__code']}"
     

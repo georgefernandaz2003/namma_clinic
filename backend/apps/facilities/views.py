@@ -20,6 +20,7 @@ class FacilityViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filterset_fields = ['district', 'facility_type', 'urban_rural', 'status']
     search_fields = ['facility_name', 'facility_code', 'city_or_ulb']
+    ordering = ['facility_name']
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
@@ -29,12 +30,31 @@ class FacilityViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Facility.objects.all().select_related('district', 'zone', 'ward', 'parent_facility')
-        if self.request.query_params.get('all') == 'true':
+        if self.request.query_params.get('all') == 'true' or getattr(self.request.user, 'is_superuser', False):
             return queryset
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(id__in=accessible_ids)
         return queryset
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        extra_kwargs = {}
+        if not user.is_superuser:
+            dho_dist_id = getattr(user, 'assigned_district_id', None)
+            if not dho_dist_id and hasattr(user, 'staff_profile'):
+                dho_dist_id = getattr(user.staff_profile, 'assigned_district_id', None)
+            if dho_dist_id and 'district' not in serializer.validated_data:
+                from apps.geography.models import District
+                dist_obj = District.objects.filter(id=dho_dist_id).first()
+                if dist_obj:
+                    extra_kwargs['district'] = dist_obj
+
+        district = serializer.validated_data.get('district') or extra_kwargs.get('district')
+        if district and 'state' not in serializer.validated_data and hasattr(district, 'state'):
+            extra_kwargs['state'] = district.state
+
+        serializer.save(**extra_kwargs)
 
 class FacilityRelationshipViewSet(viewsets.ModelViewSet):
     serializer_class = FacilityRelationshipSerializer

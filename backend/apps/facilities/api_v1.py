@@ -34,14 +34,46 @@ class DepartmentSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class FacilitySerializer(serializers.ModelSerializer):
+    district_name = serializers.ReadOnlyField(source='district.name')
     departments = DepartmentSerializer(many=True, read_only=True)
+    state = serializers.PrimaryKeyRelatedField(queryset=State.objects.all(), required=False)
+    district = serializers.PrimaryKeyRelatedField(queryset=District.objects.all(), required=False)
 
     class Meta:
         model = Facility
         fields = [
             'id', 'facility_code', 'facility_name', 'facility_type',
-            'state', 'district', 'zone', 'ward', 'address', 'status', 'departments'
+            'state', 'district', 'district_name', 'zone', 'ward', 'address',
+            'population_served', 'vulnerable_population', 'phone', 'email',
+            'opening_time', 'closing_time', 'services', 'specialists',
+            'status', 'departments'
         ]
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None) if request else None
+
+        if user and not user.is_superuser and not attrs.get('district') and not self.instance:
+            dho_dist_id = getattr(user, 'assigned_district_id', None)
+            if not dho_dist_id and hasattr(user, 'staff_profile'):
+                dho_dist_id = getattr(user.staff_profile, 'assigned_district_id', None)
+            if dho_dist_id:
+                attrs['district'] = District.objects.filter(id=dho_dist_id).first()
+
+        district = attrs.get('district')
+        if not district and self.instance:
+            district = self.instance.district
+        if not attrs.get('state') and district:
+            attrs['state'] = district.state
+
+        if not self.instance and not attrs.get('district'):
+            raise serializers.ValidationError({'district': 'District is required.'})
+
+        status_val = attrs.get('status')
+        if status_val and status_val not in ['ACTIVE', 'INACTIVE']:
+            raise serializers.ValidationError({'status': "Facility status must be 'ACTIVE' or 'INACTIVE'."})
+
+        return attrs
 
 
 class IsFacilityAdministrator(permissions.BasePermission):

@@ -207,3 +207,87 @@ class FacilityAuthorizationTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.facility_a.refresh_from_db()
         self.assertEqual(self.facility_a.facility_name, 'Updated Bengaluru PHC')
+
+    def test_11_dho_can_create_facility_via_main_endpoint(self):
+        self.client.force_authenticate(user=self.user_dho)
+        payload = {
+            'facility_code': 'NC-DHO-MAIN-01',
+            'facility_name': 'Namma Clinic Indiranagar',
+            'facility_type': 'NAMMA_CLINIC',
+            'phone': '080-25251234',
+            'opening_time': '09:00 AM',
+            'closing_time': '04:30 PM',
+            'status': 'ACTIVE'
+        }
+        res = self.client.post('/api/facilities/', payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        fac = Facility.objects.get(facility_code='NC-DHO-MAIN-01')
+        self.assertEqual(fac.district_id, self.district_a.id)
+        self.assertEqual(fac.status, 'ACTIVE')
+        self.assertEqual(fac.state_id, self.state.id)
+
+    def test_12_dho_cannot_create_facility_outside_assigned_district_via_main_endpoint(self):
+        self.client.force_authenticate(user=self.user_dho)
+        payload = {
+            'facility_code': 'NC-DHO-MAIN-OUTSIDE',
+            'facility_name': 'Unauthorized Dist Clinic Main',
+            'facility_type': 'NAMMA_CLINIC',
+            'district': self.district_b.id,
+            'status': 'ACTIVE'
+        }
+        res = self.client.post('/api/facilities/', payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Facility.objects.filter(facility_code='NC-DHO-MAIN-OUTSIDE').exists())
+
+    def test_13_dho_can_update_status_and_fields_via_main_endpoint(self):
+        self.client.force_authenticate(user=self.user_dho)
+        res = self.client.patch(
+            f'/api/facilities/{self.facility_a.id}/',
+            {
+                'facility_name': 'Renamed Main PHC',
+                'status': 'INACTIVE',
+                'phone': '080-99887766'
+            },
+            format='json'
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        self.facility_a.refresh_from_db()
+        self.assertEqual(self.facility_a.facility_name, 'Renamed Main PHC')
+        self.assertEqual(self.facility_a.status, 'INACTIVE')
+        self.assertEqual(self.facility_a.phone, '080-99887766')
+
+    def test_14_dho_cannot_mutate_facility_in_other_district_via_main_endpoint(self):
+        self.client.force_authenticate(user=self.user_dho)
+        res = self.client.patch(
+            f'/api/facilities/{self.facility_b.id}/',
+            {'facility_name': 'Unauthorized Mutation Attempt'},
+            format='json'
+        )
+        self.assertIn(res.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
+        self.facility_b.refresh_from_db()
+        self.assertNotEqual(self.facility_b.facility_name, 'Unauthorized Mutation Attempt')
+
+    def test_15_hospital_admin_forbidden_on_main_endpoint(self):
+        self.client.force_authenticate(user=self.user_admin)
+        # Hospital admin cannot create
+        res_post = self.client.post('/api/facilities/', {
+            'facility_code': 'NC-HA-FORBIDDEN-MAIN',
+            'facility_name': 'HA Attempted Facility',
+            'district': self.district_a.id
+        }, format='json')
+        self.assertEqual(res_post.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Hospital admin cannot patch
+        res_patch = self.client.patch(f'/api/facilities/{self.facility_a.id}/', {
+            'facility_name': 'HA Tampered Name'
+        }, format='json')
+        self.assertEqual(res_patch.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_16_invalid_status_rejected_with_400(self):
+        self.client.force_authenticate(user=self.user_dho)
+        res = self.client.patch(
+            f'/api/facilities/{self.facility_a.id}/',
+            {'status': 'INVALID_STATUS_VALUE'},
+            format='json'
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)

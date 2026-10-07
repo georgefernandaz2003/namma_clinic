@@ -7,7 +7,7 @@
         "dev": "vite",
         "build": "tsc -b && vite build",
         "lint": "oxlint",
-        "test": "node --test src/api/client.test.ts src/navigation/navigation.test.ts src/clinical/clinicalWorkflow.test.ts src/clinical/nurseWorkflow.test.ts src/clinical/labWorkflow.test.ts src/clinical/pharmacyWorkflow.test.ts src/staff/staffAdministration.test.ts src/clinical/compounderWorkflow.test.ts",
+        "test": "node --test src/api/client.test.ts src/navigation/navigation.test.ts src/clinical/clinicalWorkflow.test.ts src/clinical/nurseWorkflow.test.ts src/clinical/labWorkflow.test.ts src/clinical/pharmacyWorkflow.test.ts src/staff/staffAdministration.test.ts src/clinical/compounderWorkflow.test.ts src/facilities/facilityManagement.test.ts",
         "test:config": "node scripts/validate-config.js",
         "preview": "vite preview"
     },
