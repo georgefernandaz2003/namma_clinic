@@ -166,6 +166,14 @@ class PublicHealthHistoricalDiseaseView(BaseIntelligenceView):
         disease = request.query_params.get('disease')
         as_of_date = request.query_params.get('date')
 
+        scope = resolve_facility_scope(
+            user=request.user,
+            requested_facility_id=fac_id,
+            requested_district_id=dist_id
+        )
+        if not scope.is_authorized:
+            return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
+
         months_param = request.query_params.get('months')
         months = 6
         if months_param is not None and str(months_param).strip() != '':
@@ -175,14 +183,6 @@ class PublicHealthHistoricalDiseaseView(BaseIntelligenceView):
                     return Response({'error': 'Invalid months parameter. Must be an integer between 1 and 60.'}, status=status.HTTP_400_BAD_REQUEST)
             except (ValueError, TypeError):
                 return Response({'error': 'Invalid months parameter. Must be a valid positive integer.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        scope = resolve_facility_scope(
-            user=request.user,
-            requested_facility_id=fac_id,
-            requested_district_id=dist_id
-        )
-        if not scope.is_authorized:
-            return Response({'error': scope.error}, status=status.HTTP_403_FORBIDDEN)
 
         clean_ag, clean_g, err_demo = self.get_demographic_filters(request)
         if err_demo:
