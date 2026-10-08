@@ -29,7 +29,7 @@ class MultiLevelAnalyticsView(APIView):
     Returns public health metrics aggregated across 6 administrative levels:
     State -> District -> City/BBMP -> Zone -> Ward -> Facility.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         today = timezone.localdate()
@@ -70,17 +70,26 @@ class MultiLevelAnalyticsView(APIView):
             d_surv = DiseaseSurveillanceCase.objects.filter(facility__district=dist).count()
             d_facs = Facility.objects.filter(district=dist).count()
             d_wards = Ward.objects.filter(zone__district=dist).count()
+            d_rx = Prescription.objects.filter(facility__district=dist).count()
+            d_disp = Dispensation.objects.filter(facility__district=dist).count()
 
             districts_data.append({
                 "id": dist.id,
                 "name": dist.name,
+                "code": "KA-BLR-U" if ("Urban" in dist.name or "BBMP" in dist.name) else "KA-BLR-R",
+                "headquarters": "Bengaluru (Malleshwaram)" if ("Urban" in dist.name or "BBMP" in dist.name) else "Devanahalli / Hoskote",
                 "type": "URBAN" if "Urban" in dist.name or "BBMP" in dist.name else "RURAL",
                 "facilities_count": d_facs,
+                "total_facilities": d_facs,
                 "wards_count": d_wards,
                 "registered_citizens": d_patients,
+                "total_patients": d_patients,
                 "total_opd_encounters": d_visits,
+                "total_visits": d_visits,
                 "active_ncd_patients": d_ncd,
                 "surveillance_cases": d_surv,
+                "prescriptions_issued": d_rx,
+                "dispensations_completed": d_disp,
                 "pct_of_state_load": round((d_patients / max(total_patients, 1)) * 100, 1)
             })
 
@@ -136,7 +145,7 @@ class MultiLevelAnalyticsView(APIView):
             f_ncd = NCDCondition.objects.filter(registering_facility=fac).count()
             f_surv = DiseaseSurveillanceCase.objects.filter(facility=fac).count()
             f_refs = ReferralOrder.objects.filter(source_facility=fac).count()
-            f_disp = Dispensation.objects.filter(visit__facility=fac).count()
+            f_disp = Dispensation.objects.filter(facility=fac).count()
 
             facilities_data.append({
                 "id": fac.id,
@@ -168,7 +177,7 @@ class TrendAnalyticsView(APIView):
     Returns historical longitudinal trends across weeks and months:
     Patient Footfall, Communicable Epidemic Curves, NCD Blood Pressure & Glycemic Trajectories.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         today = timezone.localdate()
@@ -242,7 +251,7 @@ class PredictiveAnalyticsView(APIView):
     Provides predictive algorithms and forward-looking forecasts:
     Ward-level Disease Outbreak Risk Scoring, Pharmacy Stockout Runway, and OPD Surge Load Predictor.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         today = timezone.localdate()
