@@ -1,15 +1,14 @@
 import React, { useMemo } from 'react';
 import {
   ResponsiveContainer,
-  BarChart,
-  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
-  Legend
+  Tooltip
 } from 'recharts';
-import { BarChart3, HelpCircle, Info } from 'lucide-react';
+import { TrendingUp, HelpCircle, Info } from 'lucide-react';
 import type {
   HistoricalDiseaseResponse,
   DiseaseTrendsResponse,
@@ -89,7 +88,7 @@ export const DiseaseTrendVisual: React.FC<DiseaseTrendVisualProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
         <div>
           <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-indigo-600" />
+            <TrendingUp className="w-5 h-5 text-indigo-600" />
             <span>📈 Disease Trend — Historical Disease Trajectory ({historicalData?.disease || selectedDisease || 'Monitored Conditions'})</span>
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -114,7 +113,7 @@ export const DiseaseTrendVisual: React.FC<DiseaseTrendVisualProps> = ({
         )}
       </div>
 
-      {/* Historical Trend Chart */}
+      {/* Historical Trend Chart (AreaChart for smooth time-series trajectory) */}
       <div
         className="h-64 sm:h-72 w-full pt-2"
         data-testid="historical-chart-container"
@@ -128,10 +127,16 @@ export const DiseaseTrendVisual: React.FC<DiseaseTrendVisualProps> = ({
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={240}>
-            <BarChart
+            <AreaChart
               data={chartData}
               margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
             >
+              <defs>
+                <linearGradient id="trendAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#4f46e5" stopOpacity={0.0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis
                 dataKey="period_label"
@@ -154,21 +159,21 @@ export const DiseaseTrendVisual: React.FC<DiseaseTrendVisualProps> = ({
                   fontSize: '12px',
                   boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
                 }}
-                formatter={(value: any, name: any) => [
-                  `${value} cases`,
-                  name === 'MILD' ? 'Mild Severity' : name === 'MODERATE' ? 'Moderate Severity' : name === 'SEVERE' ? 'Severe Case' : name
-                ]}
+                formatter={(value: any) => [`${value} cases`, 'Total Cases']}
                 labelStyle={{ fontWeight: 'bold', color: '#cbd5e1', marginBottom: '4px' }}
               />
-              <Legend
-                verticalAlign="top"
-                align="right"
-                wrapperStyle={{ paddingBottom: '10px', fontSize: '11px', fontWeight: 600 }}
+              <Area
+                type="monotone"
+                dataKey="total_cases"
+                name="Total Cases"
+                stroke="#4f46e5"
+                strokeWidth={2.5}
+                fillOpacity={1}
+                fill="url(#trendAreaGradient)"
+                dot={{ r: 4, fill: '#4f46e5', stroke: '#ffffff', strokeWidth: 2 }}
+                activeDot={{ r: 6, fill: '#4338ca', stroke: '#ffffff', strokeWidth: 2 }}
               />
-              <Bar dataKey="MILD" name="MILD" stackId="severity" fill="#10b981" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="MODERATE" name="MODERATE" stackId="severity" fill="#f59e0b" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="SEVERE" name="SEVERE" stackId="severity" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-            </BarChart>
+            </AreaChart>
           </ResponsiveContainer>
         )}
       </div>

@@ -1675,9 +1675,16 @@ describe('PublicHealthIntelligence Component', () => {
       render(<PublicHealthIntelligence />);
 
       await waitFor(() => {
-        expect(screen.getByText(/📈 Disease Trend/i)).toBeDefined();
-        expect(screen.getByText(/Shows how reported cases have changed over time/i)).toBeDefined();
-        expect(screen.getByText(/Cases are increasing over the selected period/i)).toBeDefined();
+        const trendSection = screen.getByTestId('disease-trend-section');
+        expect(trendSection).toBeDefined();
+        expect(within(trendSection).getByText(/📈 Disease Trend/i)).toBeDefined();
+        expect(within(trendSection).getByText(/Shows how reported cases have changed over time/i)).toBeDefined();
+        expect(within(trendSection).getByTestId('historical-chart-container')).toBeDefined();
+        expect(within(trendSection).getByRole('region', { name: /Historical Disease Trend Chart/i })).toBeDefined();
+        expect(within(trendSection).getByText('Aug 2026')).toBeDefined();
+        expect(within(trendSection).getByText('Sep 2026')).toBeDefined();
+        expect(within(trendSection).getByText('Oct 2026')).toBeDefined();
+        expect(within(trendSection).getByText(/Cases are increasing over the selected period/i)).toBeDefined();
       });
     });
 
