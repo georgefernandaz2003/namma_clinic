@@ -1615,4 +1615,159 @@ describe('PublicHealthIntelligence Component', () => {
       expect(screen.getByText(/Invalid age_group value provided./i)).toBeDefined();
     });
   });
+
+  describe('Prompt Visual Enhancements & Non-Technical Health Staff Views', () => {
+    const mockRichSeasonality: SeasonalityData = {
+      ...mockSeasonality,
+      seasonal_age_groups: [
+        { age_group: '0-5', total_cases: 5, seasonal_strength: 0.5, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+        { age_group: '6-14', total_cases: 8, seasonal_strength: 0.6, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+        { age_group: '15-24', total_cases: 12, seasonal_strength: 0.7, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+        { age_group: '25-44', total_cases: 20, seasonal_strength: 0.8, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+        { age_group: '45-59', total_cases: 10, seasonal_strength: 0.5, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+        { age_group: '60+', total_cases: 4, seasonal_strength: 0.4, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+      ],
+      seasonal_gender: [
+        { gender: 'MALE', total_cases: 32, seasonal_strength: 0.7, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+        { gender: 'FEMALE', total_cases: 27, seasonal_strength: 0.7, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+      ],
+      seasonal_severity: [
+        { severity: 'MILD', total_cases: 36, seasonal_strength: 0.7, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+        { severity: 'MODERATE', total_cases: 11, seasonal_strength: 0.5, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+        { severity: 'SEVERE', total_cases: 3, seasonal_strength: 0.3, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+      ],
+      seasonal_vulnerable_groups: [
+        { vulnerable_group: 'PREGNANT', total_cases: 7, seasonal_strength: 0.5, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+        { vulnerable_group: 'ELDERLY', total_cases: 14, seasonal_strength: 0.6, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+        { vulnerable_group: 'GENERAL', total_cases: 35, seasonal_strength: 0.7, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+      ],
+      seasonal_patient_types: [
+        { patient_type: 'NEW', total_cases: 42, seasonal_strength: 0.7, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+        { patient_type: 'FOLLOW_UP', total_cases: 17, seasonal_strength: 0.4, seasonal_status: 'DETECTED', monthly_patterns: [], peak_month: null },
+      ],
+      seasonal_age_gender: {
+        '25-44': {
+          MALE: { total_cases: 12, monthly_patterns: [] },
+          FEMALE: { total_cases: 8, monthly_patterns: [] },
+        },
+      },
+    };
+
+    it('renders Overview KPI cards with authoritative numbers and descriptions', async () => {
+      vi.mocked(intelligenceService.getSeasonality).mockResolvedValue(mockRichSeasonality);
+      setupAuth('HOSPITAL_ADMIN');
+      render(<PublicHealthIntelligence />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Total Cases')).toBeDefined();
+        expect(screen.getByText('Cases in selected population')).toBeDefined();
+        expect(screen.getByText('Active Diseases')).toBeDefined();
+        expect(screen.getByText('Forecast Cases')).toBeDefined();
+        expect(screen.getByText('Expected cases in forecast period')).toBeDefined();
+        expect(screen.getByText('High Risk Signals')).toBeDefined();
+        expect(screen.getByText('Areas requiring attention')).toBeDefined();
+      });
+    });
+
+    it('renders Disease Trend visualization with line/area chart and derived insight', async () => {
+      vi.mocked(intelligenceService.getSeasonality).mockResolvedValue(mockRichSeasonality);
+      setupAuth('HOSPITAL_ADMIN');
+      render(<PublicHealthIntelligence />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/📈 Disease Trend/i)).toBeDefined();
+        expect(screen.getByText(/Shows how reported cases have changed over time/i)).toBeDefined();
+        expect(screen.getByText(/Cases are increasing over the selected period/i)).toBeDefined();
+      });
+    });
+
+    it('renders Disease Distribution and derived highest reported disease', async () => {
+      vi.mocked(intelligenceService.getSeasonality).mockResolvedValue(mockRichSeasonality);
+      setupAuth('HOSPITAL_ADMIN');
+      render(<PublicHealthIntelligence />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/🦠 Disease Distribution/i)).toBeDefined();
+        expect(screen.getByText(/Shows which diseases have the highest number of reported cases/i)).toBeDefined();
+        expect(screen.getByText(/Highest reported disease:/i)).toBeDefined();
+      });
+    });
+
+    it('renders Age and Gender distributions with insights', async () => {
+      vi.mocked(intelligenceService.getSeasonality).mockResolvedValue(mockRichSeasonality);
+      setupAuth('HOSPITAL_ADMIN');
+      render(<PublicHealthIntelligence />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/👥 Age Distribution/i)).toBeDefined();
+        expect(screen.getByText(/^Gender Distribution$/i)).toBeDefined();
+        const ageCard = screen.getByTestId('age-distribution-card');
+        expect(ageCard.textContent).toContain('Most cases are in the');
+        expect(ageCard.textContent).toContain('25-44');
+      });
+    });
+
+    it('renders Case Severity, Vulnerable Population, and Patient Type with insights', async () => {
+      vi.mocked(intelligenceService.getSeasonality).mockResolvedValue(mockRichSeasonality);
+      setupAuth('HOSPITAL_ADMIN');
+      render(<PublicHealthIntelligence />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/🩺 Case Severity/i)).toBeDefined();
+        const sevCard = screen.getByTestId('case-severity-section');
+        expect(sevCard.textContent).toContain('Most reported cases are');
+        expect(sevCard.textContent).toContain('Mild');
+        expect(screen.getByText(/🤝 Vulnerable Population/i)).toBeDefined();
+        const ptCard = screen.getByTestId('patient-type-section');
+        expect(ptCard.textContent).toContain('Patient Type');
+      });
+    });
+
+    it('renders Seasonality Pattern visualization with peak month insight', async () => {
+      vi.mocked(intelligenceService.getSeasonality).mockResolvedValue(mockRichSeasonality);
+      setupAuth('HOSPITAL_ADMIN');
+      render(<PublicHealthIntelligence />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/🗓️ Seasonal Pattern/i)).toBeDefined();
+        expect(screen.getByText(/Shows when cases are more common during the selected period/i)).toBeDefined();
+        expect(screen.getByText(/Highest reported activity occurred in October/i)).toBeDefined();
+      });
+    });
+
+    it('renders Case Forecast and Forecast Risk with estimates explanation', async () => {
+      vi.mocked(intelligenceService.getSeasonality).mockResolvedValue(mockRichSeasonality);
+      setupAuth('HOSPITAL_ADMIN');
+      render(<PublicHealthIntelligence />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/🔮 Case Forecast/i)).toBeDefined();
+        expect(screen.getByText(/Forecast values are estimates based on historical case patterns/i)).toBeDefined();
+        expect(screen.getByText(/🚦 Forecast Risk/i)).toBeDefined();
+      });
+    });
+
+    it('renders clean empty state when selected filters return zero cases', async () => {
+      vi.mocked(intelligenceService.getForecast).mockResolvedValue({
+        ...mockForecastAvailable,
+        observation_period: {
+          ...mockForecastAvailable.observation_period,
+          total_cases: 0,
+        },
+        forecast_risk: {
+          ...mockForecastAvailable.forecast_risk!,
+          status: 'INSUFFICIENT_DATA',
+          highest_risk_level: 'INSUFFICIENT_DATA',
+          risk_points: [],
+          historical_baseline: null,
+        },
+      });
+      setupAuth('HOSPITAL_ADMIN');
+      render(<PublicHealthIntelligence />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/No cases found for the selected filters/i)).toBeDefined();
+      });
+    });
+  });
 });
