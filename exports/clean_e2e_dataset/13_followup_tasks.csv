@@ -1,0 +1,69 @@
+Task ID,Patient ID,Patient Name,Facility,Category,Status,Due Date,Clinical Instructions,Completed At
+91,NC-PHC-2026-0001,Ramesh Gowda,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+94,NC-PHC-2026-0002,Ananya Bhat,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+97,NC-PHC-2026-0003,Suresh Hegde,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+100,NC-PHC-2026-0004,Deepa Rao,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+103,NC-PHC-2026-0005,Venkatesh Prasad,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+106,NC-PHC-2026-0006,Kavitha Kulkarni,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+109,NC-PHC-2026-0007,Basavaraj Nayak,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+112,NC-PHC-2026-0008,Pooja Shetty,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+115,NC-PHC-2026-0009,Manjunath Murthy,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+118,NC-PHC-2026-0010,Sunitha Deshmukh,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+121,NC-PHC-2026-0011,Chetan Patil,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+124,NC-PHC-2026-0012,Rekha Acharya,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+127,NC-PHC-2026-0013,Praveen Kumar,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+130,NC-PHC-2026-0014,Shwetha Joshi,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+133,NC-PHC-2026-0015,Anand Bellary,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+136,NC-PHC-2026-0016,Meenakshi Sundaram,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+139,NC-PHC-2026-0017,Raghavendra Rao,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+142,NC-PHC-2026-0018,Soumya Hegde,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+145,NC-PHC-2026-0019,Girish Kulkarni,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+148,NC-PHC-2026-0020,Roopa Nayak,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-08-14,Review fasting blood glucose and blood pressure in 30 days.,2026-08-14 04:30:00
+92,NC-PHC-2026-0001,Ramesh Gowda,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+95,NC-PHC-2026-0002,Ananya Bhat,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+98,NC-PHC-2026-0003,Suresh Hegde,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+101,NC-PHC-2026-0004,Deepa Rao,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+104,NC-PHC-2026-0005,Venkatesh Prasad,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+107,NC-PHC-2026-0006,Kavitha Kulkarni,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+110,NC-PHC-2026-0007,Basavaraj Nayak,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+113,NC-PHC-2026-0008,Pooja Shetty,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+116,NC-PHC-2026-0009,Manjunath Murthy,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+119,NC-PHC-2026-0010,Sunitha Deshmukh,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+122,NC-PHC-2026-0011,Chetan Patil,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+125,NC-PHC-2026-0012,Rekha Acharya,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+128,NC-PHC-2026-0013,Praveen Kumar,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+131,NC-PHC-2026-0014,Shwetha Joshi,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+134,NC-PHC-2026-0015,Anand Bellary,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+137,NC-PHC-2026-0016,Meenakshi Sundaram,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+140,NC-PHC-2026-0017,Raghavendra Rao,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+143,NC-PHC-2026-0018,Soumya Hegde,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+146,NC-PHC-2026-0019,Girish Kulkarni,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+149,NC-PHC-2026-0020,Roopa Nayak,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-09-17,Review fasting blood glucose and blood pressure in 30 days.,2026-09-17 04:30:00
+151,NC-PHC-2026-0047,Sunil Hegde,Namma Clinic Local PHC,POST_REFERRAL,COMPLETED,2026-10-15,Post-referral discharge review and prescription reconciliation.,2026-10-08 06:55:38
+152,NC-PHC-2026-0048,Bharati Nayak,Namma Clinic Local PHC,POST_REFERRAL,COMPLETED,2026-10-15,Post-referral discharge review and prescription reconciliation.,2026-10-08 06:55:38
+153,NC-PHC-2026-0049,Ashok Kulkarni,Namma Clinic Local PHC,POST_REFERRAL,COMPLETED,2026-10-15,Post-referral discharge review and prescription reconciliation.,2026-10-08 06:55:38
+154,NC-PHC-2026-0050,Veena Prabhu,Namma Clinic Local PHC,POST_REFERRAL,COMPLETED,2026-10-15,Post-referral discharge review and prescription reconciliation.,2026-10-08 06:55:38
+155,NC-PHC-2026-0051,Prasanna Kumar,Namma Clinic Local PHC,POST_REFERRAL,COMPLETED,2026-10-15,Post-referral discharge review and prescription reconciliation.,2026-10-08 06:55:38
+156,NC-PHC-2026-0052,Radhika Bhat,Namma Clinic Local PHC,POST_REFERRAL,COMPLETED,2026-10-15,Post-referral discharge review and prescription reconciliation.,2026-10-08 06:55:38
+157,NC-PHC-2026-0053,Nagaraj Gowda,Namma Clinic Local PHC,POST_REFERRAL,COMPLETED,2026-10-15,Post-referral discharge review and prescription reconciliation.,2026-10-08 06:55:38
+158,NC-PHC-2026-0054,Swathi Rao,Namma Clinic Local PHC,POST_REFERRAL,COMPLETED,2026-10-15,Post-referral discharge review and prescription reconciliation.,2026-10-08 06:55:38
+93,NC-PHC-2026-0001,Ramesh Gowda,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+96,NC-PHC-2026-0002,Ananya Bhat,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+99,NC-PHC-2026-0003,Suresh Hegde,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+102,NC-PHC-2026-0004,Deepa Rao,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+105,NC-PHC-2026-0005,Venkatesh Prasad,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+108,NC-PHC-2026-0006,Kavitha Kulkarni,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+111,NC-PHC-2026-0007,Basavaraj Nayak,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+114,NC-PHC-2026-0008,Pooja Shetty,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+117,NC-PHC-2026-0009,Manjunath Murthy,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+120,NC-PHC-2026-0010,Sunitha Deshmukh,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+123,NC-PHC-2026-0011,Chetan Patil,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+126,NC-PHC-2026-0012,Rekha Acharya,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+129,NC-PHC-2026-0013,Praveen Kumar,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+132,NC-PHC-2026-0014,Shwetha Joshi,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+135,NC-PHC-2026-0015,Anand Bellary,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+138,NC-PHC-2026-0016,Meenakshi Sundaram,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+141,NC-PHC-2026-0017,Raghavendra Rao,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+144,NC-PHC-2026-0018,Soumya Hegde,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+147,NC-PHC-2026-0019,Girish Kulkarni,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00
+150,NC-PHC-2026-0020,Roopa Nayak,Namma Clinic Local PHC,NCD_ROUTINE,COMPLETED,2026-10-20,Review fasting blood glucose and blood pressure in 30 days.,2026-10-20 04:30:00

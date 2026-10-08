@@ -1,0 +1,174 @@
+Ledger ID,Facility,Medicine,Batch Number,Transaction Type,Quantity Delta,Balance After,Reference Entity,Reference ID,Performed By Staff,Remarks,Timestamp
+74,Namma Clinic Local PHC,Paracetamol 500mg,BATCH-LOC-PCM01,PURCHASE_RECEIPT,500,500,,,localpharm,Initial demo dispensary stock receipt: 500 units,2026-10-07 09:16:13
+75,Namma Clinic Local PHC,Amoxicillin 500mg,BATCH-LOC-AMX01,PURCHASE_RECEIPT,300,300,,,localpharm,Initial demo dispensary stock receipt: 300 units,2026-10-07 09:16:13
+76,Namma Clinic Local PHC,Cetirizine 10mg,BATCH-LOC-CTZ01,PURCHASE_RECEIPT,250,250,,,localpharm,Initial demo dispensary stock receipt: 250 units,2026-10-07 09:16:13
+77,Namma Clinic Local PHC,Metformin 500mg,BATCH-LOC-MET01,PURCHASE_RECEIPT,400,400,,,localpharm,Initial demo dispensary stock receipt: 400 units,2026-10-07 09:16:13
+78,Namma Clinic Local PHC,Amlodipine 5mg,BATCH-LOC-AML01,PURCHASE_RECEIPT,350,350,,,localpharm,Initial demo dispensary stock receipt: 350 units,2026-10-07 09:16:13
+79,Namma Clinic Local PHC,ORS Oral Rehydration Salts 21.8g,BATCH-LOC-ORS01,PURCHASE_RECEIPT,200,200,,,localpharm,Initial demo dispensary stock receipt: 200 units,2026-10-07 09:16:13
+80,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,PURCHASE_RECEIPT,1000,1000,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Paracetamol (1000 units),2026-10-07 09:16:21
+81,Namma Clinic Local PHC,Amoxicillin Trihydrate,BATCH-PHC-AMX-01,PURCHASE_RECEIPT,600,600,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Amoxicillin Trihydrate (600 units),2026-10-07 09:16:21
+82,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,PURCHASE_RECEIPT,800,800,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Metformin HCl (800 units),2026-10-07 09:16:21
+83,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,PURCHASE_RECEIPT,700,700,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Amlodipine Besylate (700 units),2026-10-07 09:16:21
+84,Namma Clinic Local PHC,Cetirizine HCl,BATCH-PHC-CTZ-01,PURCHASE_RECEIPT,500,500,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Cetirizine HCl (500 units),2026-10-07 09:16:21
+85,Namma Clinic Local PHC,ORS Sachet,BATCH-PHC-ORS-01,PURCHASE_RECEIPT,400,400,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: ORS Sachet (400 units),2026-10-07 09:16:21
+86,Namma Clinic Laggere Urban Health Centre,Paracetamol,BATCH-NC--PCM-01,PURCHASE_RECEIPT,1000,1000,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Paracetamol (1000 units),2026-10-07 09:16:21
+87,Namma Clinic Laggere Urban Health Centre,Amoxicillin Trihydrate,BATCH-NC--AMX-01,PURCHASE_RECEIPT,600,600,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Amoxicillin Trihydrate (600 units),2026-10-07 09:16:21
+88,Namma Clinic Laggere Urban Health Centre,Metformin HCl,BATCH-NC--MET-01,PURCHASE_RECEIPT,800,800,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Metformin HCl (800 units),2026-10-07 09:16:21
+89,Namma Clinic Laggere Urban Health Centre,Amlodipine Besylate,BATCH-NC--AML-01,PURCHASE_RECEIPT,700,700,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Amlodipine Besylate (700 units),2026-10-07 09:16:21
+90,Namma Clinic Laggere Urban Health Centre,Cetirizine HCl,BATCH-NC--CTZ-01,PURCHASE_RECEIPT,500,500,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Cetirizine HCl (500 units),2026-10-07 09:16:21
+91,Namma Clinic Laggere Urban Health Centre,ORS Sachet,BATCH-NC--ORS-01,PURCHASE_RECEIPT,400,400,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: ORS Sachet (400 units),2026-10-07 09:16:21
+92,Varthur Rural Primary Clinic A4,Paracetamol,BATCH-RC--PCM-01,PURCHASE_RECEIPT,1000,1000,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Paracetamol (1000 units),2026-10-07 09:16:21
+93,Varthur Rural Primary Clinic A4,Amoxicillin Trihydrate,BATCH-RC--AMX-01,PURCHASE_RECEIPT,600,600,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Amoxicillin Trihydrate (600 units),2026-10-07 09:16:21
+94,Varthur Rural Primary Clinic A4,Metformin HCl,BATCH-RC--MET-01,PURCHASE_RECEIPT,800,800,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Metformin HCl (800 units),2026-10-07 09:16:21
+95,Varthur Rural Primary Clinic A4,Amlodipine Besylate,BATCH-RC--AML-01,PURCHASE_RECEIPT,700,700,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Amlodipine Besylate (700 units),2026-10-07 09:16:22
+96,Varthur Rural Primary Clinic A4,Cetirizine HCl,BATCH-RC--CTZ-01,PURCHASE_RECEIPT,500,500,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: Cetirizine HCl (500 units),2026-10-07 09:16:22
+97,Varthur Rural Primary Clinic A4,ORS Sachet,BATCH-RC--ORS-01,PURCHASE_RECEIPT,400,400,PurchaseOrder,1,e2e_pharmacist_user,Initial Q3 Bulk Allocation: ORS Sachet (400 units),2026-10-07 09:16:22
+606,Namma Clinic Local PHC,Iron & Folic Acid,BAT-PHC-8-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Iron & Folic Acid,2026-10-08 06:20:36
+607,Namma Clinic Laggere Urban Health Centre,Iron & Folic Acid,BAT-NC--8-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Iron & Folic Acid,2026-10-08 06:20:36
+608,Varthur Rural Primary Clinic A4,Iron & Folic Acid,BAT-RC--8-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Iron & Folic Acid,2026-10-08 06:20:36
+609,KC General Secondary Hospital,Metformin HCl,BAT-HOS-1-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Metformin HCl,2026-10-08 06:20:36
+610,KC General Secondary Hospital,Amlodipine Besylate,BAT-HOS-2-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Amlodipine Besylate,2026-10-08 06:20:36
+611,KC General Secondary Hospital,Paracetamol,BAT-HOS-3-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Paracetamol,2026-10-08 06:20:36
+612,KC General Secondary Hospital,Amoxicillin Trihydrate,BAT-HOS-4-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Amoxicillin Trihydrate,2026-10-08 06:20:36
+613,KC General Secondary Hospital,Cetirizine HCl,BAT-HOS-6-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Cetirizine HCl,2026-10-08 06:20:36
+614,KC General Secondary Hospital,ORS Sachet,BAT-HOS-7-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for ORS Sachet,2026-10-08 06:20:36
+615,KC General Secondary Hospital,Iron & Folic Acid,BAT-HOS-8-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Iron & Folic Acid,2026-10-08 06:20:36
+616,Victoria District General Hospital & Specialist Center,Metformin HCl,BAT-HOS-1-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Metformin HCl,2026-10-08 06:20:36
+617,Victoria District General Hospital & Specialist Center,Amlodipine Besylate,BAT-HOS-2-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Amlodipine Besylate,2026-10-08 06:20:36
+618,Victoria District General Hospital & Specialist Center,Paracetamol,BAT-HOS-3-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Paracetamol,2026-10-08 06:20:36
+619,Victoria District General Hospital & Specialist Center,Amoxicillin Trihydrate,BAT-HOS-4-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Amoxicillin Trihydrate,2026-10-08 06:20:36
+620,Victoria District General Hospital & Specialist Center,Cetirizine HCl,BAT-HOS-6-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Cetirizine HCl,2026-10-08 06:20:36
+621,Victoria District General Hospital & Specialist Center,ORS Sachet,BAT-HOS-7-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for ORS Sachet,2026-10-08 06:20:36
+622,Victoria District General Hospital & Specialist Center,Iron & Folic Acid,BAT-HOS-8-2026A,PURCHASE_RECEIPT,10000,10000,,,e2e_pharmacist_user,Initial stock receipt from KSMSCL central warehouse for Iron & Folic Acid,2026-10-08 06:20:36
+758,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9970,Dispensation,440,e2e_pharmacist_user,Dispensed for Prescription #462,2026-10-08 06:55:35
+759,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9940,Dispensation,441,e2e_pharmacist_user,Dispensed for Prescription #463,2026-10-08 06:55:35
+760,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9910,Dispensation,442,e2e_pharmacist_user,Dispensed for Prescription #464,2026-10-08 06:55:35
+761,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9940,Dispensation,443,e2e_pharmacist_user,Dispensed for Prescription #465,2026-10-08 06:55:35
+762,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9880,Dispensation,444,e2e_pharmacist_user,Dispensed for Prescription #466,2026-10-08 06:55:35
+763,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9820,Dispensation,445,e2e_pharmacist_user,Dispensed for Prescription #467,2026-10-08 06:55:35
+764,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9880,Dispensation,446,e2e_pharmacist_user,Dispensed for Prescription #468,2026-10-08 06:55:36
+765,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9760,Dispensation,446,e2e_pharmacist_user,Dispensed for Prescription #468,2026-10-08 06:55:36
+766,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9850,Dispensation,447,e2e_pharmacist_user,Dispensed for Prescription #469,2026-10-08 06:55:36
+767,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9700,Dispensation,447,e2e_pharmacist_user,Dispensed for Prescription #469,2026-10-08 06:55:36
+768,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9820,Dispensation,448,e2e_pharmacist_user,Dispensed for Prescription #470,2026-10-08 06:55:36
+769,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9640,Dispensation,448,e2e_pharmacist_user,Dispensed for Prescription #470,2026-10-08 06:55:36
+770,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9790,Dispensation,449,e2e_pharmacist_user,Dispensed for Prescription #471,2026-10-08 06:55:36
+771,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9760,Dispensation,450,e2e_pharmacist_user,Dispensed for Prescription #472,2026-10-08 06:55:36
+772,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9730,Dispensation,451,e2e_pharmacist_user,Dispensed for Prescription #473,2026-10-08 06:55:36
+773,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9700,Dispensation,452,e2e_pharmacist_user,Dispensed for Prescription #474,2026-10-08 06:55:36
+774,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9580,Dispensation,452,e2e_pharmacist_user,Dispensed for Prescription #474,2026-10-08 06:55:36
+775,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9670,Dispensation,453,e2e_pharmacist_user,Dispensed for Prescription #475,2026-10-08 06:55:36
+776,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9520,Dispensation,453,e2e_pharmacist_user,Dispensed for Prescription #475,2026-10-08 06:55:36
+777,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9640,Dispensation,454,e2e_pharmacist_user,Dispensed for Prescription #476,2026-10-08 06:55:36
+778,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9460,Dispensation,454,e2e_pharmacist_user,Dispensed for Prescription #476,2026-10-08 06:55:36
+779,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9400,Dispensation,455,e2e_pharmacist_user,Dispensed for Prescription #477,2026-10-08 06:55:36
+780,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9340,Dispensation,456,e2e_pharmacist_user,Dispensed for Prescription #478,2026-10-08 06:55:36
+781,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9280,Dispensation,457,e2e_pharmacist_user,Dispensed for Prescription #479,2026-10-08 06:55:36
+782,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9610,Dispensation,458,e2e_pharmacist_user,Dispensed for Prescription #480,2026-10-08 06:55:36
+783,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9580,Dispensation,459,e2e_pharmacist_user,Dispensed for Prescription #481,2026-10-08 06:55:36
+784,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9550,Dispensation,460,e2e_pharmacist_user,Dispensed for Prescription #482,2026-10-08 06:55:36
+785,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9220,Dispensation,461,e2e_pharmacist_user,Dispensed for Prescription #483,2026-10-08 06:55:36
+786,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9160,Dispensation,462,e2e_pharmacist_user,Dispensed for Prescription #484,2026-10-08 06:55:36
+787,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9100,Dispensation,463,e2e_pharmacist_user,Dispensed for Prescription #485,2026-10-08 06:55:36
+788,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9520,Dispensation,464,e2e_pharmacist_user,Dispensed for Prescription #486,2026-10-08 06:55:36
+789,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,9040,Dispensation,464,e2e_pharmacist_user,Dispensed for Prescription #486,2026-10-08 06:55:36
+790,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9490,Dispensation,465,e2e_pharmacist_user,Dispensed for Prescription #487,2026-10-08 06:55:36
+791,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8980,Dispensation,465,e2e_pharmacist_user,Dispensed for Prescription #487,2026-10-08 06:55:36
+792,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9460,Dispensation,466,e2e_pharmacist_user,Dispensed for Prescription #488,2026-10-08 06:55:36
+793,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8920,Dispensation,466,e2e_pharmacist_user,Dispensed for Prescription #488,2026-10-08 06:55:36
+794,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9430,Dispensation,467,e2e_pharmacist_user,Dispensed for Prescription #489,2026-10-08 06:55:36
+795,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9400,Dispensation,468,e2e_pharmacist_user,Dispensed for Prescription #490,2026-10-08 06:55:36
+796,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9370,Dispensation,469,e2e_pharmacist_user,Dispensed for Prescription #491,2026-10-08 06:55:36
+797,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8860,Dispensation,470,e2e_pharmacist_user,Dispensed for Prescription #492,2026-10-08 06:55:36
+798,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8800,Dispensation,471,e2e_pharmacist_user,Dispensed for Prescription #493,2026-10-08 06:55:36
+799,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8740,Dispensation,472,e2e_pharmacist_user,Dispensed for Prescription #494,2026-10-08 06:55:36
+800,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9340,Dispensation,473,e2e_pharmacist_user,Dispensed for Prescription #495,2026-10-08 06:55:36
+801,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9310,Dispensation,474,e2e_pharmacist_user,Dispensed for Prescription #496,2026-10-08 06:55:36
+802,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9280,Dispensation,475,e2e_pharmacist_user,Dispensed for Prescription #497,2026-10-08 06:55:36
+803,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9250,Dispensation,476,e2e_pharmacist_user,Dispensed for Prescription #498,2026-10-08 06:55:36
+804,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8680,Dispensation,476,e2e_pharmacist_user,Dispensed for Prescription #498,2026-10-08 06:55:36
+805,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9220,Dispensation,477,e2e_pharmacist_user,Dispensed for Prescription #499,2026-10-08 06:55:36
+806,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8620,Dispensation,477,e2e_pharmacist_user,Dispensed for Prescription #499,2026-10-08 06:55:36
+807,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9190,Dispensation,478,e2e_pharmacist_user,Dispensed for Prescription #500,2026-10-08 06:55:36
+808,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8560,Dispensation,478,e2e_pharmacist_user,Dispensed for Prescription #500,2026-10-08 06:55:36
+809,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8500,Dispensation,479,e2e_pharmacist_user,Dispensed for Prescription #501,2026-10-08 06:55:36
+810,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8440,Dispensation,480,e2e_pharmacist_user,Dispensed for Prescription #502,2026-10-08 06:55:36
+811,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8380,Dispensation,481,e2e_pharmacist_user,Dispensed for Prescription #503,2026-10-08 06:55:36
+812,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9160,Dispensation,482,e2e_pharmacist_user,Dispensed for Prescription #504,2026-10-08 06:55:36
+813,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9130,Dispensation,483,e2e_pharmacist_user,Dispensed for Prescription #505,2026-10-08 06:55:36
+814,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9100,Dispensation,484,e2e_pharmacist_user,Dispensed for Prescription #506,2026-10-08 06:55:37
+815,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9070,Dispensation,485,e2e_pharmacist_user,Dispensed for Prescription #507,2026-10-08 06:55:37
+816,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8320,Dispensation,485,e2e_pharmacist_user,Dispensed for Prescription #507,2026-10-08 06:55:37
+817,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9040,Dispensation,486,e2e_pharmacist_user,Dispensed for Prescription #508,2026-10-08 06:55:37
+818,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8260,Dispensation,486,e2e_pharmacist_user,Dispensed for Prescription #508,2026-10-08 06:55:37
+819,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,9010,Dispensation,487,e2e_pharmacist_user,Dispensed for Prescription #509,2026-10-08 06:55:37
+820,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8200,Dispensation,487,e2e_pharmacist_user,Dispensed for Prescription #509,2026-10-08 06:55:37
+821,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8140,Dispensation,488,e2e_pharmacist_user,Dispensed for Prescription #510,2026-10-08 06:55:37
+822,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8080,Dispensation,489,e2e_pharmacist_user,Dispensed for Prescription #511,2026-10-08 06:55:37
+823,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,8020,Dispensation,490,e2e_pharmacist_user,Dispensed for Prescription #512,2026-10-08 06:55:37
+824,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,8980,Dispensation,491,e2e_pharmacist_user,Dispensed for Prescription #513,2026-10-08 06:55:37
+825,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,8950,Dispensation,492,e2e_pharmacist_user,Dispensed for Prescription #514,2026-10-08 06:55:37
+826,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,8920,Dispensation,493,e2e_pharmacist_user,Dispensed for Prescription #515,2026-10-08 06:55:37
+827,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,8890,Dispensation,494,e2e_pharmacist_user,Dispensed for Prescription #516,2026-10-08 06:55:37
+828,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,7960,Dispensation,494,e2e_pharmacist_user,Dispensed for Prescription #516,2026-10-08 06:55:37
+829,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,8860,Dispensation,495,e2e_pharmacist_user,Dispensed for Prescription #517,2026-10-08 06:55:37
+830,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,7900,Dispensation,495,e2e_pharmacist_user,Dispensed for Prescription #517,2026-10-08 06:55:37
+831,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-30,8830,Dispensation,496,e2e_pharmacist_user,Dispensed for Prescription #518,2026-10-08 06:55:37
+832,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,7840,Dispensation,496,e2e_pharmacist_user,Dispensed for Prescription #518,2026-10-08 06:55:37
+833,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,7780,Dispensation,497,e2e_pharmacist_user,Dispensed for Prescription #519,2026-10-08 06:55:37
+834,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,7720,Dispensation,498,e2e_pharmacist_user,Dispensed for Prescription #520,2026-10-08 06:55:37
+835,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-60,7660,Dispensation,499,e2e_pharmacist_user,Dispensed for Prescription #521,2026-10-08 06:55:37
+836,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-20,9980,Dispensation,500,e2e_pharmacist_user,Dispensed for Prescription #522,2026-10-08 06:55:37
+837,Namma Clinic Local PHC,ORS Sachet,BATCH-PHC-ORS-01,DISPENSE,-5,9995,Dispensation,500,e2e_pharmacist_user,Dispensed for Prescription #522,2026-10-08 06:55:37
+838,Namma Clinic Local PHC,Amoxicillin Trihydrate,BATCH-PHC-AMX-01,DISPENSE,-14,9986,Dispensation,501,e2e_pharmacist_user,Dispensed for Prescription #523,2026-10-08 06:55:37
+839,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-15,9965,Dispensation,501,e2e_pharmacist_user,Dispensed for Prescription #523,2026-10-08 06:55:37
+840,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-15,9950,Dispensation,502,e2e_pharmacist_user,Dispensed for Prescription #524,2026-10-08 06:55:37
+841,Namma Clinic Local PHC,ORS Sachet,BATCH-PHC-ORS-01,DISPENSE,-10,9985,Dispensation,503,e2e_pharmacist_user,Dispensed for Prescription #525,2026-10-08 06:55:37
+842,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-6,9944,Dispensation,503,e2e_pharmacist_user,Dispensed for Prescription #525,2026-10-08 06:55:37
+843,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-20,9924,Dispensation,504,e2e_pharmacist_user,Dispensed for Prescription #526,2026-10-08 06:55:37
+844,Namma Clinic Local PHC,ORS Sachet,BATCH-PHC-ORS-01,DISPENSE,-5,9980,Dispensation,504,e2e_pharmacist_user,Dispensed for Prescription #526,2026-10-08 06:55:37
+845,Namma Clinic Local PHC,Amoxicillin Trihydrate,BATCH-PHC-AMX-01,DISPENSE,-14,9972,Dispensation,505,e2e_pharmacist_user,Dispensed for Prescription #527,2026-10-08 06:55:37
+846,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-15,9909,Dispensation,505,e2e_pharmacist_user,Dispensed for Prescription #527,2026-10-08 06:55:37
+847,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-20,9889,Dispensation,506,e2e_pharmacist_user,Dispensed for Prescription #528,2026-10-08 06:55:37
+848,Namma Clinic Local PHC,ORS Sachet,BATCH-PHC-ORS-01,DISPENSE,-5,9975,Dispensation,506,e2e_pharmacist_user,Dispensed for Prescription #528,2026-10-08 06:55:37
+849,Namma Clinic Local PHC,ORS Sachet,BATCH-PHC-ORS-01,DISPENSE,-10,9965,Dispensation,507,e2e_pharmacist_user,Dispensed for Prescription #529,2026-10-08 06:55:37
+850,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-6,9883,Dispensation,507,e2e_pharmacist_user,Dispensed for Prescription #529,2026-10-08 06:55:37
+851,Namma Clinic Local PHC,Amoxicillin Trihydrate,BATCH-PHC-AMX-01,DISPENSE,-14,9958,Dispensation,508,e2e_pharmacist_user,Dispensed for Prescription #530,2026-10-08 06:55:37
+852,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-15,9868,Dispensation,508,e2e_pharmacist_user,Dispensed for Prescription #530,2026-10-08 06:55:37
+853,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-15,9853,Dispensation,509,e2e_pharmacist_user,Dispensed for Prescription #531,2026-10-08 06:55:37
+854,Namma Clinic Local PHC,ORS Sachet,BATCH-PHC-ORS-01,DISPENSE,-10,9955,Dispensation,510,e2e_pharmacist_user,Dispensed for Prescription #532,2026-10-08 06:55:37
+855,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-6,9847,Dispensation,510,e2e_pharmacist_user,Dispensed for Prescription #532,2026-10-08 06:55:37
+856,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-20,9827,Dispensation,511,e2e_pharmacist_user,Dispensed for Prescription #533,2026-10-08 06:55:37
+857,Namma Clinic Local PHC,ORS Sachet,BATCH-PHC-ORS-01,DISPENSE,-5,9950,Dispensation,511,e2e_pharmacist_user,Dispensed for Prescription #533,2026-10-08 06:55:37
+858,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-10,9817,Dispensation,512,e2e_pharmacist_user,Dispensed for Prescription #534,2026-10-08 06:55:37
+859,Namma Clinic Local PHC,Cetirizine HCl,BATCH-PHC-CTZ-01,DISPENSE,-5,9995,Dispensation,512,e2e_pharmacist_user,Dispensed for Prescription #534,2026-10-08 06:55:37
+860,Namma Clinic Local PHC,Amoxicillin Trihydrate,BATCH-PHC-AMX-01,DISPENSE,-10,9948,Dispensation,513,e2e_pharmacist_user,Dispensed for Prescription #535,2026-10-08 06:55:37
+861,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-10,9807,Dispensation,513,e2e_pharmacist_user,Dispensed for Prescription #535,2026-10-08 06:55:37
+862,Namma Clinic Local PHC,ORS Sachet,BATCH-PHC-ORS-01,DISPENSE,-3,9947,Dispensation,514,e2e_pharmacist_user,Dispensed for Prescription #536,2026-10-08 06:55:37
+863,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-14,9793,Dispensation,515,e2e_pharmacist_user,Dispensed for Prescription #537,2026-10-08 06:55:37
+864,Namma Clinic Local PHC,Cetirizine HCl,BATCH-PHC-CTZ-01,DISPENSE,-7,9988,Dispensation,516,e2e_pharmacist_user,Dispensed for Prescription #538,2026-10-08 06:55:37
+865,Namma Clinic Local PHC,Iron & Folic Acid,BAT-PHC-8-2026A,DISPENSE,-30,9970,Dispensation,517,e2e_pharmacist_user,Dispensed for Prescription #539,2026-10-08 06:55:38
+866,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-10,9783,Dispensation,518,e2e_pharmacist_user,Dispensed for Prescription #540,2026-10-08 06:55:38
+867,Namma Clinic Local PHC,Cetirizine HCl,BATCH-PHC-CTZ-01,DISPENSE,-5,9983,Dispensation,518,e2e_pharmacist_user,Dispensed for Prescription #540,2026-10-08 06:55:38
+868,Namma Clinic Local PHC,ORS Sachet,BATCH-PHC-ORS-01,DISPENSE,-3,9944,Dispensation,519,e2e_pharmacist_user,Dispensed for Prescription #541,2026-10-08 06:55:38
+869,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-14,9769,Dispensation,520,e2e_pharmacist_user,Dispensed for Prescription #542,2026-10-08 06:55:38
+870,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-10,9759,Dispensation,521,e2e_pharmacist_user,Dispensed for Prescription #543,2026-10-08 06:55:38
+871,Namma Clinic Local PHC,Cetirizine HCl,BATCH-PHC-CTZ-01,DISPENSE,-5,9978,Dispensation,521,e2e_pharmacist_user,Dispensed for Prescription #543,2026-10-08 06:55:38
+872,Namma Clinic Local PHC,Amoxicillin Trihydrate,BATCH-PHC-AMX-01,DISPENSE,-10,9938,Dispensation,522,e2e_pharmacist_user,Dispensed for Prescription #544,2026-10-08 06:55:38
+873,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-10,9749,Dispensation,522,e2e_pharmacist_user,Dispensed for Prescription #544,2026-10-08 06:55:38
+874,Namma Clinic Local PHC,Iron & Folic Acid,BAT-PHC-8-2026A,DISPENSE,-30,9940,Dispensation,523,e2e_pharmacist_user,Dispensed for Prescription #545,2026-10-08 06:55:38
+875,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-10,9739,Dispensation,524,e2e_pharmacist_user,Dispensed for Prescription #546,2026-10-08 06:55:38
+876,Namma Clinic Local PHC,Cetirizine HCl,BATCH-PHC-CTZ-01,DISPENSE,-5,9973,Dispensation,524,e2e_pharmacist_user,Dispensed for Prescription #546,2026-10-08 06:55:38
+877,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-14,9725,Dispensation,525,e2e_pharmacist_user,Dispensed for Prescription #547,2026-10-08 06:55:38
+878,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-6,9719,Dispensation,526,e2e_pharmacist_user,Dispensed for Prescription #548,2026-10-08 06:55:38
+879,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-6,9713,Dispensation,527,e2e_pharmacist_user,Dispensed for Prescription #549,2026-10-08 06:55:38
+880,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-6,9707,Dispensation,528,e2e_pharmacist_user,Dispensed for Prescription #550,2026-10-08 06:55:38
+881,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-6,9701,Dispensation,529,e2e_pharmacist_user,Dispensed for Prescription #551,2026-10-08 06:55:38
+882,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-6,9695,Dispensation,530,e2e_pharmacist_user,Dispensed for Prescription #552,2026-10-08 06:55:38
+883,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-6,9689,Dispensation,531,e2e_pharmacist_user,Dispensed for Prescription #553,2026-10-08 06:55:38
+884,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-6,9683,Dispensation,532,e2e_pharmacist_user,Dispensed for Prescription #554,2026-10-08 06:55:38
+885,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-6,9677,Dispensation,533,e2e_pharmacist_user,Dispensed for Prescription #555,2026-10-08 06:55:38
+886,Namma Clinic Local PHC,Amlodipine Besylate,BATCH-PHC-AML-01,DISPENSE,-14,8816,Dispensation,534,e2e_pharmacist_user,Dispensed for Prescription #558,2026-10-08 06:55:38
+887,Namma Clinic Local PHC,Metformin HCl,BATCH-PHC-MET-01,DISPENSE,-14,7646,Dispensation,535,e2e_pharmacist_user,Dispensed for Prescription #559,2026-10-08 06:55:38
+888,Namma Clinic Local PHC,Paracetamol,BATCH-PHC-PCM-01,DISPENSE,-14,9663,Dispensation,536,e2e_pharmacist_user,Dispensed for Prescription #560,2026-10-08 06:55:38
+889,Namma Clinic Local PHC,Amoxicillin Trihydrate,BATCH-PHC-AMX-01,DISPENSE,-14,9924,Dispensation,537,e2e_pharmacist_user,Dispensed for Prescription #561,2026-10-08 06:55:38
