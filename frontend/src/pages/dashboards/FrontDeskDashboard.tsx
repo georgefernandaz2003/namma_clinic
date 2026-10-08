@@ -9,6 +9,8 @@ import {
   UserCheck, ShieldAlert, ArrowRight, Ban
 } from 'lucide-react';
 import ErrorAlert from '../../components/common/ErrorAlert';
+import { PatientRegistrationSuccessModal } from '../../components/common/PatientRegistrationSuccessModal';
+import { hasPermission } from '../../utils/permissions';
 
 export const FrontDeskDashboard: React.FC = () => {
   const { user, activeFacility: authFacility } = useAuth();
@@ -38,6 +40,8 @@ export const FrontDeskDashboard: React.FC = () => {
   const [registering, setRegistering] = useState<boolean>(false);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [regError, setRegError] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
+  const [registeredPatient, setRegisteredPatient] = useState<Patient | null>(null);
 
   // Token Modal State
   const [showTokenModal, setShowTokenModal] = useState<boolean>(false);
@@ -127,6 +131,10 @@ export const FrontDeskDashboard: React.FC = () => {
       });
 
       const newPat = res.data;
+      const registeredWithFacility: Patient = {
+        ...newPat,
+        facility_name: newPat.facility_name || activeFacility.facility_name
+      };
       setSuccessMsg(`Patient '${newPat.name}' registered successfully! Assigned Patient ID: ${newPat.patient_id}`);
       setShowRegisterModal(false);
       setRegError(null);
@@ -136,6 +144,11 @@ export const FrontDeskDashboard: React.FC = () => {
       setRegAddress('');
       setRegAbhaId('');
       setDuplicateWarning(null);
+
+      // Trigger dedicated confirmation popup
+      setRegisteredPatient(registeredWithFacility);
+      setShowSuccessModal(true);
+
       await loadDashboardData(true);
     } catch (err: any) {
       let msg = 'Failed to register patient.';
@@ -161,6 +174,24 @@ export const FrontDeskDashboard: React.FC = () => {
     } finally {
       setRegistering(false);
     }
+  };
+
+  const handleConfirmIssueTokenFromModal = async (patient: Patient) => {
+    if (!activeFacility) {
+      throw new Error('Operational facility context is required.');
+    }
+    const res = await api.post('v1/visits/', {
+      patient: patient.id,
+      facility: activeFacility.id,
+      visit_type: 'GENERAL_OPD',
+      priority: 'NORMAL',
+      chief_complaint: ''
+    });
+    const newVisit = res.data;
+    const tokenNum = newVisit.token_details?.token_number || newVisit.token_number || newVisit.id;
+    setSuccessMsg(`OPD Token #${tokenNum} created successfully for ${patient.name}! Added to live front desk queue.`);
+    await loadDashboardData(true);
+    return newVisit;
   };
 
   const handleIssueToken = async (e: React.FormEvent) => {
@@ -694,6 +725,29 @@ export const FrontDeskDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Patient Registration Confirmation & OPD Token Modal */}
+      <PatientRegistrationSuccessModal
+        isOpen={showSuccessModal}
+        patient={registeredPatient}
+        canIssueToken={hasPermission(user?.role, 'queue.create')}
+        onConfirmIssueToken={handleConfirmIssueTokenFromModal}
+        onClose={() => {
+          setShowSuccessModal(false);
+          setRegisteredPatient(null);
+          loadDashboardData(true);
+        }}
+        onViewPatient={(p) => {
+          setShowSuccessModal(false);
+          setRegisteredPatient(null);
+          navigate(`/patients/${p.id}`);
+        }}
+        onNavigateQueue={() => {
+          setShowSuccessModal(false);
+          setRegisteredPatient(null);
+          navigate('/queue');
+        }}
+      />
     </div>
   );
 };

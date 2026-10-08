@@ -221,8 +221,61 @@ def run_validation():
         page.locator('button:has-text("Cancel")').first.click()
         log("STEP 11", "Cancelled duplicate registration modal.")
 
+        # 12. Validate Front Desk Dashboard (/dashboard/front-desk) registration & confirmation popup
+        log("STEP 12", f"Navigating to Front Desk Dashboard {BASE_URL}/dashboard/front-desk...")
+        page.goto(f"{BASE_URL}/dashboard/front-desk")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('text=Front Desk Console', timeout=10000)
+
+        log("STEP 12", "Opening 'Register New Patient' on Front Desk Console...")
+        reg_fd_btn = page.locator('button:has-text("Register New Patient")').first
+        reg_fd_btn.click()
+        page.wait_for_selector('h2:has-text("Patient Front-Desk Registration")', timeout=5000)
+
+        ts3 = int(time.time()) + 2
+        patient3_name = f"Sunitha Devi {ts3 % 10000}"
+        patient3_mobile = f"99666{str(ts3 % 100000).zfill(5)}"
+        log("STEP 12", f"Filling patient registration form on Front Desk for {patient3_name} ({patient3_mobile})...")
+
+        page.fill('input[placeholder="e.g. Ramesh Kumar"]', patient3_name)
+        page.fill('input[placeholder="e.g. 35"]', "32")
+        page.select_option('select:has-text("Male")', "FEMALE")
+        page.fill('input[placeholder="10-digit mobile number"]', patient3_mobile)
+        page.fill('input[placeholder="Ward/Street/Area"]', "88 Subhash Nagar")
+
+        page.locator('form button[type="submit"]').click()
+
+        # Verify confirmation modal appears on Front Desk Dashboard
+        log("STEP 12", "Waiting for confirmation modal on Front Desk Console...")
+        page.wait_for_selector('[data-testid="patient-registration-success-modal"]', timeout=10000)
+        assert page.locator('[data-testid="patient-registration-success-modal"]').is_visible(), "Confirmation modal must appear on Front Desk Console!"
+
+        disp3_name = page.locator('[data-testid="registered-patient-name"]').inner_text().strip()
+        assert disp3_name == patient3_name, f"Expected {patient3_name}, got {disp3_name}"
+        log("STEP 12", f"Confirmed modal details on Front Desk Console for {patient3_name}.")
+
+        # Confirm OPD Token creation from modal on Front Desk Console
+        confirm_btn_fd = page.locator('[data-testid="confirm-issue-token-button"]')
+        assert confirm_btn_fd.is_visible(), "Confirm & Create OPD Token button must be visible on Front Desk Console!"
+        confirm_btn_fd.click()
+
+        page.wait_for_selector('[data-testid="token-issued-success"]', timeout=10000)
+        token3_text = page.locator('[data-testid="issued-token-number"]').inner_text().strip()
+        log("STEP 12", f"OPD Token created from Front Desk Console modal: {token3_text}")
+        assert "Token #" in token3_text
+
+        # Verify in DB
+        db_p3, db_v3, db_t3 = verify_database(patient3_name, patient3_mobile)
+        assert str(db_t3.token_number) in token3_text
+        log("STEP 12", f"Database verified for Front Desk Console registration: Visit {db_v3.visit_id}, Token #{db_t3.token_number}")
+
+        # Close modal
+        page.locator('[data-testid="close-confirmation-button"]').click()
+        page.wait_for_timeout(1000)
+        assert not page.locator('[data-testid="patient-registration-success-modal"]').is_visible()
+
         browser.close()
-        log("SUCCESS", "ALL BROWSER & DATABASE VALIDATION CHECKS (CONFIRMATION, OPD TOKEN CREATION, QUEUE NAVIGATION, DB RECORD) PASSED PERFECTLY!")
+        log("SUCCESS", "ALL BROWSER & DATABASE VALIDATION CHECKS (CONFIRMATION, OPD TOKEN CREATION, QUEUE NAVIGATION, DB RECORD) PASSED ON BOTH PATIENTS DIRECTORY AND FRONT DESK DASHBOARD!")
 
 if __name__ == "__main__":
     run_validation()
