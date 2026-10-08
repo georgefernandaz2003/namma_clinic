@@ -13,6 +13,8 @@ export type TrendDirection =
 export type ForecastStatus = 'AVAILABLE' | 'INSUFFICIENT_DATA';
 export type SeasonalStatus = 'DETECTED' | 'WEAK' | 'NOT_ENOUGH_DATA';
 
+export type PatientTypeFilter = 'NEW' | 'FOLLOW_UP';
+
 export interface IntelligenceFilterParams {
   facility?: number | string;
   district?: number | string;
@@ -21,6 +23,11 @@ export interface IntelligenceFilterParams {
   days?: number;
   weeks?: number;
   months?: number;
+  age_group?: string;
+  gender?: string;
+  severity?: string;
+  vulnerable_group?: string;
+  patient_type?: PatientTypeFilter | string;
 }
 
 export interface SummaryKPIs {

@@ -39,6 +39,21 @@ const cleanParams = (params?: IntelligenceFilterParams): Record<string, string |
   if (params.months !== undefined) {
     result.months = params.months;
   }
+  if (params.age_group && params.age_group.trim() !== '') {
+    result.age_group = params.age_group.trim();
+  }
+  if (params.gender && params.gender.trim() !== '') {
+    result.gender = params.gender.trim();
+  }
+  if (params.severity && params.severity.trim() !== '') {
+    result.severity = params.severity.trim();
+  }
+  if (params.vulnerable_group && params.vulnerable_group.trim() !== '') {
+    result.vulnerable_group = params.vulnerable_group.trim();
+  }
+  if (params.patient_type && params.patient_type.trim() !== '') {
+    result.patient_type = params.patient_type.trim();
+  }
 
   return result;
 };

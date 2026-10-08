@@ -11,7 +11,12 @@ from rest_framework.response import Response
 from rest_framework import permissions, status
 
 from apps.accounts.permissions import HasPermission
-from apps.surveillance.demographic_services import validate_demographic_params
+from apps.surveillance.demographic_services import (
+    validate_demographic_params,
+    validate_severity_param,
+)
+from apps.surveillance.vulnerable_population_services import validate_vulnerable_group_param
+from apps.surveillance.patient_type_services import validate_patient_type_param
 from apps.surveillance.intelligence_services import resolve_facility_scope
 from apps.surveillance.intelligence_forecast_services import (
     generate_forecast_summary,
@@ -85,6 +90,24 @@ class BaseForecastView(APIView):
         if err_demo:
             return None, Response({'error': err_demo}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Validate severity parameter
+        severity = request.query_params.get('severity')
+        clean_sev, err_sev = validate_severity_param(severity)
+        if err_sev:
+            return None, Response({'error': err_sev}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate vulnerable_group parameter
+        vulnerable_group = request.query_params.get('vulnerable_group')
+        clean_vg, err_vg = validate_vulnerable_group_param(vulnerable_group)
+        if err_vg:
+            return None, Response({'error': err_vg}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate patient_type parameter
+        patient_type = request.query_params.get('patient_type')
+        clean_pt, err_pt = validate_patient_type_param(patient_type)
+        if err_pt:
+            return None, Response({'error': err_pt}, status=status.HTTP_400_BAD_REQUEST)
+
         return {
             'facility': fac_id,
             'district': dist_id,
@@ -94,6 +117,9 @@ class BaseForecastView(APIView):
             'months_count': months_count,
             'age_group': clean_ag,
             'gender': clean_g,
+            'severity': clean_sev,
+            'vulnerable_group': clean_vg,
+            'patient_type': clean_pt,
         }, None
 
 
@@ -102,7 +128,7 @@ class PublicHealthForecastView(BaseForecastView):
     1. Disease Forecasting Endpoint
     Returns continuous weekly time series, Step 1 trend indicator,
     and Weighted Moving Average forecast with confidence bounds.
-    Supports optional age_group and gender demographic filtering.
+    Supports optional demographic, severity, vulnerable_group, and patient_type filtering.
     """
     def get(self, request):
         fac_id = request.query_params.get('facility')
@@ -134,7 +160,10 @@ class PublicHealthForecastView(BaseForecastView):
             months_count=params['months_count'],
             user=request.user,
             age_group=params['age_group'],
-            gender=params['gender']
+            gender=params['gender'],
+            severity=params['severity'],
+            vulnerable_group=params['vulnerable_group'],
+            patient_type=params['patient_type']
         )
 
         if not data.get('is_authorized', True):
@@ -148,7 +177,7 @@ class PublicHealthSeasonalityView(BaseForecastView):
     2. Seasonal Pattern Analysis Endpoint
     Returns monthly case distribution, highest/lowest case months,
     strongest historical periods, and seasonal strength index.
-    Supports optional age_group and gender demographic filtering.
+    Supports optional demographic, severity, vulnerable_group, and patient_type filtering.
     """
     def get(self, request):
         fac_id = request.query_params.get('facility')
@@ -174,7 +203,10 @@ class PublicHealthSeasonalityView(BaseForecastView):
             as_of_date=params['as_of_date'],
             months_count=params['months_count'],
             age_group=params['age_group'],
-            gender=params['gender']
+            gender=params['gender'],
+            severity=params['severity'],
+            vulnerable_group=params['vulnerable_group'],
+            patient_type=params['patient_type']
         )
 
         return Response(data)

@@ -88,6 +88,19 @@ from apps.surveillance.vulnerable_population_services import (
     filter_cases_by_vulnerable_group,
     build_vulnerable_population_matrices,
 )
+from apps.surveillance.patient_type_services import (
+    PATIENT_TYPE_NEW,
+    PATIENT_TYPE_FOLLOW_UP,
+    PATIENT_TYPE_UNKNOWN,
+    VALID_PATIENT_TYPES,
+    ALL_PATIENT_TYPES,
+    normalize_patient_type,
+    validate_patient_type_param,
+    annotate_case_patient_type,
+    get_case_patient_type,
+    filter_cases_by_patient_type,
+    build_patient_type_matrices,
+)
 
 User = get_user_model()
 
@@ -3325,5 +3338,766 @@ class PublicHealthVulnerablePopulationTestCase(TestCase):
     test_24_query_efficiency_no_n_plus_one = test_query_efficiency_no_n_plus_one
 
 
+# ===========================================================================
+# PROMPT 6: Patient Type Analysis Test Suite
+# ===========================================================================
 
+class PublicHealthPatientTypeTestCase(TestCase):
+    """
+    Comprehensive test suite for Prompt 6: Patient Type Analysis.
+    Implements all 36 required scenarios:
+    1. Patient type classification — first case is NEW.
+    2. Subsequent case is FOLLOW_UP.
+    3. Historical classification respects each case's report_date.
+    4. Future cases do not affect earlier classification.
+    5. Patient type validation.
+    6. NEW filtering works.
+    7. FOLLOW_UP filtering works.
+    8. Invalid patient_type returns 400.
+    9. UNKNOWN cannot be used as a filter.
+    10. Disease + patient_type.
+    11. Patient type + age_group.
+    12. Patient type + gender.
+    13. Patient type + age_group + gender.
+    14. Patient type + severity.
+    15. Patient type + vulnerable_group.
+    16. Patient type + all demographic/severity/vulnerability filters.
+    17. Historical patient-type counts.
+    18. Monthly patient-type trends.
+    19. Patient type + age matrix.
+    20. Patient type + gender matrix.
+    21. Patient type + age/gender matrix.
+    22. Patient type + severity matrix.
+    23. Patient type + vulnerability matrix.
+    24. Trends endpoint coverage.
+    25. Locality endpoint coverage.
+    26. Hospital aggregation coverage.
+    27. District aggregation coverage.
+    28. Summary endpoint coverage.
+    29. Forecast endpoint coverage.
+    30. Seasonality endpoint coverage.
+    31. Hospital Admin facility authorization remains 403 cross-facility.
+    32. District Officer district authorization remains 403 cross-district.
+    33. No patient_type filter preserves existing behavior.
+    34. Patient type filter is never silently ignored.
+    35. Missing/insufficient history produces UNKNOWN.
+    36. Query efficiency / no N+1.
+    """
 
+    @classmethod
+    def setUpTestData(cls):
+        # Geography
+        cls.state = State.objects.create(name='Karnataka', code='KA')
+        cls.district_central = District.objects.create(state=cls.state, name='BBMP Central', code='KA-CEN')
+        cls.district_rural = District.objects.create(state=cls.state, name='Bengaluru Rural', code='KA-RUR')
+
+        cls.zone_central = Zone.objects.create(district=cls.district_central, name='Central Zone', code='Z-CEN')
+        cls.zone_rural = Zone.objects.create(district=cls.district_rural, name='Rural Zone', code='Z-RUR')
+
+        cls.ward_c1 = Ward.objects.create(zone=cls.zone_central, ward_number=101, name='Indiranagar', population=25000)
+        cls.ward_r1 = Ward.objects.create(zone=cls.zone_rural, ward_number=201, name='Varthur', population=18000)
+
+        # Facilities
+        cls.fac_c1 = Facility.objects.create(
+            facility_code='HOSP-PT1', facility_name='Bowring Hospital', facility_type='MAIN_HOSPITAL',
+            district=cls.district_central, ward=cls.ward_c1, state=cls.state
+        )
+        cls.fac_c2 = Facility.objects.create(
+            facility_code='CLINIC-PT2', facility_name='Indiranagar Urban Health Centre', facility_type='NAMMA_CLINIC',
+            district=cls.district_central, ward=cls.ward_c1, state=cls.state
+        )
+        cls.fac_r1 = Facility.objects.create(
+            facility_code='RURAL-PT1', facility_name='Varthur Community Health Centre', facility_type='RURAL_CLINIC',
+            district=cls.district_rural, ward=cls.ward_r1, state=cls.state
+        )
+
+        # Users
+        cls.admin_c1 = User.objects.create_user(
+            username='pt_admin_c1', password='Password123!', role='HOSPITAL_ADMIN',
+            assigned_facility=cls.fac_c1
+        )
+        cls.officer_c = User.objects.create_user(
+            username='pt_officer_c', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_central
+        )
+        cls.officer_r = User.objects.create_user(
+            username='pt_officer_r', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_rural
+        )
+
+        # Reference date: 2026-10-04 (6-month historical window: 2026-05-01 to 2026-10-31)
+        cls.as_of = datetime.date(2026, 10, 4)
+
+        # Deterministic Patients
+        # P1: Adult Male with multiple longitudinal visits
+        cls.p_male_adult = Patient.objects.create(
+            patient_id='PT-01', name='Adult Male Patient',
+            date_of_birth=datetime.date(1996, 5, 15), age=30, gender='MALE',
+            vulnerability_information='Slum Resident / Low Income Group',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # P2: Young Pregnant Female with multiple visits
+        cls.p_female_pregnant = Patient.objects.create(
+            patient_id='PT-02', name='Pregnant Female Patient',
+            date_of_birth=datetime.date(2006, 5, 15), age=20, gender='FEMALE',
+            vulnerability_information='Pregnant Woman',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # P3: Elderly Senior Male (60+)
+        cls.p_elderly = Patient.objects.create(
+            patient_id='PT-03', name='Elderly Senior Male',
+            date_of_birth=datetime.date(1956, 5, 15), age=70, gender='MALE',
+            vulnerability_information='Elderly Person',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # P4: Infant Female Child (0-5)
+        cls.p_child = Patient.objects.create(
+            patient_id='PT-04', name='Infant Child Girl',
+            date_of_birth=datetime.date(2024, 5, 15), age=2, gender='FEMALE',
+            vulnerability_information='Slum Resident / Low Income Group',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # P5: School Child Other (6-14, OTHER gender, Disability)
+        cls.p_youth = Patient.objects.create(
+            patient_id='PT-05', name='School Child Other',
+            date_of_birth=datetime.date(2016, 5, 15), age=10, gender='OTHER',
+            vulnerability_information='Person with Disability (PwD)',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # P6: Middle Aged Female (45-59, Chronic Condition)
+        cls.p_middle = Patient.objects.create(
+            patient_id='PT-06', name='Middle Aged Female',
+            date_of_birth=datetime.date(1976, 5, 15), age=50, gender='FEMALE',
+            vulnerability_information='Hypertension / Diabetic comorbidity',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # P7: Rural Patient
+        cls.p_rural = Patient.objects.create(
+            patient_id='PT-07', name='Rural Community Patient',
+            date_of_birth=datetime.date(1995, 1, 1), age=31, gender='FEMALE',
+            vulnerability_information='Slum Resident / Low Income Group',
+            district=cls.district_rural, ward=cls.ward_r1, registered_at_facility=cls.fac_r1
+        )
+
+        # -------------------------------------------------------------------
+        # Disease Cases at fac_c1 (May 2026 to October 2026)
+        # -------------------------------------------------------------------
+        # May 2026: Case 1 -> P1 (MALE, 25-44, MILD, LOW_INCOME_SLUM) -> NEW
+        cls.c_may_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_male_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 5, 10), severity='MILD'
+        )
+
+        # June 2026: Case 2 -> P2 (FEMALE, 15-24, SEVERE, PREGNANT) -> NEW
+        cls.c_jun_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_female_pregnant, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 6, 12), severity='SEVERE'
+        )
+
+        # July 2026:
+        # Case 3 -> P1 (MALE, 25-44, SEVERE, LOW_INCOME_SLUM) -> FOLLOW_UP (prior case on 2026-05-10)
+        cls.c_jul_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_male_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 7, 15), severity='SEVERE'
+        )
+        # Case 4 -> P3 (MALE, 60+, MODERATE, ELDERLY) -> NEW
+        cls.c_jul_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_elderly, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 7, 20), severity='MODERATE'
+        )
+
+        # August 2026:
+        # Case 5 -> P2 (FEMALE, 15-24, SEVERE, PREGNANT) -> FOLLOW_UP (prior case on 2026-06-12)
+        cls.c_aug_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_female_pregnant, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 8, 10), severity='SEVERE'
+        )
+        # Case 6 -> P4 (FEMALE, 0-5, MILD, LOW_INCOME_SLUM) -> NEW
+        cls.c_aug_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_child, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 8, 25), severity='MILD'
+        )
+
+        # September 2026:
+        # Case 7 -> P5 (OTHER, 6-14, MILD, MIGRANT_WORKER) -> NEW
+        cls.c_sep_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_youth, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 9, 5), severity='MILD'
+        )
+        # Case 8 -> P1 (MALE, 25-44, MODERATE, LOW_INCOME_SLUM) -> FOLLOW_UP (prior cases on 2026-05-10, 2026-07-15)
+        cls.c_sep_2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_male_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 9, 20), severity='MODERATE'
+        )
+
+        # October 2026:
+        # Case 9 -> P6 (FEMALE, 45-59, MILD, CHRONIC_CONDITION) -> NEW
+        cls.c_oct_1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_middle, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 10, 1), severity='MILD'
+        )
+
+        # Cross-facility case (same central district)
+        cls.c_fac_c2_dengue = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_female_pregnant, facility=cls.fac_c2,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 9, 15), severity='MILD'
+        )
+
+        # Cross-disease case (Malaria at fac_c1)
+        cls.c_malaria = DiseaseCase.objects.create(
+            disease_name='Malaria', patient=cls.p_male_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 9, 18), severity='MILD'
+        )
+
+        # Cross-district case (Rural Dengue at fac_r1)
+        cls.c_rural_dengue = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_rural, facility=cls.fac_r1,
+            ward=cls.ward_r1, report_date=datetime.date(2026, 9, 15), severity='MILD'
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin_c1)
+
+    # 1. Patient type classification — first case is NEW
+    def test_01_classification_first_case_is_new(self):
+        """
+        Verify that a patient's first recorded clinical case in the available system history is NEW.
+        """
+        pt = get_case_patient_type(self.c_may_1)
+        self.assertEqual(pt, PATIENT_TYPE_NEW)
+
+    # 2. Subsequent case is FOLLOW_UP
+    def test_02_classification_subsequent_case_is_follow_up(self):
+        """
+        Verify that a subsequent clinical case for the same patient before the case report_date is FOLLOW_UP.
+        """
+        pt_jul = get_case_patient_type(self.c_jul_1)
+        self.assertEqual(pt_jul, PATIENT_TYPE_FOLLOW_UP)
+        pt_sep = get_case_patient_type(self.c_sep_2)
+        self.assertEqual(pt_sep, PATIENT_TYPE_FOLLOW_UP)
+
+    # 3. Historical classification respects each case's report_date
+    def test_03_historical_classification_respects_case_report_date(self):
+        """
+        Classification is evaluated point-in-time relative to each case's own report_date.
+        On 2026-05-10, P1 has no prior case -> NEW.
+        On 2026-07-15, P1 has a prior case (May 10) -> FOLLOW_UP.
+        """
+        pt_may = get_case_patient_type(self.c_may_1)
+        pt_jul = get_case_patient_type(self.c_jul_1)
+        self.assertEqual(pt_may, PATIENT_TYPE_NEW)
+        self.assertEqual(pt_jul, PATIENT_TYPE_FOLLOW_UP)
+
+    # 4. Future cases do not affect earlier classification
+    def test_04_future_cases_do_not_affect_earlier_classification(self):
+        """
+        P1 has cases on 2026-05-10, 2026-07-15, and 2026-09-20.
+        When evaluated, the 2026-05-10 case must remain NEW regardless of future records.
+        """
+        pt_first = get_case_patient_type(self.c_may_1)
+        self.assertEqual(pt_first, PATIENT_TYPE_NEW)
+        # Add another future case in November 2026
+        future_case = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=self.p_male_adult, facility=self.fac_c1,
+            ward=self.ward_c1, report_date=datetime.date(2026, 11, 15), severity='MILD'
+        )
+        self.assertEqual(get_case_patient_type(self.c_may_1), PATIENT_TYPE_NEW)
+        self.assertEqual(get_case_patient_type(future_case), PATIENT_TYPE_FOLLOW_UP)
+        future_case.delete()
+
+    # 5. Patient type validation
+    def test_05_patient_type_validation(self):
+        """
+        Validates:
+        - NEW -> ('NEW', None)
+        - FOLLOW_UP -> ('FOLLOW_UP', None)
+        - FOLLOWUP -> ('FOLLOW_UP', None)
+        - None / empty -> (None, None)
+        - UNKNOWN -> returns error message (rejected)
+        - Invalid string -> returns error message
+        """
+        clean, err = validate_patient_type_param('NEW')
+        self.assertEqual(clean, 'NEW')
+        self.assertIsNone(err)
+
+        clean, err = validate_patient_type_param('FOLLOW_UP')
+        self.assertEqual(clean, 'FOLLOW_UP')
+        self.assertIsNone(err)
+
+        clean, err = validate_patient_type_param('FOLLOWUP')
+        self.assertEqual(clean, 'FOLLOW_UP')
+        self.assertIsNone(err)
+
+        clean, err = validate_patient_type_param(None)
+        self.assertIsNone(clean)
+        self.assertIsNone(err)
+
+        clean, err = validate_patient_type_param('UNKNOWN')
+        self.assertIsNone(clean)
+        self.assertIsNotNone(err)
+
+        clean, err = validate_patient_type_param('INVALID_TYPE')
+        self.assertIsNone(clean)
+        self.assertIsNotNone(err)
+
+    # 6. NEW filtering works
+    def test_06_new_filtering_works(self):
+        """
+        patient_type=NEW filters strictly to NEW cases (6 cases at fac_c1).
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&patient_type=NEW&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 6)
+
+    # 7. FOLLOW_UP filtering works
+    def test_07_follow_up_filtering_works(self):
+        """
+        patient_type=FOLLOW_UP filters strictly to FOLLOW_UP cases (3 cases at fac_c1).
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&patient_type=FOLLOW_UP&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 3)
+
+    # 8. Invalid patient_type returns 400
+    def test_08_invalid_patient_type_returns_400(self):
+        """
+        Supplying an unsupported patient_type parameter returns HTTP 400 Bad Request.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&patient_type=INVALID_VAL&date={self.as_of}")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', res.data)
+
+    # 9. UNKNOWN cannot be used as a filter
+    def test_09_unknown_cannot_be_used_as_filter(self):
+        """
+        patient_type=UNKNOWN must NOT be accepted as a filter value and returns HTTP 400.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&patient_type=UNKNOWN&date={self.as_of}")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', res.data)
+
+    # 10. Disease + patient_type
+    def test_10_disease_plus_patient_type(self):
+        """
+        disease=Dengue&patient_type=NEW returns only Dengue cases that are NEW,
+        excluding Malaria cases.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&patient_type=NEW&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 6)
+        self.assertEqual(res.data['disease'], 'Dengue')
+
+    # 11. Patient type + age_group
+    def test_11_patient_type_plus_age_group(self):
+        """
+        patient_type=FOLLOW_UP&age_group=25-44 applies AND logic (P1 cases in Jul and Sep = 2).
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&patient_type=FOLLOW_UP&age_group=25-44&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 2)
+
+    # 12. Patient type + gender
+    def test_12_patient_type_plus_gender(self):
+        """
+        patient_type=NEW&gender=FEMALE applies AND logic (P2 Jun, P4 Aug, P6 Oct = 3 cases).
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&patient_type=NEW&gender=FEMALE&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 3)
+
+    # 13. Patient type + age_group + gender
+    def test_13_patient_type_plus_age_group_plus_gender(self):
+        """
+        patient_type=NEW&age_group=15-24&gender=FEMALE applies AND logic (P2 Jun = 1 case).
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(
+            f"{url}?disease=Dengue&patient_type=NEW&age_group=15-24&gender=FEMALE&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 1)
+
+    # 14. Patient type + severity
+    def test_14_patient_type_plus_severity(self):
+        """
+        patient_type=NEW&severity=SEVERE matches only NEW + SEVERE (P2 Jun = 1 case).
+        patient_type=FOLLOW_UP&severity=SEVERE matches (P1 Jul, P2 Aug = 2 cases).
+        """
+        url = reverse('intelligence_historical_disease')
+        res_new = self.client.get(f"{url}?disease=Dengue&patient_type=NEW&severity=SEVERE&date={self.as_of}&months=6")
+        self.assertEqual(res_new.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_new.data['total_cases_in_history'], 1)
+
+        res_fu = self.client.get(f"{url}?disease=Dengue&patient_type=FOLLOW_UP&severity=SEVERE&date={self.as_of}&months=6")
+        self.assertEqual(res_fu.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_fu.data['total_cases_in_history'], 2)
+
+    # 15. Patient type + vulnerable_group
+    def test_15_patient_type_plus_vulnerable_group(self):
+        """
+        patient_type=FOLLOW_UP&vulnerable_group=PREGNANT matches P2 Aug case = 1.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(
+            f"{url}?disease=Dengue&patient_type=FOLLOW_UP&vulnerable_group=PREGNANT&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 1)
+
+    # 16. Patient type + all demographic/severity/vulnerability filters
+    def test_16_patient_type_plus_all_filters(self):
+        """
+        Dengue + NEW + 15-24 + FEMALE + SEVERE + PREGNANT = 1 case (P2 Jun).
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(
+            f"{url}?disease=Dengue&patient_type=NEW&age_group=15-24&gender=FEMALE&severity=SEVERE&vulnerable_group=PREGNANT&date={self.as_of}&months=6"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 1)
+
+    # 17. Historical patient-type counts
+    def test_17_historical_patient_type_counts(self):
+        """
+        Verify historical_patient_type dict has NEW=6, FOLLOW_UP=3, summing to 9.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('historical_patient_type', res.data)
+        hpt = res.data['historical_patient_type']
+        self.assertEqual(hpt['NEW'], 6)
+        self.assertEqual(hpt['FOLLOW_UP'], 3)
+        self.assertEqual(hpt['NEW'] + hpt['FOLLOW_UP'], res.data['total_cases_in_history'])
+
+    # 18. Monthly patient-type trends
+    def test_18_monthly_patient_type_trends(self):
+        """
+        Verify monthly_patient_type_trends contains 6 monthly records,
+        and each month's NEW + FOLLOW_UP equals total_cases.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('monthly_patient_type_trends', res.data)
+        m_trends = res.data['monthly_patient_type_trends']
+        self.assertEqual(len(m_trends), 6)
+
+        trend_map = {t['month']: t for t in m_trends}
+        # May: 1 NEW, 0 FOLLOW_UP
+        self.assertEqual(trend_map['2026-05']['NEW'], 1)
+        self.assertEqual(trend_map['2026-05']['FOLLOW_UP'], 0)
+        # July: 1 NEW (P3), 1 FOLLOW_UP (P1)
+        self.assertEqual(trend_map['2026-07']['NEW'], 1)
+        self.assertEqual(trend_map['2026-07']['FOLLOW_UP'], 1)
+        # August: 1 NEW (P4), 1 FOLLOW_UP (P2)
+        self.assertEqual(trend_map['2026-08']['NEW'], 1)
+        self.assertEqual(trend_map['2026-08']['FOLLOW_UP'], 1)
+
+        for t in m_trends:
+            self.assertEqual(t['NEW'] + t['FOLLOW_UP'], t['total_cases'])
+
+    # 19. Patient type + age matrix
+    def test_19_patient_type_age_groups_matrix(self):
+        """
+        Verify patient_type_age_groups matrix accurately captures NEW and FOLLOW_UP counts per age group.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('patient_type_age_groups', res.data)
+        matrix = res.data['patient_type_age_groups']
+        self.assertEqual(matrix['NEW']['0-5'], 1)
+        self.assertEqual(matrix['NEW']['6-14'], 1)
+        self.assertEqual(matrix['NEW']['15-24'], 1)
+        self.assertEqual(matrix['NEW']['25-44'], 1)
+        self.assertEqual(matrix['NEW']['45-59'], 1)
+        self.assertEqual(matrix['NEW']['60+'], 1)
+
+        self.assertEqual(matrix['FOLLOW_UP']['15-24'], 1)
+        self.assertEqual(matrix['FOLLOW_UP']['25-44'], 2)
+        self.assertEqual(matrix['FOLLOW_UP']['0-5'], 0)
+
+    # 20. Patient type + gender matrix
+    def test_20_patient_type_gender_matrix(self):
+        """
+        Verify patient_type_gender matrix captures NEW and FOLLOW_UP counts per gender.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('patient_type_gender', res.data)
+        matrix = res.data['patient_type_gender']
+        self.assertEqual(matrix['NEW']['MALE'], 2)
+        self.assertEqual(matrix['NEW']['FEMALE'], 3)
+        self.assertEqual(matrix['NEW']['OTHER'], 1)
+
+        self.assertEqual(matrix['FOLLOW_UP']['MALE'], 2)
+        self.assertEqual(matrix['FOLLOW_UP']['FEMALE'], 1)
+        self.assertEqual(matrix['FOLLOW_UP']['OTHER'], 0)
+
+    # 21. Patient type + age/gender matrix
+    def test_21_patient_type_age_gender_matrix(self):
+        """
+        Verify patient_type_age_gender 3D cross-tabulation.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('patient_type_age_gender', res.data)
+        matrix = res.data['patient_type_age_gender']
+        self.assertEqual(matrix['NEW']['15-24']['FEMALE'], 1)
+        self.assertEqual(matrix['NEW']['25-44']['MALE'], 1)
+        self.assertEqual(matrix['NEW']['60+']['MALE'], 1)
+        self.assertEqual(matrix['FOLLOW_UP']['25-44']['MALE'], 2)
+        self.assertEqual(matrix['FOLLOW_UP']['15-24']['FEMALE'], 1)
+
+    # 22. Patient type + severity matrix
+    def test_22_patient_type_severity_matrix(self):
+        """
+        Verify patient_type_severity cross-tabulation.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('patient_type_severity', res.data)
+        matrix = res.data['patient_type_severity']
+        self.assertEqual(matrix['NEW']['MILD'], 4)
+        self.assertEqual(matrix['NEW']['MODERATE'], 1)
+        self.assertEqual(matrix['NEW']['SEVERE'], 1)
+
+        self.assertEqual(matrix['FOLLOW_UP']['MILD'], 0)
+        self.assertEqual(matrix['FOLLOW_UP']['MODERATE'], 1)
+        self.assertEqual(matrix['FOLLOW_UP']['SEVERE'], 2)
+
+    # 23. Patient type + vulnerability matrix
+    def test_23_patient_type_vulnerability_matrix(self):
+        """
+        Verify patient_type_vulnerable_groups and patient_type_age_gender_vulnerability cross-tabulations.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.assertIn('patient_type_vulnerable_groups', res.data)
+        matrix = res.data['patient_type_vulnerable_groups']
+        self.assertEqual(matrix['NEW']['LOW_INCOME_SLUM'], 2)
+        self.assertEqual(matrix['NEW']['PREGNANT'], 1)
+        self.assertEqual(matrix['NEW']['ELDERLY'], 1)
+        self.assertEqual(matrix['NEW']['DISABILITY'], 1)
+        self.assertEqual(matrix['NEW']['CHRONIC_CONDITION'], 1)
+
+        self.assertEqual(matrix['FOLLOW_UP']['LOW_INCOME_SLUM'], 2)
+        self.assertEqual(matrix['FOLLOW_UP']['PREGNANT'], 1)
+
+        self.assertIn('patient_type_age_gender_vulnerability', res.data)
+
+    # 24. Trends endpoint coverage
+    def test_24_trends_endpoint_coverage(self):
+        """
+        Verifies /surveillance/intelligence/disease-trends/?patient_type=NEW filters appropriately.
+        """
+        url = reverse('intelligence_disease_trends')
+        res = self.client.get(f"{url}?disease=Dengue&patient_type=NEW&date={self.as_of}&days=30")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('disease_trends', res.data)
+
+        # Invalid patient_type on trends returns 400
+        res_bad = self.client.get(f"{url}?patient_type=INVALID_VAL")
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 25. Locality endpoint coverage
+    def test_25_locality_endpoint_coverage(self):
+        """
+        Verifies /surveillance/intelligence/disease-by-locality/?patient_type=NEW filters appropriately.
+        """
+        url = reverse('intelligence_disease_by_locality')
+        res = self.client.get(f"{url}?disease=Dengue&patient_type=NEW&date={self.as_of}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('locality_aggregations', res.data)
+
+        res_bad = self.client.get(f"{url}?patient_type=INVALID_VAL")
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 26. Hospital aggregation coverage
+    def test_26_hospital_aggregation_coverage(self):
+        """
+        Verifies /surveillance/intelligence/hospital-aggregation/?patient_type=NEW works for assigned hospital.
+        """
+        url = reverse('intelligence_hospital_aggregation')
+        res = self.client.get(f"{url}?facility={self.fac_c1.id}&patient_type=NEW&date={self.as_of}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('hospital', res.data)
+
+        res_bad = self.client.get(f"{url}?facility={self.fac_c1.id}&patient_type=INVALID_VAL")
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 27. District aggregation coverage
+    def test_27_district_aggregation_coverage(self):
+        """
+        Verifies /surveillance/intelligence/district-aggregation/?patient_type=NEW works for District Officer.
+        """
+        self.client.force_authenticate(user=self.officer_c)
+        url = reverse('intelligence_district_aggregation')
+        res = self.client.get(f"{url}?district={self.district_central.id}&patient_type=NEW&date={self.as_of}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('district', res.data)
+
+        res_bad = self.client.get(f"{url}?district={self.district_central.id}&patient_type=INVALID_VAL")
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 28. Summary endpoint coverage
+    def test_28_summary_endpoint_coverage(self):
+        """
+        Verifies /surveillance/intelligence/summary/?patient_type=NEW filters summary data.
+        """
+        url = reverse('intelligence_summary')
+        res = self.client.get(f"{url}?facility={self.fac_c1.id}&patient_type=NEW&date={self.as_of}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        res_bad = self.client.get(f"{url}?facility={self.fac_c1.id}&patient_type=INVALID_VAL")
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 29. Forecast endpoint coverage
+    def test_29_forecast_endpoint_coverage(self):
+        """
+        Verifies /surveillance/intelligence/forecast/?disease=Dengue&patient_type=NEW:
+        - Filters historical time series before forecasting
+        - Clearly indicates selected patient type in filters dict
+        """
+        url = reverse('intelligence_forecast')
+        res = self.client.get(f"{url}?facility={self.fac_c1.id}&disease=Dengue&patient_type=NEW&date={self.as_of}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('filters', res.data)
+        self.assertEqual(res.data['filters']['patient_type'], 'NEW')
+
+        # Invalid patient_type on forecast returns 400
+        res_bad = self.client.get(f"{url}?facility={self.fac_c1.id}&disease=Dengue&patient_type=INVALID_VAL")
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 30. Seasonality endpoint coverage
+    def test_30_seasonality_endpoint_coverage(self):
+        """
+        Verifies /surveillance/intelligence/seasonality/?disease=Dengue&patient_type=NEW calculates
+        seasonality using only matching cases.
+        """
+        url = reverse('intelligence_seasonality')
+        res = self.client.get(f"{url}?facility={self.fac_c1.id}&disease=Dengue&patient_type=NEW&date={self.as_of}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        res_bad = self.client.get(f"{url}?facility={self.fac_c1.id}&disease=Dengue&patient_type=INVALID_VAL")
+        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 31. Hospital Admin facility authorization remains 403 cross-facility
+    def test_31_hospital_admin_cross_facility_forbidden(self):
+        """
+        Hospital Admin requesting another facility returns HTTP 403 Forbidden.
+        patient_type must never bypass facility authorization.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?facility={self.fac_c2.id}&disease=Dengue&patient_type=NEW")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    # 32. District Officer district authorization remains 403 cross-district
+    def test_32_district_officer_cross_district_forbidden(self):
+        """
+        District Officer requesting another district returns HTTP 403 Forbidden.
+        patient_type must never bypass district authorization.
+        """
+        self.client.force_authenticate(user=self.officer_c)
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?district={self.district_rural.id}&disease=Dengue&patient_type=NEW")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    # 33. No patient_type filter preserves existing behavior
+    def test_33_no_patient_type_filter_preserves_behavior(self):
+        """
+        When patient_type filter is omitted, all 9 Dengue cases at fac_c1 are returned.
+        All existing response fields from Prompts 1-5 remain intact.
+        """
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_in_history'], 9)
+
+        required_fields = [
+            'total_cases_in_history', 'monthly_series', 'historical_series',
+            'severity_breakdown', 'historical_age_groups', 'historical_gender',
+            'age_gender_matrix', 'historical_severity', 'historical_vulnerable_groups',
+            'historical_patient_type', 'monthly_patient_type_trends',
+            'patient_type_age_groups', 'patient_type_gender', 'patient_type_severity',
+            'patient_type_vulnerable_groups',
+        ]
+        for f in required_fields:
+            self.assertIn(f, res.data, f"Field '{f}' missing from backward compatible response.")
+
+    # 34. Patient type filter is never silently ignored
+    def test_34_patient_type_filter_never_silently_ignored(self):
+        """
+        Verifies that applying patient_type=FOLLOW_UP produces 3 cases, which differs from
+        the unfiltered total of 9 cases. The filter is never silently ignored.
+        """
+        url = reverse('intelligence_historical_disease')
+        res_all = self.client.get(f"{url}?disease=Dengue&date={self.as_of}&months=6")
+        res_fu = self.client.get(f"{url}?disease=Dengue&patient_type=FOLLOW_UP&date={self.as_of}&months=6")
+
+        self.assertEqual(res_all.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_fu.status_code, status.HTTP_200_OK)
+        self.assertNotEqual(res_all.data['total_cases_in_history'], res_fu.data['total_cases_in_history'])
+        self.assertEqual(res_fu.data['total_cases_in_history'], 3)
+
+    # 35. Missing/insufficient history produces UNKNOWN
+    def test_35_missing_insufficient_history_produces_unknown(self):
+        """
+        When historical information is insufficient (e.g. missing patient or report_date):
+        - get_case_patient_type returns UNKNOWN.
+        - normalize_patient_type maps unknown values to UNKNOWN.
+        - UNKNOWN is never silently converted into NEW or FOLLOW_UP.
+        - UNKNOWN appears dynamically in output when unknown cases exist.
+        """
+        # Standalone tests of service classification
+        self.assertEqual(get_case_patient_type(None), PATIENT_TYPE_UNKNOWN)
+        dummy_case = DiseaseCase(patient=None, report_date=None)
+        self.assertEqual(get_case_patient_type(dummy_case), PATIENT_TYPE_UNKNOWN)
+        dummy_case_no_pt = DiseaseCase(patient=None, report_date=datetime.date(2026, 5, 1))
+        self.assertEqual(get_case_patient_type(dummy_case_no_pt), PATIENT_TYPE_UNKNOWN)
+        dummy_case_no_date = DiseaseCase(patient=self.p_male_adult, report_date=None)
+        self.assertEqual(get_case_patient_type(dummy_case_no_date), PATIENT_TYPE_UNKNOWN)
+
+        # Normalization
+        self.assertEqual(normalize_patient_type(''), PATIENT_TYPE_UNKNOWN)
+        self.assertEqual(normalize_patient_type('UNKNOWN'), PATIENT_TYPE_UNKNOWN)
+        self.assertEqual(normalize_patient_type('OTHER_RANDOM'), PATIENT_TYPE_UNKNOWN)
+
+        # UNKNOWN cannot be filtered
+        url = reverse('intelligence_historical_disease')
+        res = self.client.get(f"{url}?patient_type=UNKNOWN")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 36. Query efficiency / no N+1
+    def test_36_query_efficiency_no_n_plus_one(self):
+        """
+        Verifies that historical patient type aggregation executes in strictly 1 query
+        via select_related('patient') and Exists subquery, preventing N+1 queries.
+        """
+        with self.assertNumQueries(1):
+            aggregate_historical_disease(
+                facility_ids=[self.fac_c1.id],
+                disease_name='Dengue',
+                months=6,
+                as_of_date=self.as_of
+            )

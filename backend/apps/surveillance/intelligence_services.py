@@ -74,6 +74,19 @@ from apps.surveillance.vulnerable_population_services import (
     filter_cases_by_vulnerable_group,
     build_vulnerable_population_matrices,
 )
+from apps.surveillance.patient_type_services import (
+    PATIENT_TYPE_NEW,
+    PATIENT_TYPE_FOLLOW_UP,
+    PATIENT_TYPE_UNKNOWN,
+    VALID_PATIENT_TYPES,
+    ALL_PATIENT_TYPES,
+    normalize_patient_type,
+    validate_patient_type_param,
+    annotate_case_patient_type,
+    get_case_patient_type,
+    filter_cases_by_patient_type,
+    build_patient_type_matrices,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +338,8 @@ def resolve_facility_scope(user=None, requested_facility_id=None, requested_dist
 
 def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=None,
                              start_date=None, end_date=None, as_of_date=None, window_days=7,
-                             age_group=None, gender=None, severity=None, vulnerable_group=None):
+                             age_group=None, gender=None, severity=None, vulnerable_group=None,
+                             patient_type=None):
     """
     Computes disease metrics:
     - current cases (within observation window)
@@ -339,6 +353,7 @@ def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=N
     - demographic breakdowns
     - optional severity filtering
     - optional vulnerable_group filtering
+    - optional patient_type filtering
     """
     periods = get_period_dates(start_date=start_date, end_date=end_date, as_of_date=as_of_date, window_days=window_days)
     c_start = periods['current_start']
@@ -364,6 +379,9 @@ def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=N
 
     if vulnerable_group:
         qs = filter_cases_by_vulnerable_group(qs, vulnerable_group=vulnerable_group)
+
+    if patient_type:
+        qs = filter_cases_by_patient_type(qs, patient_type=patient_type)
 
     # Fixed time intervals relative to as_of date
     d7_start = as_of - datetime.timedelta(days=6)
@@ -467,7 +485,8 @@ def calculate_disease_trends(facility_ids=None, district_id=None, disease_name=N
 
 def aggregate_disease_by_locality(facility_ids=None, district_id=None, disease_name=None,
                                   start_date=None, end_date=None, as_of_date=None, window_days=14,
-                                  age_group=None, gender=None, severity=None, vulnerable_group=None):
+                                  age_group=None, gender=None, severity=None, vulnerable_group=None,
+                                  patient_type=None):
     """
     Computes disease distribution by locality/ward:
     - disease cases by locality/ward
@@ -477,7 +496,7 @@ def aggregate_disease_by_locality(facility_ids=None, district_id=None, disease_n
     - trend direction
     Handles missing locality cleanly as 'Unknown Locality'.
     Handles multiple hospitals reporting in the same ward.
-    Supports optional severity and vulnerable_group filtering.
+    Supports optional severity, vulnerable_group, and patient_type filtering.
     """
     periods = get_period_dates(start_date=start_date, end_date=end_date, as_of_date=as_of_date, window_days=window_days)
     c_start = periods['current_start']
@@ -502,6 +521,9 @@ def aggregate_disease_by_locality(facility_ids=None, district_id=None, disease_n
 
     if vulnerable_group:
         qs = filter_cases_by_vulnerable_group(qs, vulnerable_group=vulnerable_group)
+
+    if patient_type:
+        qs = filter_cases_by_patient_type(qs, patient_type=patient_type)
 
     total_cases_in_scope = qs.filter(report_date__range=[c_start, c_end]).count()
 
@@ -634,7 +656,7 @@ def aggregate_disease_by_locality(facility_ids=None, district_id=None, disease_n
 
 def aggregate_historical_disease(facility_ids=None, district_id=None, disease_name=None,
                                  months=6, as_of_date=None, age_group=None, gender=None,
-                                 severity=None, vulnerable_group=None):
+                                 severity=None, vulnerable_group=None, patient_type=None):
     """
     Computes multi-month historical disease aggregation series:
     - monthly counts
@@ -651,7 +673,12 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
     - monthly vulnerable-population trends
     - cross-analyses: vulnerable_age_groups, vulnerable_gender, vulnerable_age_gender,
       vulnerable_severity, vulnerable_age_gender_severity
+    - historical patient-type distribution (NEW, FOLLOW_UP, UNKNOWN)
+    - monthly patient-type trends
+    - cross-analyses: patient_type_age_groups, patient_type_gender, patient_type_age_gender,
+      patient_type_severity, patient_type_vulnerable_groups, patient_type_age_gender_vulnerability
     - optional vulnerable_group filtering
+    - optional patient_type filtering
     """
     from apps.surveillance.demographic_services import (
         AGE_GROUPS,
@@ -686,6 +713,18 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
         filter_cases_by_vulnerable_group,
         build_vulnerable_population_matrices,
     )
+    from apps.surveillance.patient_type_services import (
+        PATIENT_TYPE_NEW,
+        PATIENT_TYPE_FOLLOW_UP,
+        PATIENT_TYPE_UNKNOWN,
+        VALID_PATIENT_TYPES,
+        ALL_PATIENT_TYPES,
+        normalize_patient_type,
+        filter_cases_by_patient_type,
+        get_case_patient_type,
+        annotate_case_patient_type,
+        build_patient_type_matrices,
+    )
 
     as_of = resolve_date(as_of_date)
 
@@ -713,6 +752,9 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
     if vulnerable_group:
         qs = filter_cases_by_vulnerable_group(qs, vulnerable_group=vulnerable_group)
 
+    if patient_type:
+        qs = filter_cases_by_patient_type(qs, patient_type=patient_type)
+
     # Generate chronological sequence of months from oldest to newest
     months_list = []
     for m_offset in range(months - 1, -1, -1):
@@ -734,11 +776,11 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
     else:
         end_date = datetime.date(newest_y, newest_m + 1, 1) - datetime.timedelta(days=1)
 
-    # Single efficient query with select_related('patient')
-    historical_cases_qs = qs.filter(
+    # Single efficient query with select_related('patient') and annotated patient_type
+    historical_cases_qs = annotate_case_patient_type(qs.filter(
         report_date__gte=start_date,
         report_date__lte=end_date
-    ).select_related('patient')
+    )).select_related('patient')
 
     historical_cases = list(historical_cases_qs)
 
@@ -755,6 +797,7 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
             'age_groups': {ag: 0 for ag in AGE_GROUPS},
             'gender': {g: 0 for g in GENDER_CHOICES},
             'vulnerable_groups': {vg: 0 for vg in ALL_VULNERABLE_GROUPS},
+            'patient_type': {pt: 0 for pt in ALL_PATIENT_TYPES},
             'unknown_age': 0,
             'unknown_gender': 0,
         }
@@ -766,6 +809,7 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
     total_gender_counts = {g: 0 for g in GENDER_CHOICES}
     total_unknown_gender_count = 0
     total_vulnerable_counts = {vg: 0 for vg in ALL_VULNERABLE_GROUPS}
+    total_patient_type_counts = {pt: 0 for pt in ALL_PATIENT_TYPES}
 
     # Process all cases in a single in-memory pass
     for case in historical_cases:
@@ -814,17 +858,28 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
         month_data[key]['vulnerable_groups'][case_vg] += 1
         total_vulnerable_counts[case_vg] += 1
 
+        # Patient type tracking (point-in-time relative to case report_date)
+        case_pt = get_case_patient_type(case)
+        month_data[key]['patient_type'][case_pt] += 1
+        total_patient_type_counts[case_pt] += 1
+
     # Build historical_series (preserves existing format and backward compatibility)
     historical_series = []
     case_counts = []
     monthly_demographic_trends = []
     monthly_severity_trends = []
     monthly_vulnerable_population_trends = []
+    monthly_patient_type_trends = []
 
     has_unknown_vg = total_vulnerable_counts[VULNERABLE_GROUP_UNKNOWN] > 0
     active_trend_vgs = list(VULNERABLE_GROUPS)
     if has_unknown_vg:
         active_trend_vgs.append(VULNERABLE_GROUP_UNKNOWN)
+
+    has_unknown_pt = total_patient_type_counts[PATIENT_TYPE_UNKNOWN] > 0
+    active_trend_pts = list(VALID_PATIENT_TYPES)
+    if has_unknown_pt:
+        active_trend_pts.append(PATIENT_TYPE_UNKNOWN)
 
     for (y, m, pl) in months_list:
         md = month_data[(y, m)]
@@ -881,6 +936,21 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
                 for vg in active_trend_vgs
             }
         })
+
+        # Monthly patient-type trend object (sum of patient types strictly equals total_cases)
+        pt_trend_entry = {
+            'month': pl,
+            'total_cases': tot,
+            'NEW': md['patient_type'].get('NEW', 0),
+            'FOLLOW_UP': md['patient_type'].get('FOLLOW_UP', 0),
+            'patient_type': {
+                pt: md['patient_type'].get(pt, 0)
+                for pt in active_trend_pts
+            }
+        }
+        if has_unknown_pt:
+            pt_trend_entry['UNKNOWN'] = md['patient_type'].get('UNKNOWN', 0)
+        monthly_patient_type_trends.append(pt_trend_entry)
 
     # Build historical_age_groups (all supported age groups represented, plus UNKNOWN if present)
     historical_age_groups = []
@@ -978,6 +1048,14 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
             'monthly_counts': m_counts
         })
 
+    # Build historical_patient_type (authoritative dict, only include UNKNOWN if present)
+    historical_patient_type = {
+        PATIENT_TYPE_NEW: total_patient_type_counts[PATIENT_TYPE_NEW],
+        PATIENT_TYPE_FOLLOW_UP: total_patient_type_counts[PATIENT_TYPE_FOLLOW_UP],
+    }
+    if total_patient_type_counts[PATIENT_TYPE_UNKNOWN] > 0:
+        historical_patient_type[PATIENT_TYPE_UNKNOWN] = total_patient_type_counts[PATIENT_TYPE_UNKNOWN]
+
     # Build age_gender_matrix using existing utility
     age_gender_matrix = build_age_gender_matrix(
         historical_cases,
@@ -1000,6 +1078,20 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
         vulnerable_severity,
         vulnerable_age_gender_severity,
     ) = build_vulnerable_population_matrices(
+        historical_cases,
+        reference_date=as_of,
+        allow_stored_age_fallback=False
+    )
+
+    # Build cross-patient type matrices
+    (
+        patient_type_age_groups,
+        patient_type_gender,
+        patient_type_age_gender,
+        patient_type_severity,
+        patient_type_vulnerable_groups,
+        patient_type_age_gender_vulnerability,
+    ) = build_patient_type_matrices(
         historical_cases,
         reference_date=as_of,
         allow_stored_age_fallback=False
@@ -1029,6 +1121,11 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
             'SEVERE': total_severity_counts['SEVERE'],
             'UNKNOWN': total_severity_counts['UNKNOWN']
         },
+        'patient_type_breakdown': {
+            'NEW': total_patient_type_counts['NEW'],
+            'FOLLOW_UP': total_patient_type_counts['FOLLOW_UP'],
+            'UNKNOWN': total_patient_type_counts['UNKNOWN']
+        },
         'observation_period': {
             'start_date': str(start_date),
             'end_date': str(as_of),
@@ -1050,6 +1147,14 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
         'vulnerable_age_gender': vulnerable_age_gender,
         'vulnerable_severity': vulnerable_severity,
         'vulnerable_age_gender_severity': vulnerable_age_gender_severity,
+        'historical_patient_type': historical_patient_type,
+        'monthly_patient_type_trends': monthly_patient_type_trends,
+        'patient_type_age_groups': patient_type_age_groups,
+        'patient_type_gender': patient_type_gender,
+        'patient_type_age_gender': patient_type_age_gender,
+        'patient_type_severity': patient_type_severity,
+        'patient_type_vulnerable_groups': patient_type_vulnerable_groups,
+        'patient_type_age_gender_vulnerability': patient_type_age_gender_vulnerability,
     }
 
 
@@ -1059,7 +1164,8 @@ def aggregate_historical_disease(facility_ids=None, district_id=None, disease_na
 # ---------------------------------------------------------------------------
 
 def aggregate_hospital_level(facility_id, user=None, start_date=None, end_date=None, as_of_date=None,
-                             age_group=None, gender=None, severity=None, vulnerable_group=None):
+                             age_group=None, gender=None, severity=None, vulnerable_group=None,
+                             patient_type=None):
     """
     Hospital Admin scope:
     - Only their assigned hospital
@@ -1093,7 +1199,8 @@ def aggregate_hospital_level(facility_id, user=None, start_date=None, end_date=N
         age_group=age_group,
         gender=gender,
         severity=severity,
-        vulnerable_group=vulnerable_group
+        vulnerable_group=vulnerable_group,
+        patient_type=patient_type
     )
 
     localities = aggregate_disease_by_locality(
@@ -1104,7 +1211,8 @@ def aggregate_hospital_level(facility_id, user=None, start_date=None, end_date=N
         age_group=age_group,
         gender=gender,
         severity=severity,
-        vulnerable_group=vulnerable_group
+        vulnerable_group=vulnerable_group,
+        patient_type=patient_type
     )
 
     as_of = resolve_date(as_of_date)
@@ -1115,6 +1223,8 @@ def aggregate_hospital_level(facility_id, user=None, start_date=None, end_date=N
         hosp_cases = filter_cases_by_demographics(hosp_cases, age_groups=age_group, genders=gender)
     if vulnerable_group:
         hosp_cases = filter_cases_by_vulnerable_group(hosp_cases, vulnerable_group=vulnerable_group)
+    if patient_type:
+        hosp_cases = filter_cases_by_patient_type(hosp_cases, patient_type=patient_type)
 
     d7_cases = hosp_cases.filter(report_date__range=[as_of - datetime.timedelta(days=6), as_of]).count()
     d30_cases = hosp_cases.filter(report_date__range=[as_of - datetime.timedelta(days=29), as_of]).count()
@@ -1144,7 +1254,8 @@ def aggregate_hospital_level(facility_id, user=None, start_date=None, end_date=N
 # ---------------------------------------------------------------------------
 
 def aggregate_district_level(district_id, user=None, start_date=None, end_date=None, as_of_date=None,
-                             age_group=None, gender=None, severity=None, vulnerable_group=None):
+                             age_group=None, gender=None, severity=None, vulnerable_group=None,
+                             patient_type=None):
     """
     District Officer scope:
     - All hospitals/facilities inside assigned district
@@ -1186,7 +1297,8 @@ def aggregate_district_level(district_id, user=None, start_date=None, end_date=N
         age_group=age_group,
         gender=gender,
         severity=severity,
-        vulnerable_group=vulnerable_group
+        vulnerable_group=vulnerable_group,
+        patient_type=patient_type
     )
 
     localities = aggregate_disease_by_locality(
@@ -1198,7 +1310,8 @@ def aggregate_district_level(district_id, user=None, start_date=None, end_date=N
         age_group=age_group,
         gender=gender,
         severity=severity,
-        vulnerable_group=vulnerable_group
+        vulnerable_group=vulnerable_group,
+        patient_type=patient_type
     )
 
     # Hospital comparison within the district
@@ -1213,6 +1326,8 @@ def aggregate_district_level(district_id, user=None, start_date=None, end_date=N
         dist_cases = filter_cases_by_demographics(dist_cases, age_groups=age_group, genders=gender)
     if vulnerable_group:
         dist_cases = filter_cases_by_vulnerable_group(dist_cases, vulnerable_group=vulnerable_group)
+    if patient_type:
+        dist_cases = filter_cases_by_patient_type(dist_cases, patient_type=patient_type)
 
     hospital_comparison = []
     for f in district_facs:
@@ -1249,7 +1364,7 @@ def aggregate_district_level(district_id, user=None, start_date=None, end_date=N
 def get_public_health_intelligence_summary(facility_id=None, district_id=None, user=None,
                                             start_date=None, end_date=None, as_of_date=None,
                                             age_group=None, gender=None, severity=None,
-                                            vulnerable_group=None):
+                                            vulnerable_group=None, patient_type=None):
     """
     Unified entry point for Step 1 Public Health Intelligence.
     Resolves scope automatically from user role or passed identifiers.
@@ -1276,7 +1391,8 @@ def get_public_health_intelligence_summary(facility_id=None, district_id=None, u
             age_group=age_group,
             gender=gender,
             severity=severity,
-            vulnerable_group=vulnerable_group
+            vulnerable_group=vulnerable_group,
+            patient_type=patient_type
         )
 
     # District scope
@@ -1291,7 +1407,8 @@ def get_public_health_intelligence_summary(facility_id=None, district_id=None, u
             age_group=age_group,
             gender=gender,
             severity=severity,
-            vulnerable_group=vulnerable_group
+            vulnerable_group=vulnerable_group,
+            patient_type=patient_type
         )
 
     # District-wide fallback across all accessible facilities
@@ -1303,7 +1420,8 @@ def get_public_health_intelligence_summary(facility_id=None, district_id=None, u
         age_group=age_group,
         gender=gender,
         severity=severity,
-        vulnerable_group=vulnerable_group
+        vulnerable_group=vulnerable_group,
+        patient_type=patient_type
     )
     localities = aggregate_disease_by_locality(
         facility_ids=fac_ids,
@@ -1313,7 +1431,8 @@ def get_public_health_intelligence_summary(facility_id=None, district_id=None, u
         age_group=age_group,
         gender=gender,
         severity=severity,
-        vulnerable_group=vulnerable_group
+        vulnerable_group=vulnerable_group,
+        patient_type=patient_type
     )
 
     return {
@@ -1322,3 +1441,4 @@ def get_public_health_intelligence_summary(facility_id=None, district_id=None, u
         'diseases': trends['disease_trends'],
         'localities': localities['locality_aggregations']
     }
+

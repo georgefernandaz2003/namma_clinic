@@ -450,12 +450,13 @@ def validate_severity_param(severity=None):
 def get_demographic_intelligence(facility_ids=None, district_id=None, disease_name=None,
                                  start_date=None, end_date=None, as_of_date=None,
                                  age_group=None, gender=None, severity=None,
-                                 vulnerable_group=None):
+                                 vulnerable_group=None, patient_type=None):
     """
     Public Health Intelligence Demographic Analysis Service.
     Derives strictly from real database records across DiseaseCase and Patient.
     Supports filtering by facility_ids, district_id, disease_name, date window,
-    optional demographic criteria (age_group, gender), severity, and vulnerable_group.
+    optional demographic criteria (age_group, gender), severity, vulnerable_group,
+    and patient_type.
     """
     from apps.surveillance.models import DiseaseCase
     from apps.surveillance.intelligence_services import get_period_dates
@@ -483,6 +484,10 @@ def get_demographic_intelligence(facility_ids=None, district_id=None, disease_na
     if vulnerable_group:
         from apps.surveillance.vulnerable_population_services import filter_cases_by_vulnerable_group
         qs = filter_cases_by_vulnerable_group(qs, vulnerable_group=vulnerable_group)
+
+    if patient_type:
+        from apps.surveillance.patient_type_services import filter_cases_by_patient_type
+        qs = filter_cases_by_patient_type(qs, patient_type=patient_type)
 
     # Overall demographic summary
     overall_demographics = aggregate_demographics(qs, reference_date=as_of)
@@ -678,4 +683,20 @@ def build_severity_demographic_matrices(disease_cases_qs, reference_date=None, a
             severity_age_gender[sev][ag][g] = severity_age_gender[sev][ag].get(g, 0) + 1
 
     return severity_age_groups, severity_gender, severity_age_gender
+
+
+# Re-export patient type intelligence functions for direct access from demographic_services
+from apps.surveillance.patient_type_services import (
+    PATIENT_TYPE_NEW,
+    PATIENT_TYPE_FOLLOW_UP,
+    PATIENT_TYPE_UNKNOWN,
+    VALID_PATIENT_TYPES,
+    ALL_PATIENT_TYPES,
+    normalize_patient_type,
+    validate_patient_type_param,
+    annotate_case_patient_type,
+    get_case_patient_type,
+    filter_cases_by_patient_type,
+    build_patient_type_matrices,
+)
 
