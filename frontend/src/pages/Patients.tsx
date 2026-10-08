@@ -7,6 +7,7 @@ import { Users, Search, UserPlus, Clock, History, X, Activity, FileText, Pill, S
 import { useNavigate } from 'react-router-dom';
 import { hasPermission } from '../utils/permissions';
 import ErrorAlert from '../components/common/ErrorAlert';
+import { PatientRegistrationSuccessModal } from '../components/common/PatientRegistrationSuccessModal';
 
 export const Patients: React.FC = () => {
   const { activeFacility, user } = useAuth();
@@ -23,6 +24,9 @@ export const Patients: React.FC = () => {
   const [address, setAddress] = useState('');
   const [abhaId, setAbhaId] = useState('');
   const [vulnerability, setVulnerability] = useState('Slum Resident / Low Income Group');
+  const [registering, setRegistering] = useState(false);
+  const [registeredPatient, setRegisteredPatient] = useState<Patient | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // Token Modal State
   const [showTokenModal, setShowTokenModal] = useState(false);
@@ -93,6 +97,8 @@ export const Patients: React.FC = () => {
 
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (registering) return;
+    setRegistering(true);
     setRegError(null);
     try {
       const res = await api.post('v1/patients/', {
@@ -105,9 +111,11 @@ export const Patients: React.FC = () => {
         vulnerability_information: vulnerability,
         registered_at_facility: activeFacility?.id
       });
-      const newPat = res.data;
-      setSuccessMsg(`Patient '${newPat.name}' registered successfully! Assigned Patient ID: ${newPat.patient_id}`);
+      const newPat: Patient = res.data;
       setShowRegisterModal(false);
+      setRegisteredPatient(newPat);
+      setShowSuccessModal(true);
+      setSuccessMsg(`Patient '${newPat.name}' registered successfully! Assigned Patient ID: ${newPat.patient_id || newPat.id}`);
       setRegError(null);
       setName('');
       setAge('');
@@ -115,7 +123,7 @@ export const Patients: React.FC = () => {
       setAddress('');
       setAbhaId('');
       setVulnerability('Slum Resident / Low Income Group');
-      loadPatients();
+      await loadPatients();
     } catch (e: any) {
       let msg = 'Failed to register patient.';
       if (e.response?.data?.error) {
@@ -128,6 +136,8 @@ export const Patients: React.FC = () => {
           .join('\n');
       }
       setRegError(msg);
+    } finally {
+      setRegistering(false);
     }
   };
 
@@ -429,16 +439,25 @@ export const Patients: React.FC = () => {
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
+                  disabled={registering}
                   onClick={() => { setShowRegisterModal(false); setRegError(null); }}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-100"
+                  className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-sm"
+                  disabled={registering}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
                 >
-                  Register & Verify Duplicate Status
+                  {registering ? (
+                    <>
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Verifying & Registering...</span>
+                    </>
+                  ) : (
+                    <span>Register & Verify Duplicate Status</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -611,6 +630,22 @@ export const Patients: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Patient Registration Confirmation Modal */}
+      <PatientRegistrationSuccessModal
+        isOpen={showSuccessModal}
+        patient={registeredPatient}
+        onClose={() => {
+          setShowSuccessModal(false);
+          setRegisteredPatient(null);
+          loadPatients();
+        }}
+        onViewPatient={(p) => {
+          setShowSuccessModal(false);
+          setRegisteredPatient(null);
+          navigate(`/patients/${p.id}`);
+        }}
+      />
     </div>
   );
 };
