@@ -1229,7 +1229,7 @@ describe('PublicHealthIntelligence Component', () => {
   // PROMPT 10: DEMOGRAPHIC FILTERS & FORECAST RISK UI TESTS
   // ========================================================
 
-  it('1. Age filter is rendered', async () => {
+  it('1. Age Group filter renders', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
@@ -1244,7 +1244,7 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('2. Gender filter is rendered', async () => {
+  it('2. Gender filter renders', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
@@ -1259,7 +1259,7 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('3. Severity filter is rendered', async () => {
+  it('3. Severity filter renders', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
@@ -1274,7 +1274,7 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('4. Vulnerable Group filter is rendered', async () => {
+  it('4. Vulnerable Group filter renders', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
@@ -1289,7 +1289,7 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('5. Patient Type filter is rendered', async () => {
+  it('5. Patient Type filter renders', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
@@ -1304,7 +1304,7 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('6. Combined filters are passed to intelligenceService', async () => {
+  it('6. Multiple demographic filters are sent together', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
@@ -1334,7 +1334,7 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('7. Reset filters restores defaults', async () => {
+  it('7. Reset Filters restores demographic defaults', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
@@ -1425,7 +1425,7 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('12. INSUFFICIENT_DATA renders the correct message', async () => {
+  it('12. INSUFFICIENT_DATA displays the insufficient-data message', async () => {
     vi.mocked(intelligenceService.getForecast).mockResolvedValue(mockForecastInsufficient);
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
@@ -1435,7 +1435,7 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('13. INSUFFICIENT_DATA does not render fake risk points', async () => {
+  it('13. INSUFFICIENT_DATA does not display fake risk points', async () => {
     vi.mocked(intelligenceService.getForecast).mockResolvedValue({
       ...mockForecastInsufficient,
       forecast_risk: {
@@ -1465,16 +1465,13 @@ describe('PublicHealthIntelligence Component', () => {
     expect(screen.queryByTestId('risk-point-row-0')).toBeNull();
   });
 
-  it('14. Selected Population summary renders active filters', async () => {
+  it('14. Selected Population summary displays active filters', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
     await waitFor(() => {
       expect(screen.getByLabelText(/Age Group/i)).toBeDefined();
     });
-
-    // Without filters, displays "All eligible population"
-    expect(screen.getAllByText(/All eligible population/i).length).toBeGreaterThan(0);
 
     // Apply demographic filters
     fireEvent.change(screen.getByLabelText(/Age Group/i), { target: { value: '15-24' } });
@@ -1493,7 +1490,20 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('15. Zero selected-population cases displays the no-cases message', async () => {
+  it('15. No demographic filters displays "All eligible population"', async () => {
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Age Group/i)).toBeDefined();
+    });
+
+    // Without demographic filters, displays "All eligible population"
+    const summary = screen.getByTestId('forecast-selected-population');
+    expect(within(summary).getByText(/All eligible population/i)).toBeDefined();
+  });
+
+  it('16. Zero selected-population cases displays "No cases found for the selected filters."', async () => {
     vi.mocked(intelligenceService.getForecast).mockResolvedValue({
       ...mockForecastAvailable,
       observation_period: {
@@ -1509,7 +1519,7 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('16. Existing no-filter behavior still works', async () => {
+  it('17. Existing no-filter behavior continues working', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 

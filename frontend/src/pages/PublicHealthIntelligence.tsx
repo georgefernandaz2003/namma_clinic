@@ -1773,9 +1773,19 @@ export const PublicHealthIntelligence: React.FC = () => {
               </div>
 
               <div className="font-mono text-xs shrink-0">
-                {forecastData?.observation_period && forecastData.observation_period.total_cases > 0 ? (
+                {forecastData?.observation_period?.total_cases !== undefined ? (
+                  forecastData.observation_period.total_cases > 0 ? (
+                    <span className="text-indigo-200 bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 inline-block">
+                      Cases in selected population: <strong className="text-white font-bold">{forecastData.observation_period.total_cases}</strong>
+                    </span>
+                  ) : (
+                    <span className="text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 inline-block">
+                      No cases found for the selected filters.
+                    </span>
+                  )
+                ) : totalPopulationCases > 0 ? (
                   <span className="text-indigo-200 bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 inline-block">
-                    Cases in selected population: <strong className="text-white font-bold">{forecastData.observation_period.total_cases}</strong>
+                    Cases in selected population: <strong className="text-white font-bold">{totalPopulationCases}</strong>
                   </span>
                 ) : (
                   <span className="text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 inline-block">
