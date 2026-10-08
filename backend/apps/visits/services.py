@@ -264,11 +264,19 @@ def transition_visit_status(visit, to_status, requesting_user=None, target_queue
         raise ValidationError(f"Invalid transition from {current_stat} to {to_status}.")
 
     # Invariant: Advancing to WAITING_FOR_DOCTOR or IN_CONSULTATION requires triage vitals
+    # (unless SRV_TRIAGE is disabled at the facility)
     if to_status in ['WAITING_FOR_DOCTOR', 'IN_CONSULTATION']:
-        from apps.triage.models import TriageVitals
-        has_vitals = TriageVitals.objects.filter(visit=visit).exists() or hasattr(visit, 'triage')
-        if not has_vitals:
-            raise ValidationError("Cannot advance visit to DOCTOR queue without recorded triage vitals.")
+        from apps.facilities.models import FacilityService
+        triage_active = FacilityService.objects.filter(
+            facility_id=visit.facility_id,
+            service__code='SRV_TRIAGE',
+            is_available=True
+        ).exists()
+        if triage_active:
+            from apps.triage.models import TriageVitals
+            has_vitals = TriageVitals.objects.filter(visit=visit).exists() or hasattr(visit, 'triage')
+            if not has_vitals:
+                raise ValidationError("Cannot advance visit to DOCTOR queue without recorded triage vitals.")
 
     from_status = visit.status
     now = timezone.now()

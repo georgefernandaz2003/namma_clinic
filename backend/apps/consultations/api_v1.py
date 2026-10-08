@@ -109,6 +109,10 @@ class TriageVitalsViewSet(viewsets.ModelViewSet):
         visit = serializer.validated_data['visit']
         check_facility_permission(visit.facility, staff, self.request.user)
 
+        from apps.facilities.models import FacilityService
+        if not FacilityService.objects.filter(facility=visit.facility, service__code='SRV_TRIAGE', is_available=True).exists():
+            raise exceptions.ValidationError({'service': 'Triage & Vital Signs Assessment (SRV_TRIAGE) is currently unavailable or disabled at this facility.'})
+
         with transaction.atomic():
             serializer.save(nurse=self.request.user)
             self._advance_visit_queue(visit, is_update=False)

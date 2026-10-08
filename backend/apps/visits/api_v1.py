@@ -217,7 +217,8 @@ class VisitViewSet(viewsets.ModelViewSet):
 
         required_service_code = SERVICE_VISIT_TYPE_MAP.get(visit_type)
         if required_service_code:
-            from apps.facilities.models import FacilityService
+            from apps.facilities.models import FacilityService, Department
+            from apps.facilities.services import SERVICE_TO_DEPARTMENT_MAP
             svc_active = FacilityService.objects.filter(
                 facility=fac,
                 service__code=required_service_code,
@@ -228,9 +229,30 @@ class VisitViewSet(viewsets.ModelViewSet):
                 raise exceptions.ValidationError({
                     'visit_type': f"{display_name} service is currently unavailable or disabled at this facility."
                 })
+            dept_code = SERVICE_TO_DEPARTMENT_MAP.get(required_service_code)
+            if dept_code:
+                dept_active = Department.objects.filter(
+                    facility=fac,
+                    code=dept_code,
+                    is_active=True
+                ).exists()
+                if not dept_active:
+                    raise exceptions.ValidationError({
+                        'department': f"Supporting department ({dept_code}) is inactive or not configured at this facility."
+                    })
 
         today = datetime.date.today()
         vis_id = f"VIS-{today.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+
+        from apps.facilities.models import FacilityService
+        triage_available = FacilityService.objects.filter(
+            facility=fac,
+            service__code='SRV_TRIAGE',
+            is_available=True
+        ).exists()
+
+        initial_queue = 'TRIAGE' if triage_available else 'DOCTOR'
+        initial_status = 'WAITING_FOR_TRIAGE' if triage_available else 'WAITING_FOR_DOCTOR'
 
         from django.db import transaction
         with transaction.atomic():
@@ -242,21 +264,27 @@ class VisitViewSet(viewsets.ModelViewSet):
                 visit_type=visit_type,
                 priority=priority,
                 chief_complaint=chief_complaint,
-                current_queue='TRIAGE',
-                status='WAITING_FOR_TRIAGE',
+                current_queue=initial_queue,
+                status=initial_status,
                 arrival_time=timezone.now()
             )
             # Authoritative token issuance backed by FacilityDailyCounter
             token = issue_opd_token(visit=visit, facility=fac, priority=priority)
 
+            notes = (
+                f"Issued OPD Token #{token.token_number} for {today}"
+                if triage_available
+                else f"Issued OPD Token #{token.token_number} for {today} (Triage bypassed / service unavailable)"
+            )
+
             VisitStatusHistory.objects.create(
                 visit=visit,
                 from_status='NONE',
-                to_status='WAITING_FOR_TRIAGE',
-                queue='TRIAGE',
+                to_status=initial_status,
+                queue=initial_queue,
                 performed_by=request.user,
                 performed_by_role=getattr(request.user, 'role', ''),
-                notes=f"Issued OPD Token #{token.token_number} for {today}"
+                notes=notes
             )
 
         return Response(VisitSerializer(visit).data, status=status.HTTP_201_CREATED)

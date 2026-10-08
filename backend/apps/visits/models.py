@@ -72,14 +72,21 @@ class Visit(models.Model):
                 'status': "A visit with queue state COMPLETED must have its status set to COMPLETED."
             })
 
-        # FND-09: Triage before Doctor Consultation
+        # FND-09: Triage before Doctor Consultation (unless SRV_TRIAGE is disabled at facility)
         if self.pk and not getattr(self, '_bypass_triage_check', False):
             if self.current_queue == 'DOCTOR' or self.status in ['WAITING_FOR_DOCTOR', 'IN_CONSULTATION']:
-                from apps.triage.models import TriageVitals
-                if not hasattr(self, 'triage') and not TriageVitals.objects.filter(visit=self).exists():
-                    raise ValidationError({
-                        'current_queue': "Cannot advance visit to DOCTOR queue without recorded triage vitals."
-                    })
+                from apps.facilities.models import FacilityService
+                triage_available = FacilityService.objects.filter(
+                    facility=self.facility,
+                    service__code='SRV_TRIAGE',
+                    is_available=True
+                ).exists()
+                if triage_available:
+                    from apps.triage.models import TriageVitals
+                    if not hasattr(self, 'triage') and not TriageVitals.objects.filter(visit=self).exists():
+                        raise ValidationError({
+                            'current_queue': "Cannot advance visit to DOCTOR queue without recorded triage vitals."
+                        })
 
     def save(self, *args, **kwargs):
         # Auto-align completed states

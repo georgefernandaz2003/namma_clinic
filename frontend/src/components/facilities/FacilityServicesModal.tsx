@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Facility, FacilityService } from '../../types';
 import { fetchFacilityServices, toggleFacilityService } from '../../api/facilityServices';
+import { parseApiError } from '../../api/client';
 import {
   Activity,
   X,
@@ -68,7 +69,7 @@ export const FacilityServicesModal: React.FC<FacilityServicesModalProps> = ({
     } catch (err: any) {
       setFeedback({
         type: 'error',
-        message: err.message || 'Failed to update service status.',
+        message: parseApiError(err),
       });
     } finally {
       setActionLoadingId(null);

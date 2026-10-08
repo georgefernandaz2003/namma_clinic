@@ -2,6 +2,9 @@
 import { X, Layers, Plus, Pencil, Trash2, Check, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import type { Facility, Department } from '../../types';
 import { fetchDepartments, createDepartment, updateDepartment, deleteDepartment } from '../../api/departments';
+import { parseApiError } from '../../api/client';
+
+const STANDARD_DEPT_CODES = ['OPD', 'PHARM', 'LAB', 'TRIAGE'];
 
 interface DepartmentModalProps {
   isOpen: boolean;
@@ -76,7 +79,7 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({ isOpen, facili
       setIsAdding(false);
       await loadDepartments();
     } catch (err: any) {
-      setError(err?.message || 'Failed to create department.');
+      setError(parseApiError(err));
     } finally {
       setActionLoading(false);
     }
@@ -106,13 +109,18 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({ isOpen, facili
       setEditingId(null);
       await loadDepartments();
     } catch (err: any) {
-      setError(err?.message || 'Failed to update department.');
+      setError(parseApiError(err));
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleDelete = async (dept: Department) => {
+    if (STANDARD_DEPT_CODES.includes(dept.code)) {
+      setError(`Standard department "${dept.name}" (${dept.code}) cannot be physically deleted. Deactivate it instead.`);
+      return;
+    }
+
     if (!window.confirm(`Are you sure you want to delete department "${dept.name}" [${dept.code}]?`)) {
       return;
     }
@@ -124,7 +132,7 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({ isOpen, facili
       setFeedback(`Department "${dept.name}" deleted successfully.`);
       await loadDepartments();
     } catch (err: any) {
-      setError(err?.message || 'Failed to delete department.');
+      setError(parseApiError(err));
     } finally {
       setActionLoading(false);
     }

@@ -43,6 +43,18 @@ class TriageVitalsViewSet(viewsets.ModelViewSet):
         if not visit_id:
             return Response({'error': 'Visit is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        from apps.visits.models import Visit
+        from apps.facilities.models import FacilityService
+        visit = Visit.objects.filter(pk=visit_id).first()
+        if not visit:
+            return Response({'error': 'Visit not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not FacilityService.objects.filter(facility=visit.facility, service__code='SRV_TRIAGE', is_available=True).exists():
+            return Response(
+                {'error': 'Triage & Vital Signs Assessment (SRV_TRIAGE) is currently unavailable or disabled at this facility.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         with transaction.atomic():
             existing_triage = TriageVitals.objects.filter(visit_id=visit_id).first()
             if existing_triage:

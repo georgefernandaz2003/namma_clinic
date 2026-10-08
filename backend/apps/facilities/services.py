@@ -88,3 +88,60 @@ def provision_standard_facility_services(facility):
         )
         provisioned.append(fac_svc)
     return provisioned
+
+SERVICE_TO_DEPARTMENT_MAP = {
+    'SRV_GENERAL_OPD': 'OPD',
+    'SRV_NCD_SCREENING': 'OPD',
+    'SRV_DIAGNOSTICS': 'LAB',
+    'SRV_PHARMACY': 'PHARM',
+    'SRV_TRIAGE': 'TRIAGE',
+}
+
+DEPARTMENT_TO_SERVICES_MAP = {
+    'OPD': ['SRV_GENERAL_OPD', 'SRV_NCD_SCREENING'],
+    'LAB': ['SRV_DIAGNOSTICS'],
+    'PHARM': ['SRV_PHARMACY'],
+    'TRIAGE': ['SRV_TRIAGE'],
+}
+
+STANDARD_DEPARTMENT_CODES = {'OPD', 'PHARM', 'LAB', 'TRIAGE'}
+
+def validate_service_enablement(facility, service_code):
+    """
+    Validates that a canonical service cannot be enabled if its supporting
+    physical department is missing or inactive.
+    Raises rest_framework.exceptions.ValidationError.
+    """
+    from rest_framework.exceptions import ValidationError
+    dept_code = SERVICE_TO_DEPARTMENT_MAP.get(service_code)
+    if not dept_code:
+        return
+    dept = Department.objects.filter(facility=facility, code=dept_code).first()
+    if not dept or not dept.is_active:
+        dept_name = dept.name if dept else dept_code
+        raise ValidationError(
+            f"Cannot enable service '{service_code}' because its supporting department '{dept_name}' ({dept_code}) is inactive or not provisioned at this facility."
+        )
+
+def validate_department_deactivation(facility, dept_code):
+    """
+    Validates that a department cannot be deactivated or deleted while any of its
+    dependent facility services remain operational (is_available=True).
+    Raises rest_framework.exceptions.ValidationError.
+    """
+    from rest_framework.exceptions import ValidationError
+    dep_service_codes = DEPARTMENT_TO_SERVICES_MAP.get(dept_code, [])
+    if not dep_service_codes:
+        return
+    active_services = list(
+        FacilityService.objects.filter(
+            facility=facility,
+            service__code__in=dep_service_codes,
+            is_available=True
+        ).values_list('service__name', flat=True)
+    )
+    if active_services:
+        services_str = ", ".join(active_services)
+        raise ValidationError(
+            f"Cannot deactivate department '{dept_code}' while dependent service(s) ({services_str}) remain active. Please disable the service(s) first."
+        )

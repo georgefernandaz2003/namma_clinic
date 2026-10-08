@@ -152,7 +152,8 @@ class VisitViewSet(viewsets.ModelViewSet):
 
         required_service_code = SERVICE_VISIT_TYPE_MAP.get(visit_type)
         if required_service_code:
-            from apps.facilities.models import FacilityService
+            from apps.facilities.models import FacilityService, Department
+            from apps.facilities.services import SERVICE_TO_DEPARTMENT_MAP
             svc_active = FacilityService.objects.filter(
                 facility_id=facility_id,
                 service__code=required_service_code,
@@ -164,9 +165,31 @@ class VisitViewSet(viewsets.ModelViewSet):
                     {'error': f"{display_name} service is currently unavailable or disabled at this facility."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            dept_code = SERVICE_TO_DEPARTMENT_MAP.get(required_service_code)
+            if dept_code:
+                dept_active = Department.objects.filter(
+                    facility_id=facility_id,
+                    code=dept_code,
+                    is_active=True
+                ).exists()
+                if not dept_active:
+                    return Response(
+                        {'error': f"Supporting department ({dept_code}) is inactive or not configured at this facility."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
         # Operational OPD Date is strictly today
         today = datetime.date.today()
+
+        from apps.facilities.models import FacilityService
+        triage_available = FacilityService.objects.filter(
+            facility_id=facility_id,
+            service__code='SRV_TRIAGE',
+            is_available=True
+        ).exists()
+
+        initial_queue = 'TRIAGE' if triage_available else 'DOCTOR'
+        initial_status = 'WAITING_FOR_TRIAGE' if triage_available else 'WAITING_FOR_DOCTOR'
 
         with transaction.atomic():
             base_id = f"VIS-F{facility_id}-{today.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
@@ -184,21 +207,27 @@ class VisitViewSet(viewsets.ModelViewSet):
                 visit_type=visit_type,
                 priority=priority,
                 chief_complaint=chief_complaint,
-                current_queue='TRIAGE',
-                status='WAITING_FOR_TRIAGE',
+                current_queue=initial_queue,
+                status=initial_status,
                 arrival_time=timezone.now()
             )
 
             token = issue_opd_token(visit=visit, facility=visit.facility, priority=priority)
 
+            notes = (
+                f"Issued OPD Token #{token.token_number} for {today}"
+                if triage_available
+                else f"Issued OPD Token #{token.token_number} for {today} (Triage bypassed / service unavailable)"
+            )
+
             VisitStatusHistory.objects.create(
                 visit=visit,
                 from_status='NONE',
-                to_status='WAITING_FOR_TRIAGE',
-                queue='TRIAGE',
+                to_status=initial_status,
+                queue=initial_queue,
                 performed_by=request.user,
                 performed_by_role=getattr(request.user, 'role', ''),
-                notes=f"Issued OPD Token #{token.token_number} for {today}"
+                notes=notes
             )
 
         return Response(VisitSerializer(visit).data, status=status.HTTP_201_CREATED)
@@ -305,8 +334,14 @@ class VisitViewSet(viewsets.ModelViewSet):
         if to_status in ['IN_CONSULTATION', 'DOCTOR_REVIEW'] and user_role not in ['DOCTOR', 'ADMIN', 'SYSTEM_ADMIN', 'LAB_TECHNICIAN']:
             return Response({'error': f"Role '{user_role}' is not authorized to begin consultation or doctor review."}, status=status.HTTP_403_FORBIDDEN)
 
-        # FND-09: Prevent transition to DOCTOR queue without recorded triage vitals
-        if to_status in ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION'] or target_queue == 'DOCTOR':
+        # FND-09: Prevent transition to DOCTOR queue without recorded triage vitals (unless SRV_TRIAGE is disabled)
+        from apps.facilities.models import FacilityService
+        triage_active = FacilityService.objects.filter(
+            facility=visit.facility,
+            service__code='SRV_TRIAGE',
+            is_available=True
+        ).exists()
+        if triage_active and (to_status in ['TRIAGED', 'WAITING_FOR_DOCTOR', 'IN_CONSULTATION'] or target_queue == 'DOCTOR'):
             from apps.triage.models import TriageVitals
             if not hasattr(visit, 'triage') and not TriageVitals.objects.filter(visit=visit).exists():
                 return Response(

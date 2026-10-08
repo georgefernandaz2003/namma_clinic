@@ -28,3 +28,5 @@ backend/media/
 
 # PostgreSQL data
 pgdata/
+
+scratch/

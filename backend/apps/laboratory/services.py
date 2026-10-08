@@ -31,6 +31,11 @@ def create_diagnostic_order(
     """
     Creates an encounter-linked DiagnosticOrder.
     """
+    from apps.facilities.models import FacilityService
+    from apps.common.exceptions import DomainValidationError
+    if not FacilityService.objects.filter(facility=facility, service__code='SRV_DIAGNOSTICS', is_available=True).exists():
+        raise DomainValidationError("Diagnostic Laboratory Services (SRV_DIAGNOSTICS) is currently unavailable or disabled at this facility.")
+
     today = order_date or datetime.date.today()
     ord_num = order_number or f"ORD-{today.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 

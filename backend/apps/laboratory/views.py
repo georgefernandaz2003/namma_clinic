@@ -166,6 +166,13 @@ class LabOrderViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError):
             pass
 
+        from apps.facilities.models import FacilityService
+        if not FacilityService.objects.filter(facility_id=facility_id, service__code='SRV_DIAGNOSTICS', is_available=True).exists():
+            return Response(
+                {'error': 'Diagnostic Laboratory Services (SRV_DIAGNOSTICS) is currently unavailable or disabled at this facility.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         consultation = None
         if consultation_id:
             consultation = Consultation.objects.filter(id=consultation_id).first()

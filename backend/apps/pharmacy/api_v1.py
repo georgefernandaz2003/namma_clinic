@@ -191,6 +191,11 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         staff = get_request_staff(self.request)
         fac = serializer.validated_data['facility']
         check_facility_permission(fac, staff, self.request.user)
+
+        from apps.facilities.models import FacilityService
+        if not FacilityService.objects.filter(facility=fac, service__code='SRV_PHARMACY', is_available=True).exists():
+            raise exceptions.ValidationError({'service': 'Pharmacy & Dispensing Services (SRV_PHARMACY) is currently unavailable or disabled at this facility.'})
+
         rx = serializer.save(doctor=self.request.user, doctor_staff=staff)
         items_data = self.request.data.get('items', [])
         if items_data:
@@ -348,6 +353,10 @@ class DispensationViewSet(viewsets.ModelViewSet):
         rx = Prescription.objects.get(pk=serializer.validated_data['prescription_id'])
         fac = Facility.objects.get(pk=serializer.validated_data['facility_id'])
         check_facility_permission(fac, staff, request.user)
+
+        from apps.facilities.models import FacilityService
+        if not FacilityService.objects.filter(facility=fac, service__code='SRV_PHARMACY', is_available=True).exists():
+            return Response({'error': 'Pharmacy & Dispensing Services (SRV_PHARMACY) is currently unavailable or disabled at this facility.'}, status=status.HTTP_400_BAD_REQUEST)
         check_facility_permission(rx.facility, staff, request.user)
         if rx.facility_id != fac.id:
             return Response({'error': 'Prescription does not belong to the specified facility scope.'}, status=status.HTTP_403_FORBIDDEN)

@@ -91,12 +91,32 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         if not visit_id:
             return Response({'error': 'Visit is required for consultation.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # FND-09: Ensure visit is not untriaged in triage queue
+        # FND-09: Ensure visit is not untriaged in triage queue (unless SRV_TRIAGE is disabled)
         visit_obj = Visit.objects.filter(id=visit_id).first()
+        target_facility_id = facility_id or (visit_obj.facility_id if visit_obj else request.user.assigned_facility_id)
+
         if visit_obj and (visit_obj.current_queue == 'TRIAGE' or visit_obj.status in ['WAITING_FOR_TRIAGE', 'IN_TRIAGE']):
-            from apps.triage.models import TriageVitals
-            if not TriageVitals.objects.filter(visit_id=visit_id).exists():
-                return Response({'error': 'Cannot record consultation: Patient is still in TRIAGE queue without recorded vitals.'}, status=status.HTTP_400_BAD_REQUEST)
+            from apps.facilities.models import FacilityService
+            triage_active = FacilityService.objects.filter(facility_id=visit_obj.facility_id, service__code='SRV_TRIAGE', is_available=True).exists()
+            if triage_active:
+                from apps.triage.models import TriageVitals
+                if not TriageVitals.objects.filter(visit_id=visit_id).exists():
+                    return Response({'error': 'Cannot record consultation: Patient is still in TRIAGE queue without recorded vitals.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Service Gate: Prescriptions require active SRV_PHARMACY
+        prescription_items = data.get('prescription_items', [])
+        if prescription_items:
+            from apps.facilities.models import FacilityService
+            if target_facility_id and not FacilityService.objects.filter(facility_id=target_facility_id, service__code='SRV_PHARMACY', is_available=True).exists():
+                return Response({'error': 'Pharmacy & Dispensing Services (SRV_PHARMACY) is currently unavailable or disabled at this facility.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Service Gate: Lab test orders require active SRV_DIAGNOSTICS
+        lab_test_ids = data.get('lab_test_ids', [])
+        has_lab_orders = bool(lab_test_ids) or data.get('has_lab_orders')
+        if lab_test_ids or has_lab_orders:
+            from apps.facilities.models import FacilityService
+            if target_facility_id and not FacilityService.objects.filter(facility_id=target_facility_id, service__code='SRV_DIAGNOSTICS', is_available=True).exists():
+                return Response({'error': 'Diagnostic Laboratory Services (SRV_DIAGNOSTICS) is currently unavailable or disabled at this facility.'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
             consultation = Consultation.objects.filter(visit_id=visit_id).first()

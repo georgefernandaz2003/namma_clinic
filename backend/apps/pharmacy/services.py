@@ -206,6 +206,10 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
     Executes prescription medication dispensation.
     items_to_dispense: list of dicts: [{'prescription_item': item, 'batch': batch, 'quantity': qty}]
     """
+    from apps.facilities.models import FacilityService
+    if not FacilityService.objects.filter(facility=facility, service__code='SRV_PHARMACY', is_available=True).exists():
+        raise DomainValidationError("Pharmacy & Dispensing Services (SRV_PHARMACY) is currently unavailable or disabled at this facility.")
+
     if prescription.facility_id != facility.id:
         raise DomainValidationError(
             f"Prescription facility ({prescription.facility_id}) does not match dispensing facility ({facility.id})."

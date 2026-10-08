@@ -2,7 +2,8 @@
 Organization & Facility REST API (v1).
 Manages State, District, Taluk, Zone, Ward, Facility, and Department hierarchies.
 """
-from rest_framework import serializers, viewsets, permissions, exceptions
+from rest_framework import serializers, viewsets, permissions, exceptions, status
+from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from apps.geography.models import State, District, Taluk, Zone, Ward
 from apps.facilities.models import Facility, Department, ServiceMaster, FacilityService
@@ -38,6 +39,13 @@ class DepartmentSerializer(serializers.ModelSerializer):
 
     def validate_code(self, value):
         return value.strip().upper()
+
+    def validate(self, attrs):
+        is_active = attrs.get('is_active')
+        if is_active is False and self.instance and self.instance.is_active:
+            from apps.facilities.services import validate_department_deactivation
+            validate_department_deactivation(self.instance.facility, self.instance.code)
+        return attrs
 
 class FacilitySerializer(serializers.ModelSerializer):
     district_name = serializers.ReadOnlyField(source='district.name')
@@ -302,6 +310,33 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         self.check_facility_scope(instance.facility_id)
         instance.delete()
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.check_facility_scope(instance.facility_id)
+
+        # Protect standard departments from physical deletion
+        from apps.facilities.services import STANDARD_DEPARTMENT_CODES, validate_department_deactivation
+        if instance.code in STANDARD_DEPARTMENT_CODES:
+            raise exceptions.ValidationError({
+                'detail': f"Standard system department '{instance.name}' ({instance.code}) cannot be deleted. Deactivate the department instead."
+            })
+
+        # Check dependent active services
+        validate_department_deactivation(instance.facility, instance.code)
+
+        from django.db.models.deletion import RestrictedError
+        try:
+            self.perform_destroy(instance)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except RestrictedError as e:
+            return Response(
+                {
+                    'error': f"Cannot delete department '{instance.name}' because active staff members or records reference it.",
+                    'detail': str(e)
+                },
+                status=status.HTTP_409_CONFLICT
+            )
+
 
 class ServiceMasterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -327,11 +362,20 @@ class FacilityServiceSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'facility_name', 'facility_code', 'service_code', 'service_name', 'service_category']
 
     def validate(self, attrs):
-        facility = attrs.get('facility')
-        service = attrs.get('service')
+        facility = attrs.get('facility') or (self.instance.facility if self.instance else None)
+        service = attrs.get('service') or (self.instance.service if self.instance else None)
         if facility and service and not self.instance:
             if FacilityService.objects.filter(facility=facility, service=service).exists():
                 raise serializers.ValidationError("This service is already configured for this facility.")
+
+        is_available = attrs.get('is_available')
+        if is_available is True:
+            srv_code = service.code if service else (self.instance.service.code if self.instance else None)
+            fac_obj = facility or (self.instance.facility if self.instance else None)
+            if srv_code and fac_obj:
+                from apps.facilities.services import validate_service_enablement
+                validate_service_enablement(fac_obj, srv_code)
+
         return attrs
 
 
@@ -429,3 +473,25 @@ class FacilityServiceViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         self.check_facility_scope(instance.facility_id)
         instance.delete()
+
+    def destroy(self, request, *args, **kwargs):
+        # Hospital Admin must receive HTTP 403 on DELETE
+        active_roles = set(get_user_active_role_codes(request.user))
+        if 'HOSPITAL_ADMIN' in active_roles and not request.user.is_superuser:
+            raise PermissionDenied(
+                "Hospital Administrators are not permitted to delete facility services. Services can only be enabled or disabled."
+            )
+
+        instance = self.get_object()
+        self.check_facility_scope(instance.facility_id)
+
+        # Canonical services cannot be permanently removed
+        from apps.facilities.services import STANDARD_CANONICAL_SERVICES
+        canonical_codes = {s['code'] for s in STANDARD_CANONICAL_SERVICES}
+        if instance.service.code in canonical_codes:
+            raise exceptions.ValidationError({
+                'detail': f"Canonical facility service '{instance.service.name}' ({instance.service.code}) cannot be permanently deleted. Toggle its operational availability instead."
+            })
+
+        return super().destroy(request, *args, **kwargs)
+

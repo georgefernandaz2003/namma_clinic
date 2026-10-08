@@ -3,7 +3,7 @@ Diagnostics REST API (v1).
 Delegates requisition, specimen collection, result entry, verification, and amendment to domain services.
 Enforces facility isolation and verification immutability.
 """
-from rest_framework import serializers, viewsets, status
+from rest_framework import serializers, viewsets, status, exceptions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.laboratory.models import (
@@ -109,6 +109,10 @@ class DiagnosticOrderViewSet(viewsets.ModelViewSet):
 
         fac = serializer.validated_data['facility']
         check_facility_permission(fac, staff, request.user)
+
+        from apps.facilities.models import FacilityService
+        if not FacilityService.objects.filter(facility=fac, service__code='SRV_DIAGNOSTICS', is_available=True).exists():
+            raise exceptions.ValidationError({'service': 'Diagnostic Laboratory Services (SRV_DIAGNOSTICS) is currently unavailable or disabled at this facility.'})
 
         order = create_diagnostic_order(
             visit=serializer.validated_data['visit'],

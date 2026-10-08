@@ -1137,6 +1137,13 @@ class DispenseMedicineView(APIView):
         if accessible_ids is not None and prescription.facility_id not in accessible_ids:
             return Response({'error': 'You do not have permission to dispense prescriptions for another facility scope.'}, status=status.HTTP_403_FORBIDDEN)
 
+        from apps.facilities.models import FacilityService
+        if not FacilityService.objects.filter(facility_id=prescription.facility_id, service__code='SRV_PHARMACY', is_available=True).exists():
+            return Response(
+                {'error': 'Pharmacy & Dispensing Services (SRV_PHARMACY) is currently unavailable or disabled at this facility.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Prescription verification guard: blocked states
         if prescription.status == 'DISPENSED':
             return Response({
