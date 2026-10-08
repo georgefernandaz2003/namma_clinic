@@ -27,6 +27,7 @@ from apps.geography.models import District, Ward
 from apps.surveillance.demographic_services import (
     filter_cases_by_demographics,
     normalize_severity,
+    normalize_gender,
     resolve_patient_demographics,
     AGE_GROUPS,
     SEVERITY_MILD,
@@ -104,23 +105,62 @@ def build_disease_time_series(facility_ids=None, district_id=None, disease_name=
 
     # Single aggregation query across the entire date range, respecting all filter layers in order
     scoped_cases = qs.filter(report_date__range=[series_start, as_of])
-    if age_group or gender:
-        scoped_cases = filter_cases_by_demographics(scoped_cases, age_groups=age_group, genders=gender)
-    if severity:
-        sev_norm = normalize_severity(severity)
-        if sev_norm != SEVERITY_UNKNOWN:
-            scoped_cases = scoped_cases.filter(severity=sev_norm)
-    if vulnerable_group:
-        scoped_cases = filter_cases_by_vulnerable_group(scoped_cases, vulnerable_group=vulnerable_group)
-    if patient_type:
-        scoped_cases = filter_cases_by_patient_type(scoped_cases, patient_type=patient_type)
 
-    cases_by_date = dict(
-        scoped_cases
-        .values('report_date')
-        .annotate(cnt=Count('id'))
-        .values_list('report_date', 'cnt')
-    )
+    # Single efficient query with select_related('patient') and annotated patient type
+    cases_qs = annotate_case_patient_type(scoped_cases).select_related('patient')
+    cases_list = list(cases_qs)
+
+    has_filters = bool(age_group or gender or severity or vulnerable_group or patient_type)
+    if has_filters:
+        matching_cases = []
+        for c in cases_list:
+            # 1. Age group & Gender
+            demo = resolve_patient_demographics(
+                getattr(c, 'patient', None),
+                reference_date=c.report_date,
+                allow_stored_age_fallback=False
+            )
+            if age_group:
+                if demo['age_group'] != age_group:
+                    continue
+
+            if gender:
+                if demo['gender'] != normalize_gender(gender):
+                    continue
+
+            # 2. Severity
+            if severity:
+                sev = normalize_severity(getattr(c, 'severity', None))
+                sev_target = normalize_severity(severity)
+                if sev != sev_target:
+                    continue
+
+            # 3. Vulnerable Group
+            if vulnerable_group:
+                p = getattr(c, 'patient', None)
+                v_info = getattr(p, 'vulnerability_information', None) if p else None
+                vg = normalize_vulnerable_group(v_info)
+                vg_target = normalize_vulnerable_group(vulnerable_group)
+                if vg != vg_target:
+                    continue
+
+            # 4. Patient Type
+            if patient_type:
+                pt = get_case_patient_type(c)
+                pt_target = str(patient_type).strip().upper()
+                if pt_target == 'FOLLOWUP':
+                    pt_target = PATIENT_TYPE_FOLLOW_UP
+                if pt != pt_target:
+                    continue
+
+            matching_cases.append(c)
+    else:
+        matching_cases = cases_list
+
+    cases_by_date = {}
+    for c in matching_cases:
+        r_date = c.report_date
+        cases_by_date[r_date] = cases_by_date.get(r_date, 0) + 1
 
     series = []
     for i in range(weeks_count):
@@ -156,7 +196,7 @@ def build_disease_time_series(facility_ids=None, district_id=None, disease_name=
 # 2. Disease Forecasting (WMA Method)
 # ---------------------------------------------------------------------------
 
-def generate_disease_forecast(time_series, horizon_weeks=4):
+def generate_disease_forecast(time_series, horizon_weeks=4, has_demographic_filter=False):
     """
     Generates explainable, statistical weekly disease forecasts using a
     Weighted Moving Average (WMA) method.
@@ -193,12 +233,22 @@ def generate_disease_forecast(time_series, horizon_weeks=4):
 
     # Require minimum data baseline to prevent fabricated or spurious predictions
     if total_cases < 3:
+        if has_demographic_filter:
+            explanation = (
+                f"Insufficient historical surveillance cases for the selected demographic criteria "
+                f"(total {total_cases} cases recorded). Minimum baseline of 3 cases required to generate a reliable forecast."
+            )
+        else:
+            explanation = (
+                f"Insufficient historical surveillance cases (total {total_cases} cases recorded). "
+                f"Minimum baseline of 3 cases required."
+            )
         return {
             'status': 'INSUFFICIENT_DATA',
             'horizon_weeks': horizon_weeks,
             'method': 'WEIGHTED_MOVING_AVERAGE',
             'points': [],
-            'explanation': f'Insufficient historical surveillance cases (total {total_cases} cases recorded). Minimum baseline of 3 cases required.'
+            'explanation': explanation
         }
 
     # Window size: up to 6 most recent weeks (or available)
@@ -784,9 +834,11 @@ def generate_forecast_summary(facility_id=None, district_id=None, disease_name=N
     trend_dir, pct_change, trend_expl = compute_trend_status(curr_cases, prev_cases)
 
     # 3. Forecast calculation
+    has_demo_filter = bool(age_group or gender or severity or vulnerable_group or patient_type)
     forecast_data = generate_disease_forecast(
         time_series=series,
-        horizon_weeks=horizon_weeks
+        horizon_weeks=horizon_weeks,
+        has_demographic_filter=has_demo_filter
     )
 
     # 4. Seasonal pattern analysis (respecting months_count if provided)
