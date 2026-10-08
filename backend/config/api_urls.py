@@ -36,7 +36,10 @@ from apps.integrations.views import IntegrationConfigurationViewSet
 from apps.compliance.views import ComplianceItemViewSet
 from apps.audit.views import AuditLogViewSet
 from apps.reports.views import DashboardSummaryView, CSVExportView, ResetDemoView
-from apps.reports.analytics_api import MultiLevelAnalyticsView, TrendAnalyticsView, PredictiveAnalyticsView
+from apps.reports.analytics_api import (
+    MultiLevelAnalyticsView, TrendAnalyticsView, PredictiveAnalyticsView,
+    KarnatakaCommandCenterView
+)
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
@@ -115,6 +118,7 @@ urlpatterns = [
     path('admin/reset-demo/', ResetDemoView.as_view(), name='reset_demo'),
 
     # Public Health Intelligence & Multi-Level Analytics
+    path('analytics/command-center/', KarnatakaCommandCenterView.as_view(), name='analytics_command_center'),
     path('analytics/multi-level/', MultiLevelAnalyticsView.as_view(), name='analytics_multi_level'),
     path('analytics/trends/', TrendAnalyticsView.as_view(), name='analytics_trends'),
     path('analytics/predictive/', PredictiveAnalyticsView.as_view(), name='analytics_predictive'),

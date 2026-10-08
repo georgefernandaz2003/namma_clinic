@@ -618,3 +618,29 @@ class PredictiveAnalyticsView(APIView):
             "outbreak_risk_predictions": outbreak_predictions,
             "patient_surge_forecast": surge_forecast
         })
+
+
+class KarnatakaCommandCenterView(APIView):
+    """
+    Karnataka State Public Health Command Center & Predictive Governance API.
+    Accepts cascading query parameters: district, zone, hospital, time_period, role.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        from apps.reports.karnataka_command_center import get_karnataka_command_center_data
+        district = request.query_params.get('district', 'all')
+        zone = request.query_params.get('zone', 'all')
+        hospital = request.query_params.get('hospital', 'all')
+        time_period = request.query_params.get('time_period', 'last_30_days')
+        role = request.query_params.get('role', 'HOSPITAL_ADMIN')
+
+        data = get_karnataka_command_center_data(
+            district_id=district,
+            zone_id=zone,
+            hospital_id=hospital,
+            time_period=time_period,
+            role=role
+        )
+        return Response(data)
+

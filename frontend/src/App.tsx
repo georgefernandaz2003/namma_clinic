@@ -142,11 +142,19 @@ export const App: React.FC = () => {
             }
           />
 
-          {/* Public Health & Multi-Level Predictive Analytics */}
+          {/* Karnataka Public Health Command Center & Predictive Analytics */}
           <Route
             path="/admin/analytics"
             element={
-              <ProtectedRoute allowedRoles={['DISTRICT_OFFICER', 'HOSPITAL_ADMIN']}>
+              <ProtectedRoute allowedRoles={['DISTRICT_OFFICER', 'HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'LAB_TECHNICIAN', 'PHARMACIST', 'INVENTORY_OFFICER']}>
+                <PublicHealthIntelligencePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              <ProtectedRoute allowedRoles={['DISTRICT_OFFICER', 'HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'LAB_TECHNICIAN', 'PHARMACIST', 'INVENTORY_OFFICER']}>
                 <PublicHealthIntelligencePage />
               </ProtectedRoute>
             }
