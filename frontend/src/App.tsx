@@ -38,6 +38,7 @@ import { Compliance } from './pages/Compliance';
 import { Audit } from './pages/Audit';
 import { StaffAdministration } from './pages/StaffAdministration';
 import { InventoryConsole } from './pages/InventoryConsole';
+import { PublicHealthIntelligencePage } from './pages/analytics/PublicHealthIntelligencePage';
 
 export const App: React.FC = () => {
   return (
@@ -137,6 +138,16 @@ export const App: React.FC = () => {
             element={
               <ProtectedRoute allowedRoles={['DISTRICT_OFFICER', 'HOSPITAL_ADMIN']}>
                 <StaffAdministration />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Public Health & Multi-Level Predictive Analytics */}
+          <Route
+            path="/admin/analytics"
+            element={
+              <ProtectedRoute allowedRoles={['DISTRICT_OFFICER', 'HOSPITAL_ADMIN']}>
+                <PublicHealthIntelligencePage />
               </ProtectedRoute>
             }
           />

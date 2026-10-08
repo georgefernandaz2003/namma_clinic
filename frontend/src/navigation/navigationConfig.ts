@@ -118,6 +118,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
     {
       title: 'PUBLIC HEALTH & SURVEILLANCE',
       items: [
+        { name: 'Multi-Level & Predictive Dashboard', path: '/admin/analytics', iconName: 'Activity', description: 'State, District, Zone, Ward hierarchy, disease trends, and outbreak predictions' },
         { name: 'NCD Management', path: '/ncd', iconName: 'Activity', description: 'Non-communicable disease chronic care monitoring' },
         { name: 'Disease Surveillance', path: '/surveillance', iconName: 'Radio', description: 'Outbreak signals and infectious disease tracking' },
       ],
@@ -156,6 +157,17 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
         { name: 'Follow-up Tracking', path: '/followups', iconName: 'CalendarCheck', description: 'Post-consultation follow-up scheduling' },
         { name: 'NCD Management', path: '/ncd', iconName: 'Activity', description: 'Non-communicable disease chronic care monitoring' },
         { name: 'Infra & Maintenance', path: '/infrastructure', iconName: 'Wrench', description: 'Facility maintenance tickets and consumable stock' },
+      ],
+    },
+    {
+      title: 'PUBLIC HEALTH INTELLIGENCE',
+      items: [
+        {
+          name: 'Multi-Level & Predictive Dashboard',
+          path: '/admin/analytics',
+          iconName: 'Activity',
+          description: 'State, District, Zone, Ward hierarchy, disease trends, and outbreak predictions',
+        },
       ],
     },
     {

@@ -31,6 +31,9 @@ from apps.ncd.api_v1 import (
     DiseaseSurveillanceCaseViewSet, PublicHealthNotificationViewSet,
     OperationalAlertViewSet, AuditLogEntryViewSet
 )
+from apps.reports.analytics_api import (
+    MultiLevelAnalyticsView, TrendAnalyticsView, PredictiveAnalyticsView
+)
 
 router_v1 = DefaultRouter()
 
@@ -93,5 +96,8 @@ router_v1.register(r'audit', AuditLogEntryViewSet, basename='v1-audit')
 
 urlpatterns = [
     path('patients/patients/', PatientViewSet.as_view({'get': 'list', 'post': 'create'}), name='v1-patient-patients-alias'),
+    path('analytics/multi-level/', MultiLevelAnalyticsView.as_view(), name='v1-analytics-multilevel'),
+    path('analytics/trends/', TrendAnalyticsView.as_view(), name='v1-analytics-trends'),
+    path('analytics/predictive/', PredictiveAnalyticsView.as_view(), name='v1-analytics-predictive'),
     path('', include(router_v1.urls)),
 ]

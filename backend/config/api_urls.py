@@ -36,6 +36,7 @@ from apps.integrations.views import IntegrationConfigurationViewSet
 from apps.compliance.views import ComplianceItemViewSet
 from apps.audit.views import AuditLogViewSet
 from apps.reports.views import DashboardSummaryView, CSVExportView, ResetDemoView
+from apps.reports.analytics_api import MultiLevelAnalyticsView, TrendAnalyticsView, PredictiveAnalyticsView
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
@@ -112,6 +113,11 @@ urlpatterns = [
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard_summary'),
     path('reports/export/', CSVExportView.as_view(), name='csv_export'),
     path('admin/reset-demo/', ResetDemoView.as_view(), name='reset_demo'),
+
+    # Public Health Intelligence & Multi-Level Analytics
+    path('analytics/multi-level/', MultiLevelAnalyticsView.as_view(), name='analytics_multi_level'),
+    path('analytics/trends/', TrendAnalyticsView.as_view(), name='analytics_trends'),
+    path('analytics/predictive/', PredictiveAnalyticsView.as_view(), name='analytics_predictive'),
 
     # Router URLs
     path('', include(router.urls)),
