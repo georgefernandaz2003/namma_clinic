@@ -569,17 +569,8 @@ export const PublicHealthIntelligence: React.FC = () => {
 
   // Authoritative observation population count for transparency
   const totalPopulationCases = useMemo(() => {
-    if (forecastData?.observation_period?.total_cases !== undefined) {
-      return forecastData.observation_period.total_cases;
-    }
-    if (trendsData?.summary?.total_current_cases !== undefined) {
-      return trendsData.summary.total_current_cases;
-    }
-    if (historicalData?.total_cases_in_history !== undefined) {
-      return historicalData.total_cases_in_history;
-    }
-    return 0;
-  }, [forecastData, trendsData, historicalData]);
+    return forecastData?.observation_period?.total_cases ?? 0;
+  }, [forecastData]);
 
   // Authoritative visual risk level badge with explicit text representation
   const renderRiskLevelBadge = (level?: ForecastRiskLevel | string) => {
@@ -952,7 +943,7 @@ export const PublicHealthIntelligence: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-bold text-indigo-950 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
             <Filter className="w-3.5 h-3.5 text-indigo-600" />
-            Selected population:
+            Selected Population:
           </span>
           {hasActiveDemographicFilters ? (
             <div className="flex flex-wrap items-center gap-1.5" data-testid="selected-population-tags">
@@ -1773,17 +1764,7 @@ export const PublicHealthIntelligence: React.FC = () => {
               </div>
 
               <div className="font-mono text-xs shrink-0">
-                {forecastData?.observation_period?.total_cases !== undefined ? (
-                  forecastData.observation_period.total_cases > 0 ? (
-                    <span className="text-indigo-200 bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 inline-block">
-                      Cases in selected population: <strong className="text-white font-bold">{forecastData.observation_period.total_cases}</strong>
-                    </span>
-                  ) : (
-                    <span className="text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 inline-block">
-                      No cases found for the selected filters.
-                    </span>
-                  )
-                ) : totalPopulationCases > 0 ? (
+                {totalPopulationCases > 0 ? (
                   <span className="text-indigo-200 bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 inline-block">
                     Cases in selected population: <strong className="text-white font-bold">{totalPopulationCases}</strong>
                   </span>

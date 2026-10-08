@@ -1473,20 +1473,20 @@ describe('PublicHealthIntelligence Component', () => {
       expect(screen.getByLabelText(/Age Group/i)).toBeDefined();
     });
 
-    // Apply demographic filters
-    fireEvent.change(screen.getByLabelText(/Age Group/i), { target: { value: '15-24' } });
+    // Apply demographic filters: age 25-44, FEMALE, MODERATE, PREGNANT, NEW
+    fireEvent.change(screen.getByLabelText(/Age Group/i), { target: { value: '25-44' } });
     fireEvent.change(screen.getByLabelText(/^Gender$/i), { target: { value: 'FEMALE' } });
-    fireEvent.change(screen.getByLabelText(/^Severity$/i), { target: { value: 'SEVERE' } });
+    fireEvent.change(screen.getByLabelText(/^Severity$/i), { target: { value: 'MODERATE' } });
     fireEvent.change(screen.getByLabelText(/^Vulnerable Group$/i), { target: { value: 'PREGNANT' } });
-    fireEvent.change(screen.getByLabelText(/^Patient Type$/i), { target: { value: 'FOLLOW_UP' } });
+    fireEvent.change(screen.getByLabelText(/^Patient Type$/i), { target: { value: 'NEW' } });
 
     await waitFor(() => {
       const summary = screen.getByTestId('forecast-selected-population');
-      expect(within(summary).getByText('15-24')).toBeDefined();
+      expect(within(summary).getByText('25-44')).toBeDefined();
       expect(within(summary).getByText('Female')).toBeDefined();
-      expect(within(summary).getByText('Severe')).toBeDefined();
+      expect(within(summary).getByText('Moderate')).toBeDefined();
       expect(within(summary).getByText('Pregnant')).toBeDefined();
-      expect(within(summary).getByText('Follow-up')).toBeDefined();
+      expect(within(summary).getByText('New')).toBeDefined();
     });
   });
 
@@ -1500,15 +1500,45 @@ describe('PublicHealthIntelligence Component', () => {
 
     // Without demographic filters, displays "All eligible population"
     const summary = screen.getByTestId('forecast-selected-population');
-    expect(within(summary).getByText(/All eligible population/i)).toBeDefined();
+    expect(within(summary).getByText('All eligible population')).toBeDefined();
   });
 
-  it('16. Zero selected-population cases displays "No cases found for the selected filters."', async () => {
+  it('16. Filtered case count displays "Cases in selected population: 12"', async () => {
+    vi.mocked(intelligenceService.getForecast).mockResolvedValue({
+      ...mockForecastAvailable,
+      observation_period: {
+        ...mockForecastAvailable.observation_period,
+        total_cases: 12,
+      },
+    });
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Cases in selected population:/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText('12').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('17. Zero selected-population cases displays "No cases found for the selected filters." and no fabricated normal risk', async () => {
     vi.mocked(intelligenceService.getForecast).mockResolvedValue({
       ...mockForecastAvailable,
       observation_period: {
         ...mockForecastAvailable.observation_period,
         total_cases: 0,
+      },
+      forecast_risk: {
+        status: 'INSUFFICIENT_DATA',
+        historical_baseline: null,
+        elevation_ratio_threshold: 1.15,
+        high_risk_ratio_threshold: 1.5,
+        risk_points: [],
+        highest_risk_level: 'INSUFFICIENT_DATA',
+        risk_points_count: 0,
+        high_risk_points_count: 0,
+        elevated_points_count: 0,
+        normal_points_count: 0,
+        explanation: 'Insufficient historical data for reliable forecast risk classification.',
       },
     });
     setupAuth('HOSPITAL_ADMIN');
@@ -1517,9 +1547,14 @@ describe('PublicHealthIntelligence Component', () => {
     await waitFor(() => {
       expect(screen.getAllByText(/No cases found for the selected filters/i).length).toBeGreaterThan(0);
     });
+
+    // Verify zero cases does NOT display fabricated normal-risk result or points
+    expect(screen.queryByLabelText('NORMAL')).toBeNull();
+    expect(screen.queryByTestId('kpi-historical-baseline')).toBeNull();
+    expect(screen.queryByTestId('forecast-risk-points-table')).toBeNull();
   });
 
-  it('17. Existing no-filter behavior continues working', async () => {
+  it('18. Existing no-filter behavior continues working', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
