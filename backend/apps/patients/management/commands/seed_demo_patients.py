@@ -25,7 +25,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction, connection
 from django.utils import timezone
 
-from apps.facilities.models import Facility
+from apps.facilities.models import Facility, Department
 from apps.accounts.models import (
     User, Person, StaffProfile, RoleMaster, StaffRoleAssignment, StaffFacilityAssignment
 )
@@ -90,6 +90,29 @@ class Command(BaseCommand):
             pharm_staff = getattr(pharm_user, 'staff_profile', None)
             lab_staff = getattr(lab_user, 'staff_profile', None)
             admin_staff = getattr(admin_user, 'staff_profile', None)
+
+            # Ensure Phase 37 Staff-Department Alignment
+            dept_pharm, _ = Department.objects.get_or_create(facility=facility, code='PHARM', defaults={'name': 'Pharmacy', 'is_active': True})
+            dept_lab, _ = Department.objects.get_or_create(facility=facility, code='LAB', defaults={'name': 'Laboratory', 'is_active': True})
+            dept_opd, _ = Department.objects.get_or_create(facility=facility, code='OPD', defaults={'name': 'General OPD', 'is_active': True})
+            dept_triage, _ = Department.objects.get_or_create(facility=facility, code='TRIAGE', defaults={'name': 'Triage', 'is_active': True})
+
+            if pharm_staff and dept_pharm:
+                pharm_staff.department = dept_pharm
+                pharm_staff.save(update_fields=['department'])
+                StaffFacilityAssignment.objects.filter(staff=pharm_staff, facility=facility, is_primary=True).update(department=dept_pharm)
+            if lab_staff and dept_lab:
+                lab_staff.department = dept_lab
+                lab_staff.save(update_fields=['department'])
+                StaffFacilityAssignment.objects.filter(staff=lab_staff, facility=facility, is_primary=True).update(department=dept_lab)
+            if doc_staff and dept_opd:
+                doc_staff.department = dept_opd
+                doc_staff.save(update_fields=['department'])
+                StaffFacilityAssignment.objects.filter(staff=doc_staff, facility=facility, is_primary=True).update(department=dept_opd)
+            if nurse_staff and (dept_triage or dept_opd):
+                nurse_staff.department = dept_triage or dept_opd
+                nurse_staff.save(update_fields=['department'])
+                StaffFacilityAssignment.objects.filter(staff=nurse_staff, facility=facility, is_primary=True).update(department=dept_triage or dept_opd)
 
             # -------------------------------------------------------------
             # STEP 2: REMOVE TEMPORARY CLINICAL / VALIDATION RECORDS

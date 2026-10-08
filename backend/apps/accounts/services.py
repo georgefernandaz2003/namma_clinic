@@ -188,6 +188,35 @@ def validate_admin_actor(actor, target_facility=None, target_staff=None, target_
     return actor_user, actor_staff, actor_role
 
 
+def validate_staff_department_assignment(facility, department):
+    """
+    Enforces server-side integrity between Staff and Department:
+    1. Department must belong to the target facility (cross-facility assignment prohibited).
+    2. Department must be active (assignment to inactive department prohibited).
+    Raises DomainValidationError (HTTP 400).
+    """
+    if department is None:
+        return
+
+    if facility is None:
+        raise DomainValidationError(
+            f"Cannot assign department '{department.name}' [{department.code}] without an associated facility.",
+            code="MISSING_FACILITY_FOR_DEPARTMENT"
+        )
+
+    if department.facility_id != facility.id:
+        raise DomainValidationError(
+            f"Department '{department.name}' [{department.code}] belongs to Facility #{department.facility_id} and cannot be assigned to Facility '{facility.facility_name}' (Facility #{facility.id}).",
+            code="CROSS_FACILITY_DEPARTMENT"
+        )
+
+    if not department.is_active:
+        raise DomainValidationError(
+            f"Cannot assign staff to inactive department '{department.name}' [{department.code}].",
+            code="INACTIVE_DEPARTMENT"
+        )
+
+
 def create_staff_profile(
     person,
     employee_id,
@@ -205,6 +234,8 @@ def create_staff_profile(
 
     if StaffProfile.objects.filter(employee_id=employee_id).exists():
         raise DomainValidationError(f"StaffProfile with employee_id '{employee_id}' already exists.", code="DUPLICATE_EMPLOYEE_ID")
+    if department and not department.is_active:
+        raise DomainValidationError(f"Cannot assign staff to inactive department '{department.name}' [{department.code}].", code="INACTIVE_DEPARTMENT")
 
     with transaction.atomic():
         profile = StaffProfile.objects.create(
@@ -253,6 +284,9 @@ def invite_staff(
         target_facility=facility,
         target_role=role_code
     )
+
+    if department:
+        validate_staff_department_assignment(facility, department)
 
     if not employee_id:
         raise DomainValidationError("employee_id is required.", code="MISSING_EMPLOYEE_ID")
@@ -307,6 +341,9 @@ def invite_staff(
                 effective_from=datetime.date.today(),
                 is_active=True
             )
+            if profile.department_id != (department.id if department else None):
+                profile.department = department
+                profile.save(update_fields=['department'])
 
         # Role Assignment if provided
         if role_code:
@@ -605,6 +642,9 @@ def assign_facility(
         action='assign_facility'
     )
 
+    if department:
+        validate_staff_department_assignment(facility, department)
+
     today = datetime.date.today()
     start_date = effective_from or today
 
@@ -632,6 +672,10 @@ def assign_facility(
             effective_to=effective_to,
             is_active=True
         )
+
+        if is_primary:
+            staff_profile.department = department
+            staff_profile.save(update_fields=['department'])
 
         record_audit_event(
             actor_staff=actor_staff_obj,
@@ -696,6 +740,9 @@ def transfer_staff(staff_profile, new_facility, new_department=None, effective_d
                 f"District Officer cannot transfer staff from facility #{current_fac.id} outside assigned district #{dist_id}."
             )
 
+    if new_department:
+        validate_staff_department_assignment(new_facility, new_department)
+
     transfer_date = effective_date or datetime.date.today()
     yesterday = transfer_date - datetime.timedelta(days=1)
     is_future = transfer_date > datetime.date.today()
@@ -751,6 +798,9 @@ def transfer_staff(staff_profile, new_facility, new_department=None, effective_d
             if user and user.assigned_facility_id != new_facility.id:
                 user.assigned_facility = new_facility
                 user.save(update_fields=["assigned_facility"])
+
+            staff_profile.department = new_department
+            staff_profile.save(update_fields=['department'])
 
             if staff_profile.status == StaffStatusChoices.TRANSFER_PENDING:
                 staff_profile.status = StaffStatusChoices.ACTIVE

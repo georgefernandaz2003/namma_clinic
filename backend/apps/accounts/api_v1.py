@@ -135,6 +135,14 @@ class StaffProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['status']
 
+    def validate(self, attrs):
+        dept = attrs.get('department')
+        if dept and not dept.is_active:
+            raise serializers.ValidationError({
+                'department': f"Cannot assign staff to inactive department '{dept.name}' [{dept.code}]."
+            })
+        return attrs
+
     def get_roles(self, obj):
         today = datetime.date.today()
         assignments = obj.role_assignments.filter(is_active=True).select_related('role')
@@ -204,6 +212,23 @@ class InviteStaffSerializer(serializers.Serializer):
     password = serializers.CharField(max_length=128, required=False, allow_blank=True, write_only=True)
     temporary_password = serializers.CharField(max_length=128, required=False, allow_blank=True, write_only=True)
 
+    def validate(self, attrs):
+        fac_id = attrs.get('facility_id')
+        dept_id = attrs.get('department_id')
+        if dept_id:
+            dept = Department.objects.filter(pk=dept_id).first()
+            if not dept:
+                raise serializers.ValidationError({'department_id': f"Department #{dept_id} does not exist."})
+            if dept.facility_id != fac_id:
+                raise serializers.ValidationError({
+                    'department_id': f"Department '{dept.name}' [{dept.code}] does not belong to facility #{fac_id}."
+                })
+            if not dept.is_active:
+                raise serializers.ValidationError({
+                    'department_id': f"Cannot assign staff to inactive department '{dept.name}' [{dept.code}]."
+                })
+        return attrs
+
 class ActivateStaffActionSerializer(serializers.Serializer):
     password = serializers.CharField(max_length=128, required=False, allow_blank=True, write_only=True)
     temporary_password = serializers.CharField(max_length=128, required=False, allow_blank=True, write_only=True)
@@ -246,6 +271,22 @@ class FacilityAssignmentSerializer(serializers.ModelSerializer):
         fields = ['id', 'staff', 'facility', 'department', 'is_primary', 'effective_from', 'effective_to', 'is_active']
         read_only_fields = ['is_active']
 
+    def validate(self, attrs):
+        facility = attrs.get('facility')
+        department = attrs.get('department')
+        if department:
+            if not facility:
+                raise serializers.ValidationError({'department': "Facility is required when specifying a department."})
+            if department.facility_id != facility.id:
+                raise serializers.ValidationError({
+                    'department': f"Department '{department.name}' [{department.code}] does not belong to facility {facility.facility_name} (Facility #{facility.id})."
+                })
+            if not department.is_active:
+                raise serializers.ValidationError({
+                    'department': f"Cannot assign staff to inactive department '{department.name}' [{department.code}]."
+                })
+        return attrs
+
 
 class AssignFacilityActionSerializer(serializers.Serializer):
     facility_id = serializers.IntegerField()
@@ -254,11 +295,45 @@ class AssignFacilityActionSerializer(serializers.Serializer):
     effective_from = serializers.DateField(required=False)
     effective_to = serializers.DateField(required=False, allow_null=True)
 
+    def validate(self, attrs):
+        fac_id = attrs.get('facility_id')
+        dept_id = attrs.get('department_id')
+        if dept_id:
+            dept = Department.objects.filter(pk=dept_id).first()
+            if not dept:
+                raise serializers.ValidationError({'department_id': f"Department #{dept_id} does not exist."})
+            if dept.facility_id != fac_id:
+                raise serializers.ValidationError({
+                    'department_id': f"Department '{dept.name}' [{dept.code}] does not belong to facility #{fac_id}."
+                })
+            if not dept.is_active:
+                raise serializers.ValidationError({
+                    'department_id': f"Cannot assign staff to inactive department '{dept.name}' [{dept.code}]."
+                })
+        return attrs
+
 
 class TransferStaffSerializer(serializers.Serializer):
     new_facility_id = serializers.IntegerField()
     new_department_id = serializers.IntegerField(required=False, allow_null=True)
     effective_date = serializers.DateField(required=False)
+
+    def validate(self, attrs):
+        new_fac_id = attrs.get('new_facility_id')
+        new_dept_id = attrs.get('new_department_id')
+        if new_dept_id:
+            dept = Department.objects.filter(pk=new_dept_id).first()
+            if not dept:
+                raise serializers.ValidationError({'new_department_id': f"Department #{new_dept_id} does not exist."})
+            if dept.facility_id != new_fac_id:
+                raise serializers.ValidationError({
+                    'new_department_id': f"Department '{dept.name}' [{dept.code}] does not belong to target facility #{new_fac_id}."
+                })
+            if not dept.is_active:
+                raise serializers.ValidationError({
+                    'new_department_id': f"Cannot transfer staff to inactive department '{dept.name}' [{dept.code}]."
+                })
+        return attrs
 
 
 class ReasonSerializer(serializers.Serializer):
@@ -591,9 +666,18 @@ class FacilityAssignmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        staff_prof = StaffProfile.objects.get(pk=staff_id)
-        new_fac = Facility.objects.get(pk=new_fac_id)
-        new_dept = Department.objects.filter(pk=new_dept_id).first() if new_dept_id else None
+        staff_prof = StaffProfile.objects.filter(pk=staff_id).first()
+        if not staff_prof:
+            return Response({"error": f"StaffProfile #{staff_id} does not exist."}, status=status.HTTP_404_NOT_FOUND)
+        new_fac = Facility.objects.filter(pk=new_fac_id).first()
+        if not new_fac:
+            return Response({"error": f"Facility #{new_fac_id} does not exist."}, status=status.HTTP_404_NOT_FOUND)
+        if new_dept_id:
+            new_dept = Department.objects.filter(pk=new_dept_id).first()
+            if not new_dept:
+                return Response({"error": f"Department #{new_dept_id} does not exist."}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            new_dept = None
 
         new_assignment = transfer_staff(
             staff_profile=staff_prof,
