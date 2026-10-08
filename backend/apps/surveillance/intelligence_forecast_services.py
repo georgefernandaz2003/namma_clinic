@@ -27,13 +27,26 @@ from apps.geography.models import District, Ward
 from apps.surveillance.demographic_services import (
     filter_cases_by_demographics,
     normalize_severity,
+    resolve_patient_demographics,
+    AGE_GROUPS,
+    SEVERITY_MILD,
+    SEVERITY_MODERATE,
+    SEVERITY_SEVERE,
     SEVERITY_UNKNOWN,
 )
 from apps.surveillance.vulnerable_population_services import (
     filter_cases_by_vulnerable_group,
+    normalize_vulnerable_group,
+    VULNERABLE_GROUPS,
+    VULNERABLE_GROUP_UNKNOWN,
 )
 from apps.surveillance.patient_type_services import (
     filter_cases_by_patient_type,
+    annotate_case_patient_type,
+    get_case_patient_type,
+    PATIENT_TYPE_NEW,
+    PATIENT_TYPE_FOLLOW_UP,
+    PATIENT_TYPE_UNKNOWN,
 )
 from apps.surveillance.intelligence_services import (
     resolve_date,
@@ -267,21 +280,81 @@ def generate_disease_forecast(time_series, horizon_weeks=4):
 # 3. Seasonal Pattern Analysis
 # ---------------------------------------------------------------------------
 
+def build_subgroup_monthly_patterns(month_counts, month_occurrences, represented_months):
+    """
+    Constructs standardized monthly pattern dictionaries for a specific demographic subgroup.
+    """
+    patterns = []
+    for m in represented_months:
+        cnt = month_counts.get(m, 0)
+        occ = month_occurrences[m]
+        avg = round(cnt / occ, 2)
+        patterns.append({
+            'month_number': m,
+            'month_name': MONTH_NAMES[m - 1],
+            'total_cases': cnt,
+            'occurrences': occ,
+            'average_cases': avg
+        })
+    return patterns
+
+
+def compute_subgroup_metrics(patterns, total_cases, months_count):
+    """
+    Calculates peak_month, seasonal_strength, and seasonal_status for a demographic subgroup.
+    """
+    if not patterns or total_cases == 0:
+        return None, 0.0, 'NOT_ENOUGH_DATA'
+
+    sorted_m = sorted(patterns, key=lambda x: x['average_cases'], reverse=True)
+    peak = sorted_m[0] if sorted_m and sorted_m[0]['total_cases'] > 0 else None
+
+    month_averages = [m['average_cases'] for m in patterns]
+    num_rep = len(patterns)
+    if num_rep > 0:
+        mean_monthly = sum(month_averages) / float(num_rep)
+        if mean_monthly > 0:
+            variance_m = sum((x - mean_monthly) ** 2 for x in month_averages) / float(num_rep)
+            cv = math.sqrt(variance_m) / mean_monthly
+            seasonal_strength = round(min(1.0, cv), 2)
+        else:
+            seasonal_strength = 0.0
+    else:
+        seasonal_strength = 0.0
+
+    if total_cases < 10 or months_count < 6:
+        status = 'NOT_ENOUGH_DATA'
+    elif seasonal_strength >= 0.45 and peak and peak['total_cases'] >= 3:
+        status = 'DETECTED'
+    else:
+        status = 'WEAK'
+
+    return peak, seasonal_strength, status
+
+
 def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name=None,
                                as_of_date=None, months_count=12, age_group=None, gender=None,
                                severity=None, vulnerable_group=None, patient_type=None):
     """
     Analyzes historical surveillance records across calendar months to identify
     potential seasonal clustering without inferring causality.
+    Enhanced for Prompt 7: Supports multi-dimensional demographic seasonality analysis across:
+    1. Disease
+    2. Age group (seasonal_age_groups)
+    3. Gender (seasonal_gender)
+    4. Severity (seasonal_severity)
+    5. Vulnerable population (seasonal_vulnerable_groups)
+    6. Patient type (seasonal_patient_types)
+    7. Age + Gender (seasonal_age_gender)
+    8. Age + Gender + Severity (seasonal_age_gender_severity)
+    9. Age + Gender + Vulnerable Population (seasonal_age_gender_vulnerability)
+    10. Age + Gender + Patient Type (seasonal_age_gender_patient_type)
 
-    Returns:
-    - average cases by calendar month (1 to 12)
-    - highest-case month
-    - lowest-case month
-    - strongest historical periods
-    - seasonal_strength: normalized index [0.0 - 1.0]
-    - seasonal_status: 'DETECTED', 'WEAK', or 'NOT_ENOUGH_DATA'
-    - supports optional demographic, severity, vulnerable group, and patient-type filtering
+    Guarantees:
+    - Point-in-time correct age calculation using DiseaseCase.report_date.
+    - Authoritative patient type using point-in-time prior history.
+    - Single-pass in-memory cross-tabulation avoiding N+1 queries.
+    - Preserves all existing top-level fields for backward compatibility.
     """
     as_of = resolve_date(as_of_date)
     months_count = max(1, min(60, int(months_count or 12)))
@@ -316,13 +389,241 @@ def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name
         sev_norm = normalize_severity(severity)
         if sev_norm != SEVERITY_UNKNOWN:
             scoped_cases = scoped_cases.filter(severity=sev_norm)
+        else:
+            scoped_cases = scoped_cases.filter(severity=severity)
     if vulnerable_group:
         scoped_cases = filter_cases_by_vulnerable_group(scoped_cases, vulnerable_group=vulnerable_group)
     if patient_type:
         scoped_cases = filter_cases_by_patient_type(scoped_cases, patient_type=patient_type)
-    total_seasonal_cases = scoped_cases.count()
 
-    # Rule: Minimum volume required to detect seasonal variation
+    # Determine exact occurrences of each calendar month inside [seasonal_start, as_of]
+    month_occurrences = {}
+    curr_y = start_year
+    curr_m = start_month
+    for _ in range(months_count):
+        month_occurrences[curr_m] = month_occurrences.get(curr_m, 0) + 1
+        curr_m += 1
+        if curr_m > 12:
+            curr_m = 1
+            curr_y += 1
+    represented_months = sorted(month_occurrences.keys())
+
+    # Single efficient query with select_related('patient') and annotated patient type
+    cases_qs = annotate_case_patient_type(scoped_cases).select_related('patient')
+    cases_list = list(cases_qs)
+    total_seasonal_cases = len(cases_list)
+
+    # Categorize all records
+    base_ags = list(AGE_GROUPS)
+    base_genders = ['MALE', 'FEMALE', 'OTHER']
+    base_severities = [SEVERITY_MILD, SEVERITY_MODERATE, SEVERITY_SEVERE]
+    base_vgs = list(VULNERABLE_GROUPS)
+    base_pts = [PATIENT_TYPE_NEW, PATIENT_TYPE_FOLLOW_UP]
+
+    has_unk_ag = False
+    has_unk_g = False
+    has_unk_sev = False
+    has_unk_vg = False
+    has_unk_pt = False
+
+    classified_records = []
+    month_counts_dict = {m: 0 for m in represented_months}
+
+    for c in cases_list:
+        m = c.report_date.month if c.report_date else None
+        if m in month_counts_dict:
+            month_counts_dict[m] += 1
+
+        demo = resolve_patient_demographics(
+            getattr(c, 'patient', None),
+            reference_date=c.report_date,
+            allow_stored_age_fallback=False
+        )
+        ag = demo['age_group']
+        g = demo['gender']
+        sev = normalize_severity(getattr(c, 'severity', None))
+        patient = getattr(c, 'patient', None)
+        v_info = getattr(patient, 'vulnerability_information', None) if patient else None
+        vg = normalize_vulnerable_group(v_info)
+        pt = get_case_patient_type(c)
+
+        if ag == 'UNKNOWN':
+            has_unk_ag = True
+        if g == 'UNKNOWN':
+            has_unk_g = True
+        if sev == SEVERITY_UNKNOWN:
+            has_unk_sev = True
+        if vg == VULNERABLE_GROUP_UNKNOWN:
+            has_unk_vg = True
+        if pt == PATIENT_TYPE_UNKNOWN:
+            has_unk_pt = True
+
+        classified_records.append((m, ag, g, sev, vg, pt))
+
+    active_ags = list(base_ags) + (['UNKNOWN'] if has_unk_ag else [])
+    active_genders = list(base_genders) + (['UNKNOWN'] if has_unk_g else [])
+    active_severities = list(base_severities) + ([SEVERITY_UNKNOWN] if has_unk_sev else [])
+    active_vgs = list(base_vgs) + ([VULNERABLE_GROUP_UNKNOWN] if has_unk_vg else [])
+    active_pts = list(base_pts) + ([PATIENT_TYPE_UNKNOWN] if has_unk_pt else [])
+
+    # Initialize monthly breakdown counters
+    ag_month_counts = {ag: {m: 0 for m in represented_months} for ag in active_ags}
+    g_month_counts = {g: {m: 0 for m in represented_months} for g in active_genders}
+    sev_month_counts = {s: {m: 0 for m in represented_months} for s in active_severities}
+    vg_month_counts = {v: {m: 0 for m in represented_months} for v in active_vgs}
+    pt_month_counts = {p: {m: 0 for m in represented_months} for p in active_pts}
+
+    age_gender_counts = {ag: {g: {m: 0 for m in represented_months} for g in active_genders} for ag in active_ags}
+    ag_g_sev_counts = {ag: {g: {s: {m: 0 for m in represented_months} for s in active_severities} for g in active_genders} for ag in active_ags}
+    ag_g_vg_counts = {ag: {g: {v: {m: 0 for m in represented_months} for v in active_vgs} for g in active_genders} for ag in active_ags}
+    ag_g_pt_counts = {ag: {g: {p: {m: 0 for m in represented_months} for p in active_pts} for g in active_genders} for ag in active_ags}
+
+    for (m, ag, g, sev, vg, pt) in classified_records:
+        if m not in month_counts_dict:
+            continue
+        if ag in ag_month_counts and m in ag_month_counts[ag]:
+            ag_month_counts[ag][m] += 1
+        if g in g_month_counts and m in g_month_counts[g]:
+            g_month_counts[g][m] += 1
+        if sev in sev_month_counts and m in sev_month_counts[sev]:
+            sev_month_counts[sev][m] += 1
+        if vg in vg_month_counts and m in vg_month_counts[vg]:
+            vg_month_counts[vg][m] += 1
+        if pt in pt_month_counts and m in pt_month_counts[pt]:
+            pt_month_counts[pt][m] += 1
+
+        if ag in age_gender_counts and g in age_gender_counts[ag] and m in age_gender_counts[ag][g]:
+            age_gender_counts[ag][g][m] += 1
+        if (ag in ag_g_sev_counts and g in ag_g_sev_counts[ag] and sev in ag_g_sev_counts[ag][g] and m in ag_g_sev_counts[ag][g][sev]):
+            ag_g_sev_counts[ag][g][sev][m] += 1
+        if (ag in ag_g_vg_counts and g in ag_g_vg_counts[ag] and vg in ag_g_vg_counts[ag][g] and m in ag_g_vg_counts[ag][g][vg]):
+            ag_g_vg_counts[ag][g][vg][m] += 1
+        if (ag in ag_g_pt_counts and g in ag_g_pt_counts[ag] and pt in ag_g_pt_counts[ag][g] and m in ag_g_pt_counts[ag][g][pt]):
+            ag_g_pt_counts[ag][g][pt][m] += 1
+
+    # 1D Demographic Breakdowns
+    seasonal_age_groups = []
+    for ag in active_ags:
+        patterns = build_subgroup_monthly_patterns(ag_month_counts[ag], month_occurrences, represented_months)
+        total_ag_cases = sum(ag_month_counts[ag].values())
+        peak, strength, status_val = compute_subgroup_metrics(patterns, total_ag_cases, months_count)
+        seasonal_age_groups.append({
+            'age_group': ag,
+            'monthly_patterns': patterns,
+            'total_cases': total_ag_cases,
+            'peak_month': peak,
+            'seasonal_strength': strength,
+            'seasonal_status': status_val
+        })
+
+    seasonal_gender = []
+    for g in active_genders:
+        patterns = build_subgroup_monthly_patterns(g_month_counts[g], month_occurrences, represented_months)
+        total_g_cases = sum(g_month_counts[g].values())
+        peak, strength, status_val = compute_subgroup_metrics(patterns, total_g_cases, months_count)
+        seasonal_gender.append({
+            'gender': g,
+            'monthly_patterns': patterns,
+            'total_cases': total_g_cases,
+            'peak_month': peak,
+            'seasonal_strength': strength,
+            'seasonal_status': status_val
+        })
+
+    seasonal_severity = []
+    for s in active_severities:
+        patterns = build_subgroup_monthly_patterns(sev_month_counts[s], month_occurrences, represented_months)
+        total_s_cases = sum(sev_month_counts[s].values())
+        peak, strength, status_val = compute_subgroup_metrics(patterns, total_s_cases, months_count)
+        seasonal_severity.append({
+            'severity': s,
+            'monthly_patterns': patterns,
+            'total_cases': total_s_cases,
+            'peak_month': peak,
+            'seasonal_strength': strength,
+            'seasonal_status': status_val
+        })
+
+    seasonal_vulnerable_groups = []
+    for vg in active_vgs:
+        patterns = build_subgroup_monthly_patterns(vg_month_counts[vg], month_occurrences, represented_months)
+        total_vg_cases = sum(vg_month_counts[vg].values())
+        peak, strength, status_val = compute_subgroup_metrics(patterns, total_vg_cases, months_count)
+        seasonal_vulnerable_groups.append({
+            'vulnerable_group': vg,
+            'monthly_patterns': patterns,
+            'total_cases': total_vg_cases,
+            'peak_month': peak,
+            'seasonal_strength': strength,
+            'seasonal_status': status_val
+        })
+
+    seasonal_patient_types = []
+    for pt in active_pts:
+        patterns = build_subgroup_monthly_patterns(pt_month_counts[pt], month_occurrences, represented_months)
+        total_pt_cases = sum(pt_month_counts[pt].values())
+        peak, strength, status_val = compute_subgroup_metrics(patterns, total_pt_cases, months_count)
+        seasonal_patient_types.append({
+            'patient_type': pt,
+            'monthly_patterns': patterns,
+            'total_cases': total_pt_cases,
+            'peak_month': peak,
+            'seasonal_strength': strength,
+            'seasonal_status': status_val
+        })
+
+    # Multi-dimensional Cross-tabulation Matrices
+    seasonal_age_gender = {}
+    for ag in active_ags:
+        seasonal_age_gender[ag] = {}
+        for g in active_genders:
+            patterns = build_subgroup_monthly_patterns(age_gender_counts[ag][g], month_occurrences, represented_months)
+            tot = sum(age_gender_counts[ag][g].values())
+            seasonal_age_gender[ag][g] = {
+                'monthly_patterns': patterns,
+                'total_cases': tot
+            }
+
+    seasonal_age_gender_severity = {}
+    for ag in active_ags:
+        seasonal_age_gender_severity[ag] = {}
+        for g in active_genders:
+            seasonal_age_gender_severity[ag][g] = {}
+            for s in active_severities:
+                patterns = build_subgroup_monthly_patterns(ag_g_sev_counts[ag][g][s], month_occurrences, represented_months)
+                tot = sum(ag_g_sev_counts[ag][g][s].values())
+                seasonal_age_gender_severity[ag][g][s] = {
+                    'monthly_patterns': patterns,
+                    'total_cases': tot
+                }
+
+    seasonal_age_gender_vulnerability = {}
+    for ag in active_ags:
+        seasonal_age_gender_vulnerability[ag] = {}
+        for g in active_genders:
+            seasonal_age_gender_vulnerability[ag][g] = {}
+            for vg in active_vgs:
+                patterns = build_subgroup_monthly_patterns(ag_g_vg_counts[ag][g][vg], month_occurrences, represented_months)
+                tot = sum(ag_g_vg_counts[ag][g][vg].values())
+                seasonal_age_gender_vulnerability[ag][g][vg] = {
+                    'monthly_patterns': patterns,
+                    'total_cases': tot
+                }
+
+    seasonal_age_gender_patient_type = {}
+    for ag in active_ags:
+        seasonal_age_gender_patient_type[ag] = {}
+        for g in active_genders:
+            seasonal_age_gender_patient_type[ag][g] = {}
+            for pt in active_pts:
+                patterns = build_subgroup_monthly_patterns(ag_g_pt_counts[ag][g][pt], month_occurrences, represented_months)
+                tot = sum(ag_g_pt_counts[ag][g][pt].values())
+                seasonal_age_gender_patient_type[ag][g][pt] = {
+                    'monthly_patterns': patterns,
+                    'total_cases': tot
+                }
+
+    # Rule: Minimum volume required to detect seasonal variation at top level
     if total_seasonal_cases < 10 or months_count < 6:
         return {
             'disease': active_disease,
@@ -337,33 +638,23 @@ def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name
             'explanation': (
                 f"Insufficient historical surveillance data ({total_seasonal_cases} cases observed across {months_count} months). "
                 "A minimum of 10 cases over at least 6 months is required to assess seasonal patterns."
-            )
+            ),
+            'seasonal_age_groups': seasonal_age_groups,
+            'seasonal_gender': seasonal_gender,
+            'seasonal_severity': seasonal_severity,
+            'seasonal_vulnerable_groups': seasonal_vulnerable_groups,
+            'seasonal_patient_types': seasonal_patient_types,
+            'seasonal_age_gender': seasonal_age_gender,
+            'seasonal_age_gender_severity': seasonal_age_gender_severity,
+            'seasonal_age_gender_vulnerability': seasonal_age_gender_vulnerability,
+            'seasonal_age_gender_patient_type': seasonal_age_gender_patient_type,
         }
-
-    # Group actual cases by calendar month inside [seasonal_start, as_of]
-    monthly_data = (
-        scoped_cases.values('report_date__month')
-        .annotate(total_cases=Count('id'))
-        .order_by('report_date__month')
-    )
-    month_counts_dict = {row['report_date__month']: row['total_cases'] for row in monthly_data}
-
-    # Determine exact occurrences of each calendar month inside [seasonal_start, as_of]
-    month_occurrences = {}
-    curr_y = start_year
-    curr_m = start_month
-    for _ in range(months_count):
-        month_occurrences[curr_m] = month_occurrences.get(curr_m, 0) + 1
-        curr_m += 1
-        if curr_m > 12:
-            curr_m = 1
-            curr_y += 1
 
     # Represent ONLY calendar months that actually occur in the requested observation window
     monthly_patterns = []
     month_averages = []
 
-    for m in sorted(month_occurrences.keys()):
+    for m in represented_months:
         cnt = month_counts_dict.get(m, 0)
         occurrences = month_occurrences[m]
         avg_cnt = round(cnt / occurrences, 2)
@@ -378,7 +669,7 @@ def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name
 
     # Find highest and lowest case months strictly from represented months
     sorted_months = sorted(monthly_patterns, key=lambda x: x['average_cases'], reverse=True)
-    highest_month = sorted_months[0] if sorted_months else None
+    highest_month = sorted_months[0] if sorted_months and sorted_months[0]['total_cases'] > 0 else None
     lowest_month = sorted_months[-1] if sorted_months else None
 
     # Calculate seasonal strength metric via coefficient of variation across represented months
@@ -428,7 +719,16 @@ def calculate_seasonal_pattern(facility_ids=None, district_id=None, disease_name
         'lowest_case_month': lowest_month,
         'strongest_historical_periods': strongest_periods,
         'monthly_patterns': monthly_patterns,
-        'explanation': explanation
+        'explanation': explanation,
+        'seasonal_age_groups': seasonal_age_groups,
+        'seasonal_gender': seasonal_gender,
+        'seasonal_severity': seasonal_severity,
+        'seasonal_vulnerable_groups': seasonal_vulnerable_groups,
+        'seasonal_patient_types': seasonal_patient_types,
+        'seasonal_age_gender': seasonal_age_gender,
+        'seasonal_age_gender_severity': seasonal_age_gender_severity,
+        'seasonal_age_gender_vulnerability': seasonal_age_gender_vulnerability,
+        'seasonal_age_gender_patient_type': seasonal_age_gender_patient_type,
     }
 
 

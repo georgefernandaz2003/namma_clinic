@@ -73,6 +73,9 @@ from apps.surveillance.intelligence_services import (
     aggregate_district_level,
     get_public_health_intelligence_summary,
 )
+from apps.surveillance.intelligence_forecast_services import (
+    calculate_seasonal_pattern,
+)
 from apps.surveillance.vulnerable_population_services import (
     VULNERABLE_GROUP_PREGNANT,
     VULNERABLE_GROUP_ELDERLY,
@@ -4088,12 +4091,6 @@ class PublicHealthPatientTypeTestCase(TestCase):
         res = self.client.get(f"{url}?patient_type=UNKNOWN")
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
-    # 36. Query efficiency / no N+1
-    def test_36_query_efficiency_no_n_plus_one(self):
-        """
-        Verifies that historical patient type aggregation executes in strictly 1 query
-        via select_related('patient') and Exists subquery, preventing N+1 queries.
-        """
         with self.assertNumQueries(1):
             aggregate_historical_disease(
                 facility_ids=[self.fac_c1.id],
@@ -4101,3 +4098,809 @@ class PublicHealthPatientTypeTestCase(TestCase):
                 months=6,
                 as_of_date=self.as_of
             )
+
+
+class PublicHealthSeasonalityDemographicsTestCase(TestCase):
+    """
+    Prompt 7: Seasonality + Demographics Integration & Unit Test Suite
+    Comprehensive validation of multi-dimensional seasonal pattern intelligence:
+    1. Existing seasonality behavior preserved.
+    2. Seasonal age groups.
+    3. Seasonal gender.
+    4. Seasonal severity.
+    5. Seasonal vulnerable population.
+    6. Seasonal patient type.
+    7. Age + gender seasonality.
+    8. Age + gender + severity.
+    9. Age + gender + vulnerability.
+    10. Age + gender + patient type.
+    11. Disease + demographic filtering.
+    12. Disease + severity filtering.
+    13. Disease + vulnerability filtering.
+    14. Disease + patient type filtering.
+    15. Combined all filters.
+    16. Invalid age_group -> 400.
+    17. Invalid gender -> 400.
+    18. Invalid severity -> 400.
+    19. Invalid vulnerable_group -> 400.
+    20. Invalid patient_type -> 400.
+    21. UNKNOWN filters rejected.
+    22. Hospital Admin cross-facility -> 403.
+    23. District Officer cross-district -> 403.
+    24. Missing DOB handled as UNKNOWN.
+    25. Missing/invalid severity handled as UNKNOWN.
+    26. Missing/invalid vulnerability handled as UNKNOWN.
+    27. Missing/insufficient patient history handled as UNKNOWN.
+    28. Age uses DiseaseCase.report_date.
+    29. Future patient cases do not affect earlier patient type.
+    30. Monthly totals reconcile.
+    31. Cross-tab totals reconcile.
+    32. No demographic filters preserve previous behavior.
+    33. Filters are never silently ignored.
+    34. No N+1 query regression.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        # Geography
+        cls.state = State.objects.create(name='Karnataka', code='KA')
+        cls.district_central = District.objects.create(state=cls.state, name='BBMP Central', code='KA-CEN')
+        cls.district_rural = District.objects.create(state=cls.state, name='Bengaluru Rural', code='KA-RUR')
+
+        cls.zone_central = Zone.objects.create(district=cls.district_central, name='Central Zone', code='Z-CEN')
+        cls.zone_rural = Zone.objects.create(district=cls.district_rural, name='Rural Zone', code='Z-RUR')
+
+        cls.ward_c1 = Ward.objects.create(zone=cls.zone_central, ward_number=101, name='Indiranagar', population=25000)
+        cls.ward_r1 = Ward.objects.create(zone=cls.zone_rural, ward_number=201, name='Varthur', population=18000)
+
+        # Facilities
+        cls.fac_c1 = Facility.objects.create(
+            facility_code='HOSP-SEAS1', facility_name='Bowring Hospital', facility_type='MAIN_HOSPITAL',
+            district=cls.district_central, ward=cls.ward_c1, state=cls.state
+        )
+        cls.fac_c2 = Facility.objects.create(
+            facility_code='CLINIC-SEAS2', facility_name='Indiranagar Clinic', facility_type='NAMMA_CLINIC',
+            district=cls.district_central, ward=cls.ward_c1, state=cls.state
+        )
+        cls.fac_r1 = Facility.objects.create(
+            facility_code='RURAL-SEAS1', facility_name='Varthur Rural CHC', facility_type='RURAL_CLINIC',
+            district=cls.district_rural, ward=cls.ward_r1, state=cls.state
+        )
+
+        # Users
+        cls.admin_c1 = User.objects.create_user(
+            username='seas_admin_c1', password='Password123!', role='HOSPITAL_ADMIN',
+            assigned_facility=cls.fac_c1
+        )
+        cls.officer_c = User.objects.create_user(
+            username='seas_officer_c', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_central
+        )
+        cls.officer_r = User.objects.create_user(
+            username='seas_officer_r', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_rural
+        )
+
+        # Reference date: 2026-12-15 (12-month window: 2026-01-01 to 2026-12-15)
+        cls.as_of = datetime.date(2026, 12, 15)
+
+        # Deterministic Patients
+        # 1. Infant (0-5)
+        cls.p_child = Patient.objects.create(
+            patient_id='SEAS-P01', name='Infant Child Girl',
+            date_of_birth=datetime.date(2024, 3, 1), age=2, gender='FEMALE',
+            vulnerability_information='Slum Resident / Low Income Group',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 2. Youth (6-14, OTHER gender, Disability)
+        cls.p_youth = Patient.objects.create(
+            patient_id='SEAS-P02', name='Youth PwD Other',
+            date_of_birth=datetime.date(2016, 3, 1), age=10, gender='OTHER',
+            vulnerability_information='Person with Disability (PwD)',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 3. Young Adult (15-24, FEMALE, Pregnant)
+        cls.p_young_adult = Patient.objects.create(
+            patient_id='SEAS-P03', name='Young Adult Pregnant Female',
+            date_of_birth=datetime.date(2006, 3, 1), age=20, gender='FEMALE',
+            vulnerability_information='Pregnant Woman',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 4. Adult (25-44, MALE, Low Income Slum)
+        cls.p_adult = Patient.objects.create(
+            patient_id='SEAS-P04', name='Adult Male Patient',
+            date_of_birth=datetime.date(1996, 3, 1), age=30, gender='MALE',
+            vulnerability_information='Slum Resident / Low Income Group',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 5. Middle-aged (45-59, FEMALE, Chronic Condition)
+        cls.p_middle = Patient.objects.create(
+            patient_id='SEAS-P05', name='Middle Aged Female Chronic',
+            date_of_birth=datetime.date(1976, 3, 1), age=50, gender='FEMALE',
+            vulnerability_information='Hypertension / Diabetic comorbidity',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 6. Senior (60+, MALE, Elderly)
+        cls.p_elderly = Patient.objects.create(
+            patient_id='SEAS-P06', name='Elderly Senior Male',
+            date_of_birth=datetime.date(1956, 3, 1), age=70, gender='MALE',
+            vulnerability_information='Elderly Person',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 7. General Population Adult (25-44, MALE, General)
+        cls.p_general = Patient.objects.create(
+            patient_id='SEAS-P07', name='General Citizen Male',
+            date_of_birth=datetime.date(1990, 3, 1), age=36, gender='MALE',
+            vulnerability_information='GENERAL',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 8. Age boundary patient: DOB 2020-06-15.
+        # At report_date 2026-05-15 -> age 5 (0-5).
+        # At report_date 2026-07-15 -> age 6 (6-14).
+        cls.p_boundary = Patient.objects.create(
+            patient_id='SEAS-P08', name='Age Boundary Boy',
+            date_of_birth=datetime.date(2020, 6, 15), age=6, gender='MALE',
+            vulnerability_information='GENERAL',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 9. Patient with missing DOB, missing gender, missing vulnerability
+        cls.p_unknown_demo = Patient.objects.create(
+            patient_id='SEAS-P09', name='Unknown Demographics Patient',
+            date_of_birth=None, age=30, gender='',
+            vulnerability_information='',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        # 10. Rural Patient
+        cls.p_rural = Patient.objects.create(
+            patient_id='SEAS-P10', name='Rural Female Patient',
+            date_of_birth=datetime.date(1995, 1, 1), age=31, gender='FEMALE',
+            vulnerability_information='Slum Resident / Low Income Group',
+            district=cls.district_rural, ward=cls.ward_r1, registered_at_facility=cls.fac_r1
+        )
+
+        # -------------------------------------------------------------------
+        # Deterministic Disease Cases for Dengue at fac_c1 (Total: 14 cases)
+        # -------------------------------------------------------------------
+        # 1. Month 1 (Jan 10): p_adult (Male, 25-44, MILD, LOW_INCOME_SLUM) -> NEW
+        cls.c1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 1, 10), severity='MILD'
+        )
+        # 2. Month 2 (Feb 10): p_young_adult (Female, 15-24, SEVERE, PREGNANT) -> NEW
+        cls.c2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_young_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 2, 10), severity='SEVERE'
+        )
+        # 3. Month 3 (Mar 10): p_child (Female, 0-5, MILD, LOW_INCOME_SLUM) -> NEW
+        cls.c3 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_child, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 3, 10), severity='MILD'
+        )
+        # 4. Month 4 (Apr 10): p_youth (Other, 6-14, MODERATE, DISABILITY) -> NEW
+        cls.c4 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_youth, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 4, 10), severity='MODERATE'
+        )
+        # 5. Month 5 (May 10): p_middle (Female, 45-59, MILD, CHRONIC_CONDITION) -> NEW
+        cls.c5 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_middle, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 5, 10), severity='MILD'
+        )
+        # 6. Month 5 (May 15): p_boundary (Male, DOB 2020-06-15 -> Age 5 -> '0-5', MILD, GENERAL) -> NEW
+        cls.c6 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_boundary, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 5, 15), severity='MILD'
+        )
+        # 7. Month 6 (Jun 10): p_elderly (Male, 60+, SEVERE, ELDERLY) -> NEW
+        cls.c7 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_elderly, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 6, 10), severity='SEVERE'
+        )
+        # 8. Month 7 (Jul 10): p_adult (Male, 25-44, SEVERE, LOW_INCOME_SLUM) -> FOLLOW_UP (earlier case on Jan 10)
+        cls.c8 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 7, 10), severity='SEVERE'
+        )
+        # 9. Month 7 (Jul 15): p_boundary (Male, DOB 2020-06-15 -> Age 6 -> '6-14', MODERATE, GENERAL) -> FOLLOW_UP (earlier on May 15)
+        cls.c9 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_boundary, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 7, 15), severity='MODERATE'
+        )
+        # 10. Month 8 (Aug 10): p_young_adult (Female, 15-24, SEVERE, PREGNANT) -> FOLLOW_UP (earlier on Feb 10)
+        cls.c10 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_young_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 8, 10), severity='SEVERE'
+        )
+        # 11. Month 9 (Sep 10): p_general (Male, 25-44, MODERATE, GENERAL) -> NEW
+        cls.c11 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_general, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 9, 10), severity='MODERATE'
+        )
+        # 12. Month 10 (Oct 10): p_unknown_demo (UNKNOWN age, UNKNOWN gender, UNKNOWN vuln, invalid severity -> UNKNOWN) -> NEW
+        cls.c12 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_unknown_demo, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 10, 10), severity='INVALID_VAL'
+        )
+        # 13. Month 11 (Nov 10): p_elderly (Male, 60+, SEVERE, ELDERLY) -> FOLLOW_UP (earlier on Jun 10)
+        cls.c13 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_elderly, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 11, 10), severity='SEVERE'
+        )
+        # 14. Month 11 (Nov 15): p_adult (severity='INVALID_SEV' -> UNKNOWN severity, FOLLOW_UP)
+        cls.c14 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 11, 15), severity='INVALID_SEV'
+        )
+
+        # Other disease / other facility cases for discrimination testing
+        # Malaria at fac_c1
+        cls.c_malaria = DiseaseCase.objects.create(
+            disease_name='Malaria', patient=cls.p_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 6, 10), severity='MILD'
+        )
+        # Dengue at rural fac_r1
+        cls.c_rural = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_rural, facility=cls.fac_r1,
+            ward=cls.ward_r1, report_date=datetime.date(2026, 6, 10), severity='MILD'
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin_c1)
+        self.url = reverse('intelligence_seasonality')
+
+    # 1. Existing seasonality behavior preserved
+    def test_01_existing_seasonality_behavior_preserved(self):
+        """
+        Preserves all core seasonality fields:
+        monthly case distribution, highest/lowest case month, strongest historical periods,
+        seasonal strength, seasonal_status, total_cases_analyzed, months_analyzed, explanation.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.data
+
+        expected_keys = [
+            'disease', 'seasonal_status', 'seasonal_strength', 'total_cases_analyzed',
+            'months_analyzed', 'highest_case_month', 'lowest_case_month',
+            'strongest_historical_periods', 'monthly_patterns', 'explanation',
+            'seasonal_age_groups', 'seasonal_gender', 'seasonal_severity',
+            'seasonal_vulnerable_groups', 'seasonal_patient_types',
+            'seasonal_age_gender', 'seasonal_age_gender_severity',
+            'seasonal_age_gender_vulnerability', 'seasonal_age_gender_patient_type'
+        ]
+        for k in expected_keys:
+            self.assertIn(k, data, f"Missing key in seasonality response: {k}")
+
+        self.assertEqual(data['total_cases_analyzed'], 14)
+        self.assertEqual(data['months_analyzed'], 12)
+        self.assertEqual(len(data['monthly_patterns']), 12)
+        self.assertIn(data['seasonal_status'], ['DETECTED', 'WEAK', 'NOT_ENOUGH_DATA'])
+        self.assertIsNotNone(data['highest_case_month'])
+        self.assertIsNotNone(data['lowest_case_month'])
+
+    # 2. Seasonal age groups
+    def test_02_seasonal_age_groups(self):
+        """
+        Validates seasonal analysis by authoritative age groups (0-5, 6-14, 15-24, 25-44, 45-59, 60+, UNKNOWN).
+        Each group contains monthly_patterns, total_cases, peak_month, seasonal_strength, seasonal_status.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ag_list = res.data['seasonal_age_groups']
+        self.assertIsInstance(ag_list, list)
+
+        ag_map = {item['age_group']: item for item in ag_list}
+        for expected_ag in ['0-5', '6-14', '15-24', '25-44', '45-59', '60+', 'UNKNOWN']:
+            self.assertIn(expected_ag, ag_map)
+            item = ag_map[expected_ag]
+            self.assertIn('monthly_patterns', item)
+            self.assertIn('total_cases', item)
+            self.assertIn('peak_month', item)
+            self.assertIn('seasonal_strength', item)
+            self.assertIn('seasonal_status', item)
+
+        # Sum of age groups matches total cases
+        total_ag_cases = sum(item['total_cases'] for item in ag_list)
+        self.assertEqual(total_ag_cases, 14)
+
+    # 3. Seasonal gender
+    def test_03_seasonal_gender(self):
+        """
+        Validates seasonal gender breakdown: MALE, FEMALE, OTHER, and dynamically included UNKNOWN.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        g_list = res.data['seasonal_gender']
+        self.assertIsInstance(g_list, list)
+
+        g_map = {item['gender']: item for item in g_list}
+        for g in ['MALE', 'FEMALE', 'OTHER', 'UNKNOWN']:
+            self.assertIn(g, g_map)
+            item = g_map[g]
+            self.assertIn('monthly_patterns', item)
+            self.assertIn('total_cases', item)
+            self.assertIn('peak_month', item)
+            self.assertIn('seasonal_strength', item)
+            self.assertIn('seasonal_status', item)
+
+        total_g_cases = sum(item['total_cases'] for item in g_list)
+        self.assertEqual(total_g_cases, 14)
+
+    # 4. Seasonal severity
+    def test_04_seasonal_severity(self):
+        """
+        Validates seasonal severity breakdown: MILD, MODERATE, SEVERE, and UNKNOWN.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        sev_list = res.data['seasonal_severity']
+        self.assertIsInstance(sev_list, list)
+
+        sev_map = {item['severity']: item for item in sev_list}
+        for s in ['MILD', 'MODERATE', 'SEVERE', 'UNKNOWN']:
+            self.assertIn(s, sev_map)
+            item = sev_map[s]
+            self.assertIn('monthly_patterns', item)
+            self.assertIn('total_cases', item)
+            self.assertIn('peak_month', item)
+            self.assertIn('seasonal_strength', item)
+            self.assertIn('seasonal_status', item)
+
+        total_s_cases = sum(item['total_cases'] for item in sev_list)
+        self.assertEqual(total_s_cases, 14)
+
+    # 5. Seasonal vulnerable population
+    def test_05_seasonal_vulnerable_population(self):
+        """
+        Validates seasonal analysis by canonical vulnerability groups:
+        PREGNANT, ELDERLY, DISABILITY, CHRONIC_CONDITION, LOW_INCOME_SLUM, GENERAL, and UNKNOWN.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        vg_list = res.data['seasonal_vulnerable_groups']
+        self.assertIsInstance(vg_list, list)
+
+        vg_map = {item['vulnerable_group']: item for item in vg_list}
+        for vg in ['PREGNANT', 'ELDERLY', 'DISABILITY', 'CHRONIC_CONDITION', 'LOW_INCOME_SLUM', 'GENERAL', 'UNKNOWN']:
+            self.assertIn(vg, vg_map)
+            item = vg_map[vg]
+            self.assertIn('monthly_patterns', item)
+            self.assertIn('total_cases', item)
+            self.assertIn('peak_month', item)
+            self.assertIn('seasonal_strength', item)
+            self.assertIn('seasonal_status', item)
+
+        total_vg_cases = sum(item['total_cases'] for item in vg_list)
+        self.assertEqual(total_vg_cases, 14)
+
+    # 6. Seasonal patient type
+    def test_06_seasonal_patient_type(self):
+        """
+        Validates seasonal patient-type analysis: NEW, FOLLOW_UP, and UNKNOWN when present.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        pt_list = res.data['seasonal_patient_types']
+        self.assertIsInstance(pt_list, list)
+
+        pt_map = {item['patient_type']: item for item in pt_list}
+        for pt in ['NEW', 'FOLLOW_UP']:
+            self.assertIn(pt, pt_map)
+            item = pt_map[pt]
+            self.assertIn('monthly_patterns', item)
+            self.assertIn('total_cases', item)
+            self.assertIn('peak_month', item)
+            self.assertIn('seasonal_strength', item)
+            self.assertIn('seasonal_status', item)
+
+        total_pt_cases = sum(item['total_cases'] for item in pt_list)
+        self.assertEqual(total_pt_cases, 14)
+
+    # 7. Age + gender seasonal matrix
+    def test_07_age_gender_seasonality(self):
+        """
+        Validates multi-dimensional age + gender seasonality cross-tabulation:
+        seasonal_age_gender[age_group][gender] = { monthly_patterns, total_cases }.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        matrix = res.data['seasonal_age_gender']
+        self.assertIsInstance(matrix, dict)
+
+        tot = 0
+        for ag, genders in matrix.items():
+            for g, cell in genders.items():
+                self.assertIn('monthly_patterns', cell)
+                self.assertIn('total_cases', cell)
+                tot += cell['total_cases']
+        self.assertEqual(tot, 14)
+
+    # 8. Age + gender + severity
+    def test_08_age_gender_severity(self):
+        """
+        Validates age + gender + severity 3D seasonality matrix:
+        seasonal_age_gender_severity[ag][g][sev] = { monthly_patterns, total_cases }.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        matrix = res.data['seasonal_age_gender_severity']
+        self.assertIsInstance(matrix, dict)
+
+        tot = 0
+        for ag, genders in matrix.items():
+            for g, severities in genders.items():
+                for s, cell in severities.items():
+                    self.assertIn('monthly_patterns', cell)
+                    self.assertIn('total_cases', cell)
+                    tot += cell['total_cases']
+        self.assertEqual(tot, 14)
+
+    # 9. Age + gender + vulnerability
+    def test_09_age_gender_vulnerability(self):
+        """
+        Validates age + gender + vulnerability 3D seasonality matrix:
+        seasonal_age_gender_vulnerability[ag][g][vg] = { monthly_patterns, total_cases }.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        matrix = res.data['seasonal_age_gender_vulnerability']
+        self.assertIsInstance(matrix, dict)
+
+        tot = 0
+        for ag, genders in matrix.items():
+            for g, vgroups in genders.items():
+                for vg, cell in vgroups.items():
+                    self.assertIn('monthly_patterns', cell)
+                    self.assertIn('total_cases', cell)
+                    tot += cell['total_cases']
+        self.assertEqual(tot, 14)
+
+    # 10. Age + gender + patient type
+    def test_10_age_gender_patient_type(self):
+        """
+        Validates age + gender + patient-type 3D seasonality matrix:
+        seasonal_age_gender_patient_type[ag][g][pt] = { monthly_patterns, total_cases }.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        matrix = res.data['seasonal_age_gender_patient_type']
+        self.assertIsInstance(matrix, dict)
+
+        tot = 0
+        for ag, genders in matrix.items():
+            for g, ptypes in genders.items():
+                for pt, cell in ptypes.items():
+                    self.assertIn('monthly_patterns', cell)
+                    self.assertIn('total_cases', cell)
+                    tot += cell['total_cases']
+        self.assertEqual(tot, 14)
+
+    # 11. Disease + demographic filtering
+    def test_11_disease_and_demographic_filtering(self):
+        """
+        Verifies filtering by disease, age_group, and gender concurrently:
+        ?disease=Dengue&age_group=15-24&gender=FEMALE produces exact match (2 cases for P3).
+        """
+        url = f"{self.url}?disease=Dengue&age_group=15-24&gender=FEMALE&date={self.as_of}&months=12"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_analyzed'], 2)
+
+    # 12. Disease + severity filtering
+    def test_12_disease_and_severity_filtering(self):
+        """
+        Verifies filtering by disease and severity:
+        ?disease=Dengue&severity=SEVERE produces exact 5 cases.
+        """
+        url = f"{self.url}?disease=Dengue&severity=SEVERE&date={self.as_of}&months=12"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_analyzed'], 5)
+
+    # 13. Disease + vulnerability filtering
+    def test_13_disease_and_vulnerability_filtering(self):
+        """
+        Verifies filtering by disease and vulnerability group:
+        ?disease=Dengue&vulnerable_group=PREGNANT produces exact 2 cases.
+        """
+        url = f"{self.url}?disease=Dengue&vulnerable_group=PREGNANT&date={self.as_of}&months=12"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_analyzed'], 2)
+
+    # 14. Disease + patient type filtering
+    def test_14_disease_and_patient_type_filtering(self):
+        """
+        Verifies filtering by disease and patient type:
+        ?disease=Dengue&patient_type=FOLLOW_UP produces exact 5 cases.
+        """
+        url = f"{self.url}?disease=Dengue&patient_type=FOLLOW_UP&date={self.as_of}&months=12"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_analyzed'], 5)
+
+    # 15. Combined all filters
+    def test_15_combined_all_filters(self):
+        """
+        Verifies all filters applied simultaneously as strict AND conditions:
+        ?disease=Dengue&age_group=15-24&gender=FEMALE&severity=SEVERE&vulnerable_group=PREGNANT&patient_type=FOLLOW_UP
+        produces exact 1 case (c10 in August).
+        """
+        url = (
+            f"{self.url}?disease=Dengue&age_group=15-24&gender=FEMALE&severity=SEVERE"
+            f"&vulnerable_group=PREGNANT&patient_type=FOLLOW_UP&date={self.as_of}&months=12"
+        )
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_analyzed'], 1)
+
+    # 16. Invalid age_group -> 400
+    def test_16_invalid_age_group_returns_400(self):
+        res = self.client.get(f"{self.url}?disease=Dengue&age_group=99-100")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 17. Invalid gender -> 400
+    def test_17_invalid_gender_returns_400(self):
+        res = self.client.get(f"{self.url}?disease=Dengue&gender=NONBINARY_ALIEN")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 18. Invalid severity -> 400
+    def test_18_invalid_severity_returns_400(self):
+        res = self.client.get(f"{self.url}?disease=Dengue&severity=EXTREME")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 19. Invalid vulnerable_group -> 400
+    def test_19_invalid_vulnerable_group_returns_400(self):
+        res = self.client.get(f"{self.url}?disease=Dengue&vulnerable_group=ASTRONAUT")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 20. Invalid patient_type -> 400
+    def test_20_invalid_patient_type_returns_400(self):
+        res = self.client.get(f"{self.url}?disease=Dengue&patient_type=RECURRENT")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 21. UNKNOWN filters rejected
+    def test_21_unknown_filters_rejected(self):
+        """
+        UNKNOWN is an internal reporting classification and must not be accepted as a query filter.
+        """
+        for param, val in [
+            ('age_group', 'UNKNOWN'),
+            ('gender', 'UNKNOWN'),
+            ('severity', 'UNKNOWN'),
+            ('vulnerable_group', 'UNKNOWN'),
+            ('patient_type', 'UNKNOWN')
+        ]:
+            res = self.client.get(f"{self.url}?disease=Dengue&{param}={val}")
+            self.assertEqual(
+                res.status_code, status.HTTP_400_BAD_REQUEST,
+                f"Expected 400 for {param}={val}, got {res.status_code}"
+            )
+
+    # 22. Hospital Admin cross-facility -> 403
+    def test_22_hospital_admin_cross_facility_returns_403(self):
+        """Hospital Admin cannot request a facility outside their assignment."""
+        res = self.client.get(f"{self.url}?disease=Dengue&facility={self.fac_r1.id}")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    # 23. District Officer cross-district -> 403
+    def test_23_district_officer_cross_district_returns_403(self):
+        """District Officer cannot request a district outside their assignment."""
+        self.client.force_authenticate(user=self.officer_c)
+        res = self.client.get(f"{self.url}?disease=Dengue&district={self.district_rural.id}")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    # 24. Missing DOB handled as UNKNOWN
+    def test_24_missing_dob_handled_as_unknown(self):
+        """
+        Cases with missing DOB are classified into age_group='UNKNOWN'.
+        When filtering by age_group=15-24 where no unknown cases exist, UNKNOWN is not present.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ag_map = {item['age_group']: item for item in res.data['seasonal_age_groups']}
+        self.assertIn('UNKNOWN', ag_map)
+        self.assertEqual(ag_map['UNKNOWN']['total_cases'], 1)  # c12 (p_unknown_demo)
+
+        # When filtered to 15-24, no UNKNOWN cases exist -> UNKNOWN not present
+        res_filtered = self.client.get(f"{self.url}?disease=Dengue&age_group=15-24&date={self.as_of}&months=12")
+        filtered_ags = [item['age_group'] for item in res_filtered.data['seasonal_age_groups']]
+        self.assertNotIn('UNKNOWN', filtered_ags)
+
+    # 25. Missing/invalid severity handled as UNKNOWN
+    def test_25_missing_invalid_severity_handled_as_unknown(self):
+        """
+        Invalid or missing severity values are categorized as severity='UNKNOWN', not converted to MILD.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        sev_map = {item['severity']: item for item in res.data['seasonal_severity']}
+        self.assertIn('UNKNOWN', sev_map)
+        self.assertEqual(sev_map['UNKNOWN']['total_cases'], 2)  # c12 ('INVALID_VAL') and c14 ('INVALID_SEV')
+
+    # 26. Missing/invalid vulnerability handled as UNKNOWN
+    def test_26_missing_invalid_vulnerability_handled_as_unknown(self):
+        """
+        Missing vulnerability information is categorized into vulnerable_group='UNKNOWN'.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        vg_map = {item['vulnerable_group']: item for item in res.data['seasonal_vulnerable_groups']}
+        self.assertIn('UNKNOWN', vg_map)
+        self.assertEqual(vg_map['UNKNOWN']['total_cases'], 1)  # c12 (empty string)
+
+    # 27. Missing/insufficient patient history handled as UNKNOWN
+    def test_27_missing_insufficient_patient_history_handled_as_unknown(self):
+        """
+        When patient history is missing or insufficient (e.g. missing patient or report_date):
+        - get_case_patient_type returns UNKNOWN.
+        - normalize_patient_type returns UNKNOWN.
+        - UNKNOWN is not silently converted into NEW or FOLLOW_UP.
+        """
+        self.assertEqual(get_case_patient_type(None), PATIENT_TYPE_UNKNOWN)
+        dummy_case = DiseaseCase(patient=None, report_date=None)
+        self.assertEqual(get_case_patient_type(dummy_case), PATIENT_TYPE_UNKNOWN)
+        dummy_case_no_pt = DiseaseCase(patient=None, report_date=datetime.date(2026, 5, 1))
+        self.assertEqual(get_case_patient_type(dummy_case_no_pt), PATIENT_TYPE_UNKNOWN)
+        dummy_case_no_date = DiseaseCase(patient=self.p_adult, report_date=None)
+        self.assertEqual(get_case_patient_type(dummy_case_no_date), PATIENT_TYPE_UNKNOWN)
+
+        self.assertEqual(normalize_patient_type(''), PATIENT_TYPE_UNKNOWN)
+        self.assertEqual(normalize_patient_type('UNKNOWN'), PATIENT_TYPE_UNKNOWN)
+        self.assertEqual(normalize_patient_type('OTHER_RANDOM'), PATIENT_TYPE_UNKNOWN)
+
+    # 28. Age uses DiseaseCase.report_date
+    def test_28_age_uses_disease_case_report_date(self):
+        """
+        Verifies that patient age is calculated using DiseaseCase.report_date rather than today's date.
+        p_boundary (DOB 2020-06-15):
+        - Case c6 on 2026-05-15 has age 5 -> '0-5'
+        - Case c9 on 2026-07-15 has age 6 -> '6-14'
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ag_map = {item['age_group']: item for item in res.data['seasonal_age_groups']}
+
+        # Month 5 has c6 in '0-5'
+        m5_in_0_5 = next(p for p in ag_map['0-5']['monthly_patterns'] if p['month_number'] == 5)
+        self.assertGreaterEqual(m5_in_0_5['total_cases'], 1)
+
+        # Month 7 has c9 in '6-14'
+        m7_in_6_14 = next(p for p in ag_map['6-14']['monthly_patterns'] if p['month_number'] == 7)
+        self.assertGreaterEqual(m7_in_6_14['total_cases'], 1)
+
+    # 29. Future patient cases do not affect earlier patient type
+    def test_29_future_patient_cases_do_not_affect_earlier_patient_type(self):
+        """
+        Point-in-time correctness: Case c1 on 2026-01-10 is NEW because no earlier case exists.
+        Subsequent case c8 on 2026-07-10 is FOLLOW_UP.
+        The existence of future case c8 does not change c1 from NEW to FOLLOW_UP.
+        """
+        pt_c1 = get_case_patient_type(self.c1)
+        pt_c8 = get_case_patient_type(self.c8)
+        self.assertEqual(pt_c1, PATIENT_TYPE_NEW)
+        self.assertEqual(pt_c8, PATIENT_TYPE_FOLLOW_UP)
+
+    # 30. Monthly totals reconcile
+    def test_30_monthly_totals_reconcile(self):
+        """
+        For every represented month:
+        sum(subgroup category totals for that month) == monthly total cases for that month.
+        Applies across age groups, gender, severity, vulnerable groups, and patient types.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.data
+
+        patterns = data['monthly_patterns']
+        ag_list = data['seasonal_age_groups']
+        g_list = data['seasonal_gender']
+        sev_list = data['seasonal_severity']
+        vg_list = data['seasonal_vulnerable_groups']
+        pt_list = data['seasonal_patient_types']
+
+        for idx, m_pat in enumerate(patterns):
+            m_total = m_pat['total_cases']
+            m_num = m_pat['month_number']
+
+            ag_sum = sum(item['monthly_patterns'][idx]['total_cases'] for item in ag_list)
+            g_sum = sum(item['monthly_patterns'][idx]['total_cases'] for item in g_list)
+            sev_sum = sum(item['monthly_patterns'][idx]['total_cases'] for item in sev_list)
+            vg_sum = sum(item['monthly_patterns'][idx]['total_cases'] for item in vg_list)
+            pt_sum = sum(item['monthly_patterns'][idx]['total_cases'] for item in pt_list)
+
+            self.assertEqual(ag_sum, m_total, f"Month {m_num}: age sum {ag_sum} != {m_total}")
+            self.assertEqual(g_sum, m_total, f"Month {m_num}: gender sum {g_sum} != {m_total}")
+            self.assertEqual(sev_sum, m_total, f"Month {m_num}: severity sum {sev_sum} != {m_total}")
+            self.assertEqual(vg_sum, m_total, f"Month {m_num}: vulnerability sum {vg_sum} != {m_total}")
+            self.assertEqual(pt_sum, m_total, f"Month {m_num}: patient type sum {pt_sum} != {m_total}")
+
+    # 31. Cross-tab totals reconcile
+    def test_31_cross_tab_totals_reconcile(self):
+        """
+        Across the observation period:
+        sum(category totals) == total_cases_analyzed for all 1D and multi-dimensional matrices.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.data
+        total_cases = data['total_cases_analyzed']
+
+        self.assertEqual(sum(item['total_cases'] for item in data['seasonal_age_groups']), total_cases)
+        self.assertEqual(sum(item['total_cases'] for item in data['seasonal_gender']), total_cases)
+        self.assertEqual(sum(item['total_cases'] for item in data['seasonal_severity']), total_cases)
+        self.assertEqual(sum(item['total_cases'] for item in data['seasonal_vulnerable_groups']), total_cases)
+        self.assertEqual(sum(item['total_cases'] for item in data['seasonal_patient_types']), total_cases)
+
+        # 2D Matrix: Age + Gender
+        ag_g_tot = sum(
+            cell['total_cases']
+            for ag in data['seasonal_age_gender'].values()
+            for cell in ag.values()
+        )
+        self.assertEqual(ag_g_tot, total_cases)
+
+        # 3D Matrix: Age + Gender + Severity
+        ag_g_sev_tot = sum(
+            cell['total_cases']
+            for ag in data['seasonal_age_gender_severity'].values()
+            for g in ag.values()
+            for cell in g.values()
+        )
+        self.assertEqual(ag_g_sev_tot, total_cases)
+
+        # 3D Matrix: Age + Gender + Vulnerability
+        ag_g_vg_tot = sum(
+            cell['total_cases']
+            for ag in data['seasonal_age_gender_vulnerability'].values()
+            for g in ag.values()
+            for cell in g.values()
+        )
+        self.assertEqual(ag_g_vg_tot, total_cases)
+
+        # 3D Matrix: Age + Gender + Patient Type
+        ag_g_pt_tot = sum(
+            cell['total_cases']
+            for ag in data['seasonal_age_gender_patient_type'].values()
+            for g in ag.values()
+            for cell in g.values()
+        )
+        self.assertEqual(ag_g_pt_tot, total_cases)
+
+    # 32. No demographic filters preserve previous behavior
+    def test_32_no_demographic_filters_preserve_previous_behavior(self):
+        """
+        Requesting seasonality without demographic parameters analyzes the full unfiltered cohort.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['total_cases_analyzed'], 14)
+
+    # 33. Filters are never silently ignored
+    def test_33_filters_are_never_silently_ignored(self):
+        """
+        Applying a filter produces a strict subset of the population and matches the filter condition.
+        """
+        res_all = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        res_mild = self.client.get(f"{self.url}?disease=Dengue&severity=MILD&date={self.as_of}&months=12")
+
+        self.assertEqual(res_all.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_mild.status_code, status.HTTP_200_OK)
+        self.assertNotEqual(res_all.data['total_cases_analyzed'], res_mild.data['total_cases_analyzed'])
+        self.assertEqual(res_mild.data['total_cases_analyzed'], 4)
+
+    # 34. No N+1 query regression
+    def test_34_no_n_plus_one_query_regression(self):
+        """
+        Seasonality calculation evaluates in strictly 1 query via select_related('patient')
+        and annotate_case_patient_type, avoiding any N+1 loops.
+        """
+        with self.assertNumQueries(1):
+            calculate_seasonal_pattern(
+                facility_ids=[self.fac_c1.id],
+                disease_name='Dengue',
+                months_count=12,
+                as_of_date=self.as_of
+            )
+

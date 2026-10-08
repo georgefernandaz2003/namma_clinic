@@ -163,6 +163,39 @@ export interface StrongestPeriodItem {
   total_cases: number;
 }
 
+export interface SeasonalSubgroupItem {
+  monthly_patterns: MonthlyPatternItem[];
+  total_cases: number;
+  peak_month: MonthlyPatternItem | null;
+  seasonal_strength: number;
+  seasonal_status: SeasonalStatus;
+}
+
+export interface SeasonalAgeGroupItem extends SeasonalSubgroupItem {
+  age_group: string;
+}
+
+export interface SeasonalGenderItem extends SeasonalSubgroupItem {
+  gender: string;
+}
+
+export interface SeasonalSeverityItem extends SeasonalSubgroupItem {
+  severity: string;
+}
+
+export interface SeasonalVulnerableGroupItem extends SeasonalSubgroupItem {
+  vulnerable_group: string;
+}
+
+export interface SeasonalPatientTypeItem extends SeasonalSubgroupItem {
+  patient_type: string;
+}
+
+export interface SeasonalMatrixCell {
+  monthly_patterns: MonthlyPatternItem[];
+  total_cases: number;
+}
+
 export interface SeasonalityData {
   disease: string;
   seasonal_status: SeasonalStatus;
@@ -174,6 +207,15 @@ export interface SeasonalityData {
   strongest_historical_periods: StrongestPeriodItem[];
   monthly_patterns: MonthlyPatternItem[];
   explanation: string;
+  seasonal_age_groups?: SeasonalAgeGroupItem[];
+  seasonal_gender?: SeasonalGenderItem[];
+  seasonal_severity?: SeasonalSeverityItem[];
+  seasonal_vulnerable_groups?: SeasonalVulnerableGroupItem[];
+  seasonal_patient_types?: SeasonalPatientTypeItem[];
+  seasonal_age_gender?: Record<string, Record<string, SeasonalMatrixCell>>;
+  seasonal_age_gender_severity?: Record<string, Record<string, Record<string, SeasonalMatrixCell>>>;
+  seasonal_age_gender_vulnerability?: Record<string, Record<string, Record<string, SeasonalMatrixCell>>>;
+  seasonal_age_gender_patient_type?: Record<string, Record<string, Record<string, SeasonalMatrixCell>>>;
 }
 
 export interface WeeklyTimeSeriesPoint {
