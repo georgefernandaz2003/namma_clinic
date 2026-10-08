@@ -10,6 +10,13 @@ interface PatientRegistrationState {
   showSuccessModal: boolean;
   regError: string | null;
   patientListRefreshed: boolean;
+  isIssuingToken: boolean;
+  tokenError: string | null;
+  issuedToken: {
+    tokenNumber: string | number;
+    visitId?: string | number;
+    queue?: string;
+  } | null;
   formFields: {
     name: string;
     age: string;
@@ -29,6 +36,9 @@ function createInitialState(): PatientRegistrationState {
     showSuccessModal: false,
     regError: null,
     patientListRefreshed: false,
+    isIssuingToken: false,
+    tokenError: null,
+    issuedToken: null,
     formFields: {
       name: 'Rajesh Gowda',
       age: '35',
@@ -96,12 +106,52 @@ async function executeRegisterWorkflow(
   }
 }
 
+async function executeConfirmIssueTokenWorkflow(
+  state: PatientRegistrationState,
+  apiIssueTokenFn: (patientId: number) => Promise<any>
+): Promise<{ success: boolean; preventedDuplicateCall?: boolean }> {
+  if (state.isIssuingToken) {
+    return { success: false, preventedDuplicateCall: true };
+  }
+  if (!state.registeredPatient) {
+    return { success: false };
+  }
+
+  state.isIssuingToken = true;
+  state.tokenError = null;
+
+  try {
+    const result = await apiIssueTokenFn(state.registeredPatient.id);
+    const tokenNum =
+      result.token_details?.token_number ||
+      result.token_number ||
+      result.id;
+    state.issuedToken = {
+      tokenNumber: tokenNum,
+      visitId: result.visit_id || result.id,
+      queue: result.current_queue || 'TRIAGE',
+    };
+    return { success: true };
+  } catch (err: any) {
+    state.tokenError =
+      err?.response?.data?.error ||
+      err?.response?.data?.detail ||
+      err?.message ||
+      'Failed to automatically create OPD queue token.';
+    return { success: false };
+  } finally {
+    state.isIssuingToken = false;
+  }
+}
+
 function handleCloseSuccessModal(
   state: PatientRegistrationState,
   loadPatientsFn: () => Promise<void>
 ): void {
   state.showSuccessModal = false;
   state.registeredPatient = null;
+  state.issuedToken = null;
+  state.tokenError = null;
   loadPatientsFn();
   state.patientListRefreshed = true;
 }
@@ -297,5 +347,85 @@ test('Patient Registration Confirmation & Lifecycle Workflow Tests', async (t) =
     assert.equal(state.registering, false, 'Registering state must reset so user can retry');
     assert.equal(state.showRegisterModal, true, 'Registration modal must remain accessible');
     assert.match(state.regError || '', /Internal server error/i);
+  });
+
+  await t.test('10. Confirmation modal contains automatic OPD token issuance prompt and button', async () => {
+    const state = createInitialState();
+    await executeRegisterWorkflow(
+      state,
+      async () => ({ data: authoritativeBackendPatient }),
+      async () => {}
+    );
+
+    assert.equal(state.showSuccessModal, true);
+    assert.equal(state.issuedToken, null, 'No token issued initially');
+    assert.equal(state.isIssuingToken, false);
+  });
+
+  await t.test('11. Clicking confirmation button automatically creates OPD token for patient', async () => {
+    const state = createInitialState();
+    await executeRegisterWorkflow(
+      state,
+      async () => ({ data: authoritativeBackendPatient }),
+      async () => {}
+    );
+
+    let calledPatientId: number | null = null;
+    const mockVisitResponse = {
+      id: 201,
+      visit_id: 'VIS-20261008-01',
+      token_number: 4,
+      token_details: { token_number: 4 },
+      current_queue: 'TRIAGE',
+    };
+
+    const tokenResult = await executeConfirmIssueTokenWorkflow(state, async (pid) => {
+      calledPatientId = pid;
+      return mockVisitResponse;
+    });
+
+    assert.equal(tokenResult.success, true);
+    assert.equal(calledPatientId, 1042, 'Must create token for the authoritative registered patient');
+    assert.ok(state.issuedToken, 'Issued token state must be set');
+    assert.equal(state.issuedToken?.tokenNumber, 4, 'Must capture authoritative token number');
+    assert.equal(state.issuedToken?.queue, 'TRIAGE', 'Must capture queue');
+  });
+
+  await t.test('12. Double click on confirmation button is prevented while token is being issued', async () => {
+    const state = createInitialState();
+    await executeRegisterWorkflow(
+      state,
+      async () => ({ data: authoritativeBackendPatient }),
+      async () => {}
+    );
+
+    state.isIssuingToken = true; // In flight
+    const tokenResult = await executeConfirmIssueTokenWorkflow(state, async () => ({}));
+    assert.equal(tokenResult.success, false);
+    assert.equal(tokenResult.preventedDuplicateCall, true, 'Duplicate token creation click must be prevented');
+  });
+
+  await t.test('13. Token creation error is displayed gracefully without closing confirmation modal', async () => {
+    const state = createInitialState();
+    await executeRegisterWorkflow(
+      state,
+      async () => ({ data: authoritativeBackendPatient }),
+      async () => {}
+    );
+
+    const tokenResult = await executeConfirmIssueTokenWorkflow(state, async () => {
+      throw {
+        response: {
+          data: {
+            error: 'Facility General OPD service is currently unavailable.',
+          },
+        },
+      };
+    });
+
+    assert.equal(tokenResult.success, false);
+    assert.equal(state.issuedToken, null);
+    assert.match(state.tokenError || '', /service is currently unavailable/i);
+    assert.equal(state.showSuccessModal, true, 'Modal must remain open so user can review error or close');
   });
 });

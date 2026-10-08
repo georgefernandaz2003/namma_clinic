@@ -141,6 +141,25 @@ export const Patients: React.FC = () => {
     }
   };
 
+  const handleConfirmIssueTokenFromModal = async (patient: Patient) => {
+    const effectiveFacility = currentFacility || activeFacility;
+    if (!effectiveFacility) {
+      throw new Error('Facility context is required. Please ensure an active facility is assigned.');
+    }
+    const res = await api.post('v1/visits/', {
+      patient: patient.id,
+      facility: effectiveFacility.id,
+      visit_type: 'GENERAL_OPD',
+      priority: 'NORMAL',
+      chief_complaint: ''
+    });
+    const newVisit = res.data;
+    const tokenNum = newVisit.token_details?.token_number || newVisit.token_number || newVisit.id;
+    setSuccessMsg(`OPD Token #${tokenNum} created successfully for ${patient.name}!`);
+    await loadPatients();
+    return newVisit;
+  };
+
   const handleIssueTokenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTokenError(null);
@@ -635,6 +654,8 @@ export const Patients: React.FC = () => {
       <PatientRegistrationSuccessModal
         isOpen={showSuccessModal}
         patient={registeredPatient}
+        canIssueToken={hasPermission(user?.role, 'queue.create')}
+        onConfirmIssueToken={handleConfirmIssueTokenFromModal}
         onClose={() => {
           setShowSuccessModal(false);
           setRegisteredPatient(null);
@@ -644,6 +665,11 @@ export const Patients: React.FC = () => {
           setShowSuccessModal(false);
           setRegisteredPatient(null);
           navigate(`/patients/${p.id}`);
+        }}
+        onNavigateQueue={() => {
+          setShowSuccessModal(false);
+          setRegisteredPatient(null);
+          navigate('/queue');
         }}
       />
     </div>

@@ -1,24 +1,42 @@
-import React, { useEffect, useRef } from 'react';
-import { CheckCircle2, X, ExternalLink } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, X, ExternalLink, Ticket, ArrowRight } from 'lucide-react';
 import type { Patient } from '../../types';
 
 export interface PatientRegistrationSuccessModalProps {
   isOpen: boolean;
   patient: Patient | null;
+  canIssueToken?: boolean;
   onClose: () => void;
   onViewPatient?: (patient: Patient) => void;
+  onConfirmIssueToken?: (patient: Patient) => Promise<any> | void;
+  onNavigateQueue?: () => void;
 }
 
 export const PatientRegistrationSuccessModal: React.FC<PatientRegistrationSuccessModalProps> = ({
   isOpen,
   patient,
+  canIssueToken = true,
   onClose,
   onViewPatient,
+  onConfirmIssueToken,
+  onNavigateQueue,
 }) => {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const [isIssuingToken, setIsIssuingToken] = useState(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [issuedToken, setIssuedToken] = useState<{
+    tokenNumber: string | number;
+    visitId?: string | number;
+    queue?: string;
+  } | null>(null);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setIssuedToken(null);
+      setTokenError(null);
+      setIsIssuingToken(false);
+      return;
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -38,6 +56,40 @@ export const PatientRegistrationSuccessModal: React.FC<PatientRegistrationSucces
   }, [isOpen, onClose]);
 
   if (!isOpen || !patient) return null;
+
+  const handleConfirmToken = async () => {
+    if (!patient || !onConfirmIssueToken || isIssuingToken) return;
+    setIsIssuingToken(true);
+    setTokenError(null);
+    try {
+      const result = await onConfirmIssueToken(patient);
+      if (result) {
+        const tokenNum =
+          result.token_details?.token_number ||
+          result.token_number ||
+          result.id;
+        setIssuedToken({
+          tokenNumber: tokenNum,
+          visitId: result.visit_id || result.id,
+          queue: result.current_queue || 'TRIAGE',
+        });
+      }
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error ||
+        err?.response?.data?.detail ||
+        (err?.response?.data && typeof err.response.data === 'object'
+          ? Object.entries(err.response.data)
+              .map(([k, v]) => `${k.toUpperCase()}: ${Array.isArray(v) ? v.join(', ') : v}`)
+              .join('\n')
+          : null) ||
+        err?.message ||
+        'Failed to automatically create OPD queue token.';
+      setTokenError(msg);
+    } finally {
+      setIsIssuingToken(false);
+    }
+  };
 
   return (
     <div
@@ -69,7 +121,8 @@ export const PatientRegistrationSuccessModal: React.FC<PatientRegistrationSucces
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            disabled={isIssuingToken}
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer disabled:opacity-50"
             aria-label="Close confirmation dialog"
           >
             <X className="w-5 h-5" />
@@ -137,26 +190,110 @@ export const PatientRegistrationSuccessModal: React.FC<PatientRegistrationSucces
           </div>
         </div>
 
+        {/* OPD Token Issuance Confirmation Section */}
+        {canIssueToken && onConfirmIssueToken && (
+          <>
+            {issuedToken ? (
+              <div
+                className="bg-emerald-50 border border-emerald-300 rounded-xl p-4 text-center space-y-1.5"
+                data-testid="token-issued-success"
+              >
+                <div className="flex items-center justify-center gap-1.5 text-emerald-900 font-bold text-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>OPD Queue Token Created Successfully!</span>
+                </div>
+                <div
+                  className="text-2xl font-black text-emerald-700 font-mono tracking-tight"
+                  data-testid="issued-token-number"
+                >
+                  Token #{issuedToken.tokenNumber}
+                </div>
+                <p className="text-[11px] text-emerald-700">
+                  {patient.name} has been added to the live clinic queue.
+                </p>
+              </div>
+            ) : (
+              <div
+                className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3.5 space-y-1.5"
+                data-testid="token-confirmation-prompt"
+              >
+                <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
+                  <Ticket className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Issue OPD Queue Token</span>
+                </div>
+                <p className="text-[11px] text-emerald-800 leading-relaxed">
+                  Would you like to automatically create an OPD queue token and place <strong>{patient.name}</strong> into the live consultation queue?
+                </p>
+                {tokenError && (
+                  <div
+                    className="mt-2 p-2 bg-rose-50 border border-rose-200 rounded-lg text-[11px] text-rose-700 font-medium"
+                    data-testid="token-issuance-error"
+                  >
+                    {tokenError}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
         {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 flex-wrap">
           <button
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border border-slate-300 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100 transition cursor-pointer"
+            disabled={isIssuingToken}
+            className="px-3.5 py-2 border border-slate-300 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100 transition cursor-pointer disabled:opacity-50"
             data-testid="close-confirmation-button"
           >
             Close
           </button>
-          {onViewPatient && patient.id && (
+
+          {onViewPatient && patient.id && !issuedToken && (
             <button
               type="button"
               onClick={() => onViewPatient(patient)}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+              disabled={isIssuingToken}
+              className="px-3.5 py-2 border border-slate-300 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
               data-testid="view-patient-button"
             >
               <span>View Patient</span>
               <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          )}
+
+          {canIssueToken && onConfirmIssueToken && !issuedToken && (
+            <button
+              type="button"
+              onClick={handleConfirmToken}
+              disabled={isIssuingToken}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              data-testid="confirm-issue-token-button"
+            >
+              {isIssuingToken ? (
+                <>
+                  <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Creating OPD Token...</span>
+                </>
+              ) : (
+                <>
+                  <Ticket className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Confirm & Create OPD Token</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {issuedToken && onNavigateQueue && (
+            <button
+              type="button"
+              onClick={onNavigateQueue}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+              data-testid="go-to-queue-button"
+            >
+              <span>View in OPD Queue</span>
+              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
           )}
         </div>
