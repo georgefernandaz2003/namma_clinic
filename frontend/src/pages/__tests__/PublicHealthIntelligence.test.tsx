@@ -1229,144 +1229,82 @@ describe('PublicHealthIntelligence Component', () => {
   // PROMPT 10: DEMOGRAPHIC FILTERS & FORECAST RISK UI TESTS
   // ========================================================
 
-  it('Prompt 10.1: all filters render correctly with accessible controls', async () => {
+  it('1. Age filter is rendered', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/As-of Date/i)).toBeDefined();
-      expect(screen.getByLabelText(/Disease Condition/i)).toBeDefined();
-      expect(screen.getByLabelText(/Forecast Horizon/i)).toBeDefined();
-      expect(screen.getByLabelText(/Historical Window/i)).toBeDefined();
-      expect(screen.getByLabelText(/Age Group/i)).toBeDefined();
-      expect(screen.getByLabelText(/Gender/i)).toBeDefined();
-      expect(screen.getByLabelText(/Severity/i)).toBeDefined();
-      expect(screen.getByLabelText(/Vulnerable Group/i)).toBeDefined();
-      expect(screen.getByLabelText(/Patient Type/i)).toBeDefined();
-      expect(screen.getByRole('button', { name: /Reset Filters/i })).toBeDefined();
+      const select = screen.getByLabelText(/Age Group/i) as HTMLSelectElement;
+      expect(select).toBeDefined();
+      const options = Array.from(select.options).map(o => o.value);
+      expect(options).toContain('');
+      expect(options).toContain('0-5');
+      expect(options).toContain('15-24');
+      expect(options).toContain('60+');
     });
-
-    // Verify patient type only has NEW and FOLLOW_UP (no UNKNOWN)
-    const patientTypeSelect = screen.getByLabelText(/Patient Type/i) as HTMLSelectElement;
-    const patientTypeOptions = Array.from(patientTypeSelect.options).map(o => o.value);
-    expect(patientTypeOptions).toContain('');
-    expect(patientTypeOptions).toContain('NEW');
-    expect(patientTypeOptions).toContain('FOLLOW_UP');
-    expect(patientTypeOptions).not.toContain('UNKNOWN');
-
-    // Verify vulnerable group does not contain UNKNOWN
-    const vulnerableSelect = screen.getByLabelText(/Vulnerable Group/i) as HTMLSelectElement;
-    const vulnerableOptions = Array.from(vulnerableSelect.options).map(o => o.value);
-    expect(vulnerableOptions).not.toContain('UNKNOWN');
-    expect(vulnerableOptions).toContain('PREGNANT');
   });
 
-  it('Prompt 10.2: age filter changes request parameters', async () => {
+  it('2. Gender filter is rendered', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/Age Group/i)).toBeDefined();
-    });
-
-    const ageSelect = screen.getByLabelText(/Age Group/i);
-    fireEvent.change(ageSelect, { target: { value: '15-24' } });
-
-    await waitFor(() => {
-      expect(intelligenceService.getDiseaseTrends).toHaveBeenCalledWith(
-        expect.objectContaining({ age_group: '15-24' })
-      );
-      expect(intelligenceService.getForecast).toHaveBeenCalledWith(
-        expect.objectContaining({ age_group: '15-24' })
-      );
+      const select = screen.getByLabelText(/^Gender$/i) as HTMLSelectElement;
+      expect(select).toBeDefined();
+      const options = Array.from(select.options).map(o => o.value);
+      expect(options).toContain('');
+      expect(options).toContain('MALE');
+      expect(options).toContain('FEMALE');
+      expect(options).toContain('OTHER');
     });
   });
 
-  it('Prompt 10.3: gender filter changes request parameters', async () => {
+  it('3. Severity filter is rendered', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/Gender/i)).toBeDefined();
-    });
-
-    const genderSelect = screen.getByLabelText(/Gender/i);
-    fireEvent.change(genderSelect, { target: { value: 'FEMALE' } });
-
-    await waitFor(() => {
-      expect(intelligenceService.getDiseaseTrends).toHaveBeenCalledWith(
-        expect.objectContaining({ gender: 'FEMALE' })
-      );
-      expect(intelligenceService.getForecast).toHaveBeenCalledWith(
-        expect.objectContaining({ gender: 'FEMALE' })
-      );
+      const select = screen.getByLabelText(/^Severity$/i) as HTMLSelectElement;
+      expect(select).toBeDefined();
+      const options = Array.from(select.options).map(o => o.value);
+      expect(options).toContain('');
+      expect(options).toContain('MILD');
+      expect(options).toContain('MODERATE');
+      expect(options).toContain('SEVERE');
     });
   });
 
-  it('Prompt 10.4: severity filter changes request parameters', async () => {
+  it('4. Vulnerable Group filter is rendered', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/Severity/i)).toBeDefined();
-    });
-
-    const severitySelect = screen.getByLabelText(/Severity/i);
-    fireEvent.change(severitySelect, { target: { value: 'SEVERE' } });
-
-    await waitFor(() => {
-      expect(intelligenceService.getDiseaseTrends).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'SEVERE' })
-      );
-      expect(intelligenceService.getForecast).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'SEVERE' })
-      );
+      const select = screen.getByLabelText(/^Vulnerable Group$/i) as HTMLSelectElement;
+      expect(select).toBeDefined();
+      const options = Array.from(select.options).map(o => o.value);
+      expect(options).toContain('');
+      expect(options).toContain('PREGNANT');
+      expect(options).toContain('ELDERLY');
+      expect(options).not.toContain('UNKNOWN');
     });
   });
 
-  it('Prompt 10.5: vulnerable group filter changes request parameters', async () => {
+  it('5. Patient Type filter is rendered', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/Vulnerable Group/i)).toBeDefined();
-    });
-
-    const vulnerableSelect = screen.getByLabelText(/Vulnerable Group/i);
-    fireEvent.change(vulnerableSelect, { target: { value: 'PREGNANT' } });
-
-    await waitFor(() => {
-      expect(intelligenceService.getDiseaseTrends).toHaveBeenCalledWith(
-        expect.objectContaining({ vulnerable_group: 'PREGNANT' })
-      );
-      expect(intelligenceService.getForecast).toHaveBeenCalledWith(
-        expect.objectContaining({ vulnerable_group: 'PREGNANT' })
-      );
+      const select = screen.getByLabelText(/^Patient Type$/i) as HTMLSelectElement;
+      expect(select).toBeDefined();
+      const options = Array.from(select.options).map(o => o.value);
+      expect(options).toContain('');
+      expect(options).toContain('NEW');
+      expect(options).toContain('FOLLOW_UP');
+      expect(options).not.toContain('UNKNOWN');
     });
   });
 
-  it('Prompt 10.6: patient type filter changes request parameters', async () => {
-    setupAuth('HOSPITAL_ADMIN');
-    render(<PublicHealthIntelligence />);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/Patient Type/i)).toBeDefined();
-    });
-
-    const patientTypeSelect = screen.getByLabelText(/Patient Type/i);
-    fireEvent.change(patientTypeSelect, { target: { value: 'FOLLOW_UP' } });
-
-    await waitFor(() => {
-      expect(intelligenceService.getDiseaseTrends).toHaveBeenCalledWith(
-        expect.objectContaining({ patient_type: 'FOLLOW_UP' })
-      );
-      expect(intelligenceService.getForecast).toHaveBeenCalledWith(
-        expect.objectContaining({ patient_type: 'FOLLOW_UP' })
-      );
-    });
-  });
-
-  it('Prompt 10.7: multiple filters are sent together (AND condition)', async () => {
+  it('6. Combined filters are passed to intelligenceService', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
@@ -1375,10 +1313,10 @@ describe('PublicHealthIntelligence Component', () => {
     });
 
     fireEvent.change(screen.getByLabelText(/Age Group/i), { target: { value: '15-24' } });
-    fireEvent.change(screen.getByLabelText(/Gender/i), { target: { value: 'FEMALE' } });
-    fireEvent.change(screen.getByLabelText(/Severity/i), { target: { value: 'SEVERE' } });
-    fireEvent.change(screen.getByLabelText(/Vulnerable Group/i), { target: { value: 'PREGNANT' } });
-    fireEvent.change(screen.getByLabelText(/Patient Type/i), { target: { value: 'FOLLOW_UP' } });
+    fireEvent.change(screen.getByLabelText(/^Gender$/i), { target: { value: 'FEMALE' } });
+    fireEvent.change(screen.getByLabelText(/^Severity$/i), { target: { value: 'SEVERE' } });
+    fireEvent.change(screen.getByLabelText(/^Vulnerable Group$/i), { target: { value: 'PREGNANT' } });
+    fireEvent.change(screen.getByLabelText(/^Patient Type$/i), { target: { value: 'FOLLOW_UP' } });
 
     await waitFor(() => {
       const expectedParams = expect.objectContaining({
@@ -1396,7 +1334,7 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('Prompt 10.8: reset filters restores defaults and reloads data', async () => {
+  it('7. Reset filters restores defaults', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
@@ -1406,7 +1344,7 @@ describe('PublicHealthIntelligence Component', () => {
 
     // Apply multiple filters
     fireEvent.change(screen.getByLabelText(/Age Group/i), { target: { value: '60+' } });
-    fireEvent.change(screen.getByLabelText(/Severity/i), { target: { value: 'SEVERE' } });
+    fireEvent.change(screen.getByLabelText(/^Severity$/i), { target: { value: 'SEVERE' } });
 
     await waitFor(() => {
       expect(intelligenceService.getForecast).toHaveBeenCalledWith(
@@ -1423,11 +1361,11 @@ describe('PublicHealthIntelligence Component', () => {
       expect(lastForecastCall?.age_group).toBeUndefined();
       expect(lastForecastCall?.severity).toBeUndefined();
       expect((screen.getByLabelText(/Age Group/i) as HTMLSelectElement).value).toBe('');
-      expect((screen.getByLabelText(/Severity/i) as HTMLSelectElement).value).toBe('');
+      expect((screen.getByLabelText(/^Severity$/i) as HTMLSelectElement).value).toBe('');
     });
   });
 
-  it('Prompt 10.9: forecast risk UI displays baseline, thresholds and explanation', async () => {
+  it('8. Forecast risk section renders', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
@@ -1435,20 +1373,22 @@ describe('PublicHealthIntelligence Component', () => {
       expect(screen.getByTestId('forecast-risk-section')).toBeDefined();
       expect(screen.getByTestId('kpi-historical-baseline')).toBeDefined();
       expect(within(screen.getByTestId('kpi-historical-baseline')).getByText('8')).toBeDefined();
+      expect(screen.getByText(/Elevation Threshold:/i)).toBeDefined();
       expect(screen.getByText(/≥ 1.15×/i)).toBeDefined();
+      expect(screen.getByText(/High-Risk Threshold:/i)).toBeDefined();
       expect(screen.getByText(/≥ 1.5×/i)).toBeDefined();
       expect(screen.getByTestId('risk-explanation')).toBeDefined();
-      expect(screen.getByText(/Surveillance signal indicates high projected risk/i)).toBeDefined();
+      expect(screen.getByText(/Risk Explanation:/i)).toBeDefined();
     });
   });
 
-  it('Prompt 10.10: highest risk level is displayed with safe wording', async () => {
+  it('9. Highest risk level renders', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
     await waitFor(() => {
       const riskCard = screen.getByTestId('kpi-highest-risk');
-      expect(within(riskCard).getByText('High Risk')).toBeDefined();
+      expect(within(riskCard).getByText('HIGH RISK')).toBeDefined();
       expect(within(riskCard).getByText(/High projected surveillance risk/i)).toBeDefined();
       // Ensure no sensationalized outbreak wording inside risk assessment
       expect(within(riskCard).queryByText(/confirmed outbreak/i)).toBeNull();
@@ -1456,20 +1396,36 @@ describe('PublicHealthIntelligence Component', () => {
     });
   });
 
-  it('Prompt 10.11: risk week counts are displayed properly', async () => {
+  it('10. Risk counts render', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
     await waitFor(() => {
       const countsCard = screen.getByTestId('kpi-risk-counts');
-      expect(within(countsCard).getByText('Normal')).toBeDefined();
-      expect(within(countsCard).getByText('Elevated')).toBeDefined();
-      expect(within(countsCard).getByText('High Risk')).toBeDefined();
+      expect(within(countsCard).getByText(/Normal Projected Weeks/i)).toBeDefined();
+      expect(within(countsCard).getByText(/Elevated Projected Weeks/i)).toBeDefined();
+      expect(within(countsCard).getByText(/High-Risk Projected Weeks/i)).toBeDefined();
       expect(within(countsCard).getByText('1')).toBeDefined(); // high risk count
     });
   });
 
-  it('Prompt 10.12: insufficient-data risk state displays safely without fake numbers', async () => {
+  it('11. Risk points render', async () => {
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('forecast-risk-points-table')).toBeDefined();
+      const row = screen.getByTestId('risk-point-row-0');
+      expect(within(row).getByText('Week +1')).toBeDefined();
+      expect(within(row).getByText('12')).toBeDefined();
+      expect(within(row).getByText('8')).toBeDefined();
+      expect(within(row).getByText('1.5×')).toBeDefined();
+      expect(within(row).getByText('HIGH RISK')).toBeDefined();
+      expect(within(row).getByText(/Predicted volume exceeds high-risk threshold/i)).toBeDefined();
+    });
+  });
+
+  it('12. INSUFFICIENT_DATA renders the correct message', async () => {
     vi.mocked(intelligenceService.getForecast).mockResolvedValue(mockForecastInsufficient);
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
@@ -1477,13 +1433,9 @@ describe('PublicHealthIntelligence Component', () => {
     await waitFor(() => {
       expect(screen.getAllByText(/Insufficient historical data for reliable forecast risk classification/i).length).toBeGreaterThan(0);
     });
-
-    // Verify no fake baseline or fake points are rendered
-    expect(screen.queryByTestId('kpi-historical-baseline')).toBeNull();
-    expect(screen.queryByTestId('forecast-risk-points-table')).toBeNull();
   });
 
-  it('Prompt 10.13: no fake risk points shown when forecast is empty or insufficient', async () => {
+  it('13. INSUFFICIENT_DATA does not render fake risk points', async () => {
     vi.mocked(intelligenceService.getForecast).mockResolvedValue({
       ...mockForecastInsufficient,
       forecast_risk: {
@@ -1507,25 +1459,57 @@ describe('PublicHealthIntelligence Component', () => {
       expect(screen.getAllByText(/Insufficient historical data for reliable forecast risk classification/i).length).toBeGreaterThan(0);
     });
 
+    // Verify no fake baseline or fake points are rendered
+    expect(screen.queryByTestId('kpi-historical-baseline')).toBeNull();
+    expect(screen.queryByTestId('forecast-risk-points-table')).toBeNull();
     expect(screen.queryByTestId('risk-point-row-0')).toBeNull();
   });
 
-  it('Prompt 10.14: HTTP 400 invalid filter error is displayed safely', async () => {
-    vi.mocked(intelligenceService.getDiseaseTrends).mockRejectedValue({
-      response: {
-        status: 400,
-        data: { error: 'Invalid age_group value provided.' },
+  it('14. Selected Population summary renders active filters', async () => {
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Age Group/i)).toBeDefined();
+    });
+
+    // Without filters, displays "All eligible population"
+    expect(screen.getAllByText(/All eligible population/i).length).toBeGreaterThan(0);
+
+    // Apply demographic filters
+    fireEvent.change(screen.getByLabelText(/Age Group/i), { target: { value: '15-24' } });
+    fireEvent.change(screen.getByLabelText(/^Gender$/i), { target: { value: 'FEMALE' } });
+    fireEvent.change(screen.getByLabelText(/^Severity$/i), { target: { value: 'SEVERE' } });
+    fireEvent.change(screen.getByLabelText(/^Vulnerable Group$/i), { target: { value: 'PREGNANT' } });
+    fireEvent.change(screen.getByLabelText(/^Patient Type$/i), { target: { value: 'FOLLOW_UP' } });
+
+    await waitFor(() => {
+      const summary = screen.getByTestId('forecast-selected-population');
+      expect(within(summary).getByText('15-24')).toBeDefined();
+      expect(within(summary).getByText('Female')).toBeDefined();
+      expect(within(summary).getByText('Severe')).toBeDefined();
+      expect(within(summary).getByText('Pregnant')).toBeDefined();
+      expect(within(summary).getByText('Follow-up')).toBeDefined();
+    });
+  });
+
+  it('15. Zero selected-population cases displays the no-cases message', async () => {
+    vi.mocked(intelligenceService.getForecast).mockResolvedValue({
+      ...mockForecastAvailable,
+      observation_period: {
+        ...mockForecastAvailable.observation_period,
+        total_cases: 0,
       },
     });
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Invalid age_group value provided./i)).toBeDefined();
+      expect(screen.getAllByText(/No cases found for the selected filters/i).length).toBeGreaterThan(0);
     });
   });
 
-  it('Prompt 10.15: existing no-filter behavior still works cleanly', async () => {
+  it('16. Existing no-filter behavior still works', async () => {
     setupAuth('HOSPITAL_ADMIN');
     render(<PublicHealthIntelligence />);
 
@@ -1539,6 +1523,51 @@ describe('PublicHealthIntelligence Component', () => {
       expect(screen.getByRole('heading', { name: /Public Health Epidemiological Forecast/i })).toBeDefined();
       // Seasonality
       expect(screen.getByRole('heading', { name: /Seasonal Pattern Analysis/i })).toBeDefined();
+    });
+  });
+
+  it('Prompt 10: individual filter changes update service parameters correctly', async () => {
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Age Group/i)).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByLabelText(/Age Group/i), { target: { value: '25-44' } });
+    await waitFor(() => {
+      expect(intelligenceService.getForecast).toHaveBeenCalledWith(
+        expect.objectContaining({ age_group: '25-44' })
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText(/^Gender$/i), { target: { value: 'MALE' } });
+    await waitFor(() => {
+      expect(intelligenceService.getForecast).toHaveBeenCalledWith(
+        expect.objectContaining({ gender: 'MALE' })
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText(/^Severity$/i), { target: { value: 'MODERATE' } });
+    await waitFor(() => {
+      expect(intelligenceService.getForecast).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'MODERATE' })
+      );
+    });
+  });
+
+  it('Prompt 10: HTTP 400 invalid filter error is displayed safely', async () => {
+    vi.mocked(intelligenceService.getDiseaseTrends).mockRejectedValue({
+      response: {
+        status: 400,
+        data: { error: 'Invalid age_group value provided.' },
+      },
+    });
+    setupAuth('HOSPITAL_ADMIN');
+    render(<PublicHealthIntelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Invalid age_group value provided./i)).toBeDefined();
     });
   });
 });

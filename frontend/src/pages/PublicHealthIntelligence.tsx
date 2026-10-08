@@ -586,31 +586,47 @@ export const PublicHealthIntelligence: React.FC = () => {
     switch (level) {
       case 'HIGH_RISK':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wide bg-rose-500/20 text-rose-300 border border-rose-400/40 shadow-xs">
+          <span
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wide bg-rose-500/20 text-rose-300 border border-rose-400/40 shadow-xs"
+            aria-label="HIGH RISK"
+            title="HIGH RISK"
+          >
             <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-            <span>High Risk</span>
+            <span>HIGH RISK</span>
           </span>
         );
       case 'ELEVATED':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wide bg-amber-500/20 text-amber-300 border border-amber-400/40 shadow-xs">
+          <span
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wide bg-amber-500/20 text-amber-300 border border-amber-400/40 shadow-xs"
+            aria-label="ELEVATED"
+            title="ELEVATED"
+          >
             <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-            <span>Elevated Risk</span>
+            <span>ELEVATED</span>
           </span>
         );
       case 'NORMAL':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wide bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 shadow-xs">
+          <span
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wide bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 shadow-xs"
+            aria-label="NORMAL"
+            title="NORMAL"
+          >
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Normal Risk</span>
+            <span>NORMAL</span>
           </span>
         );
       case 'INSUFFICIENT_DATA':
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wide bg-slate-500/20 text-slate-300 border border-slate-400/40 shadow-xs">
+          <span
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wide bg-slate-500/20 text-slate-300 border border-slate-400/40 shadow-xs"
+            aria-label="INSUFFICIENT DATA"
+            title="INSUFFICIENT DATA"
+          >
             <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
-            <span>Insufficient Data</span>
+            <span>INSUFFICIENT DATA</span>
           </span>
         );
     }
@@ -978,7 +994,7 @@ export const PublicHealthIntelligence: React.FC = () => {
               )}
               {filters.vulnerable_group && (
                 <span className="px-2.5 py-1 bg-white border border-indigo-200 text-indigo-900 rounded-lg font-semibold flex items-center gap-1 shadow-2xs">
-                  Vulnerable group: <strong className="font-black">{
+                  Vulnerable Group: <strong className="font-black">{
                     filters.vulnerable_group === 'PREGNANT' ? 'Pregnant' :
                     filters.vulnerable_group === 'ELDERLY' ? 'Elderly' :
                     filters.vulnerable_group === 'DISABILITY' ? 'Disability' :
@@ -996,7 +1012,7 @@ export const PublicHealthIntelligence: React.FC = () => {
               )}
               {filters.patient_type && (
                 <span className="px-2.5 py-1 bg-white border border-indigo-200 text-indigo-900 rounded-lg font-semibold flex items-center gap-1 shadow-2xs">
-                  Patient type: <strong className="font-black">{filters.patient_type === 'NEW' ? 'New' : 'Follow-up'}</strong>
+                  Patient Type: <strong className="font-black">{filters.patient_type === 'NEW' ? 'New' : 'Follow-up'}</strong>
                   <button
                     onClick={() => updateFilter('patient_type', '')}
                     className="ml-1 text-slate-400 hover:text-rose-600 focus:outline-none"
@@ -1009,7 +1025,7 @@ export const PublicHealthIntelligence: React.FC = () => {
             </div>
           ) : (
             <span className="text-slate-600 italic">
-              All monitored population (No demographic filters applied)
+              All eligible population
             </span>
           )}
         </div>
@@ -1019,7 +1035,7 @@ export const PublicHealthIntelligence: React.FC = () => {
           <div className="font-semibold text-slate-700 font-mono">
             {totalPopulationCases > 0 ? (
               <span className="text-indigo-900 bg-white px-3 py-1.5 rounded-lg border border-indigo-200 shadow-2xs">
-                Total cases analyzed: <strong className="font-black text-indigo-950">{totalPopulationCases}</strong>
+                Cases in selected population: <strong className="font-black text-indigo-950">{totalPopulationCases}</strong>
               </span>
             ) : (
               <span className="text-amber-800 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200 font-medium">
@@ -1721,6 +1737,54 @@ export const PublicHealthIntelligence: React.FC = () => {
               </div>
             </div>
 
+            {/* Selected Population Summary in Forecast Section */}
+            <div className="my-4 p-3.5 bg-white/5 rounded-xl border border-white/10 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2" data-testid="forecast-selected-population">
+              <div>
+                <span className="font-bold text-indigo-300 uppercase tracking-wider block text-[11px]">
+                  Selected Population
+                </span>
+                {hasActiveDemographicFilters ? (
+                  <div className="flex flex-wrap items-center gap-2.5 mt-1 text-slate-200">
+                    {filters.age_group && (
+                      <span>Age: <strong className="text-white font-bold">{filters.age_group}</strong></span>
+                    )}
+                    {filters.gender && (
+                      <span>Gender: <strong className="text-white font-bold">{filters.gender === 'MALE' ? 'Male' : filters.gender === 'FEMALE' ? 'Female' : 'Other'}</strong></span>
+                    )}
+                    {filters.severity && (
+                      <span>Severity: <strong className="text-white font-bold">{filters.severity === 'MILD' ? 'Mild' : filters.severity === 'MODERATE' ? 'Moderate' : 'Severe'}</strong></span>
+                    )}
+                    {filters.vulnerable_group && (
+                      <span>Vulnerable Group: <strong className="text-white font-bold">{
+                        filters.vulnerable_group === 'PREGNANT' ? 'Pregnant' :
+                        filters.vulnerable_group === 'ELDERLY' ? 'Elderly' :
+                        filters.vulnerable_group === 'DISABILITY' ? 'Disability' :
+                        filters.vulnerable_group === 'CHRONIC_CONDITION' ? 'Chronic Condition' :
+                        filters.vulnerable_group === 'LOW_INCOME_SLUM' ? 'Low Income / Slum' : 'General'
+                      }</strong></span>
+                    )}
+                    {filters.patient_type && (
+                      <span>Patient Type: <strong className="text-white font-bold">{filters.patient_type === 'NEW' ? 'New' : 'Follow-up'}</strong></span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-slate-300 italic block mt-1">All eligible population</span>
+                )}
+              </div>
+
+              <div className="font-mono text-xs shrink-0">
+                {forecastData?.observation_period && forecastData.observation_period.total_cases > 0 ? (
+                  <span className="text-indigo-200 bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 inline-block">
+                    Cases in selected population: <strong className="text-white font-bold">{forecastData.observation_period.total_cases}</strong>
+                  </span>
+                ) : (
+                  <span className="text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 inline-block">
+                    No cases found for the selected filters.
+                  </span>
+                )}
+              </div>
+            </div>
+
             {/* Forecast Body */}
             {forecastData?.forecast.status === 'INSUFFICIENT_DATA' ? (
               <div className="my-6 p-6 rounded-xl bg-white/5 border border-white/10 text-center">
@@ -1873,15 +1937,15 @@ export const PublicHealthIntelligence: React.FC = () => {
                             <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Projected Week Distribution</p>
                             <div className="mt-2 grid grid-cols-3 gap-1.5 text-center font-mono">
                               <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                                <span className="text-[10px] text-emerald-300 block font-bold">Normal</span>
+                                <span className="text-[10px] text-emerald-300 block font-bold">Normal Projected Weeks</span>
                                 <span className="text-sm font-black text-white">{forecastData.forecast_risk.normal_points_count}</span>
                               </div>
                               <div className="p-1.5 bg-amber-500/10 rounded-lg border border-amber-500/20">
-                                <span className="text-[10px] text-amber-300 block font-bold">Elevated</span>
+                                <span className="text-[10px] text-amber-300 block font-bold">Elevated Projected Weeks</span>
                                 <span className="text-sm font-black text-white">{forecastData.forecast_risk.elevated_points_count}</span>
                               </div>
                               <div className="p-1.5 bg-rose-500/10 rounded-lg border border-rose-500/20">
-                                <span className="text-[10px] text-rose-300 block font-bold">High Risk</span>
+                                <span className="text-[10px] text-rose-300 block font-bold">High-Risk Projected Weeks</span>
                                 <span className="text-sm font-black text-white">{forecastData.forecast_risk.high_risk_points_count}</span>
                               </div>
                             </div>
@@ -1892,7 +1956,7 @@ export const PublicHealthIntelligence: React.FC = () => {
                         <div className="p-3.5 bg-indigo-950/70 rounded-xl border border-indigo-700/50 text-xs text-indigo-200 flex items-start gap-2.5" data-testid="risk-explanation">
                           <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                           <div>
-                            <span className="font-bold text-white block">Surveillance Risk Assessment:</span>
+                            <span className="font-bold text-white block">Risk Explanation:</span>
                             <span>{forecastData.forecast_risk.explanation}</span>
                           </div>
                         </div>
@@ -1901,14 +1965,13 @@ export const PublicHealthIntelligence: React.FC = () => {
                         {forecastData.forecast_risk.risk_points && forecastData.forecast_risk.risk_points.length > 0 && (
                           <div className="space-y-2 mt-4" data-testid="forecast-risk-points-table">
                             <h5 className="text-xs font-bold text-indigo-200 uppercase tracking-wider">
-                              Weekly Forecast Risk Assessment Points
+                              Forecast Risk Points
                             </h5>
                             <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
                               <table className="w-full text-left text-xs">
                                 <thead className="bg-white/10 text-indigo-200 font-bold border-b border-white/10">
                                   <tr>
                                     <th className="p-3">Forecast Week</th>
-                                    <th className="p-3">Week Dates</th>
                                     <th className="p-3">Predicted Cases</th>
                                     <th className="p-3">Historical Baseline</th>
                                     <th className="p-3">Ratio to Baseline</th>
@@ -1921,9 +1984,6 @@ export const PublicHealthIntelligence: React.FC = () => {
                                     <tr key={idx} className="hover:bg-white/5 transition" data-testid={`risk-point-row-${idx}`}>
                                       <td className="p-3 font-mono font-bold text-white">
                                         Week +{rp.forecast_week ?? idx + 1}
-                                      </td>
-                                      <td className="p-3 font-mono text-[11px] text-slate-300">
-                                        {rp.forecast_week_start} — {rp.forecast_week_end}
                                       </td>
                                       <td className="p-3 font-mono font-bold text-white">
                                         {rp.predicted_cases}
