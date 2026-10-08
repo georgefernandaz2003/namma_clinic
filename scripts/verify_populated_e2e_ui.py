@@ -20,6 +20,22 @@ def verify_populated_ui():
         context = browser.new_context(viewport={'width': 1440, 'height': 900})
         page = context.new_page()
 
+        # 0. Front-Desk Console Verification
+        print("Testing Front-Desk Console as frontdesk...")
+        fd_context = browser.new_context(viewport={'width': 1440, 'height': 900})
+        fd_page = fd_context.new_page()
+        fd_page.goto('http://localhost:3000/login', wait_until='networkidle')
+        if fd_page.locator('input#username, input[type="text"]').count() > 0:
+            fd_page.fill('input#username, input[type="text"]', 'frontdesk')
+            fd_page.fill('input#password, input[type="password"]', 'frontdesk123')
+            fd_page.click('button[type="submit"]')
+            fd_page.wait_for_timeout(2500)
+        fd_page.goto('http://localhost:3000/dashboard/front-desk', wait_until='networkidle')
+        fd_page.wait_for_timeout(2000)
+        fd_page.screenshot(path=os.path.join(screenshots_dir, '00_front_desk_console_60_patients.png'))
+        print("Captured 00_front_desk_console_60_patients.png")
+        fd_context.close()
+
         # Login as admin
         print("Logging in to http://localhost:3000/login...")
         page.goto('http://localhost:3000/login', wait_until='networkidle')

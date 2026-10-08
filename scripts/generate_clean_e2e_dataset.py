@@ -85,11 +85,11 @@ CITIZENS_ROSTER = [
     {"first": "Praveen", "last": "Kumar", "gender": "MALE", "age": 63, "phone": "9845011013", "abha": "14-8291-4001-1013", "address": "38, MEI Extension, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "NCD_BOTH"},
     {"first": "Shwetha", "last": "Joshi", "gender": "FEMALE", "age": 44, "phone": "9845011014", "abha": "14-8291-4001-1014", "address": "25, Shivananda Nagar, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "NCD_DM"},
     {"first": "Anand", "last": "Bellary", "gender": "MALE", "age": 57, "phone": "9845011015", "abha": "14-8291-4001-1015", "address": "49, Maruthi Extension, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "NCD_HTN"},
-    {"first": "Meenakshi", "last": "Sundaram", "gender": "FEMALE", "age": 65, "phone": "9845011016", "abha": "14-8291-4001-1016", "address": "72, Saraswathi Nagar, Laggere, Bengaluru", "fac": "NC-LAG-01", "ward": 4, "cohort": "NCD_BOTH"},
-    {"first": "Raghavendra", "last": "Rao", "gender": "MALE", "age": 53, "phone": "9845011017", "abha": "14-8291-4001-1017", "address": "15, 6th Cross, Laggere Village, Bengaluru", "fac": "NC-LAG-01", "ward": 4, "cohort": "NCD_DM"},
-    {"first": "Soumya", "last": "Hegde", "gender": "FEMALE", "age": 47, "phone": "9845011018", "abha": "14-8291-4001-1018", "address": "84, Peenya Link Road, Laggere, Bengaluru", "fac": "NC-LAG-01", "ward": 4, "cohort": "NCD_HTN"},
-    {"first": "Girish", "last": "Kulkarni", "gender": "MALE", "age": 60, "phone": "9845011019", "abha": "14-8291-4001-1019", "address": "29, Varthur Main Bazaar, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "NCD_BOTH"},
-    {"first": "Roopa", "last": "Nayak", "gender": "FEMALE", "age": 51, "phone": "9845011020", "abha": "14-8291-4001-1020", "address": "53, Gunjur Village Cross, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "NCD_DM"},
+    {"first": "Meenakshi", "last": "Sundaram", "gender": "FEMALE", "age": 65, "phone": "9845011016", "abha": "14-8291-4001-1016", "address": "72, Saraswathi Nagar, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "NCD_BOTH"},
+    {"first": "Raghavendra", "last": "Rao", "gender": "MALE", "age": 53, "phone": "9845011017", "abha": "14-8291-4001-1017", "address": "15, 6th Cross, Laggere Village, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "NCD_DM"},
+    {"first": "Soumya", "last": "Hegde", "gender": "FEMALE", "age": 47, "phone": "9845011018", "abha": "14-8291-4001-1018", "address": "84, Peenya Link Road, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "NCD_HTN"},
+    {"first": "Girish", "last": "Kulkarni", "gender": "MALE", "age": 60, "phone": "9845011019", "abha": "14-8291-4001-1019", "address": "29, 4th Block, Jayanagar, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 3, "cohort": "NCD_BOTH"},
+    {"first": "Roopa", "last": "Nayak", "gender": "FEMALE", "age": 51, "phone": "9845011020", "abha": "14-8291-4001-1020", "address": "53, 9th Block, Jayanagar, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 3, "cohort": "NCD_DM"},
 
     # Cohort 2: Infectious Disease & IDSP Surveillance - 12 Patients
     {"first": "Ravi", "last": "Kumar", "gender": "MALE", "age": 28, "phone": "9845011021", "abha": "14-8291-4001-1021", "address": "18, MEI Layout 2nd Stage, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "SURV_DENGUE"},
@@ -98,12 +98,12 @@ CITIZENS_ROSTER = [
     {"first": "Geetha", "last": "Raman", "gender": "FEMALE", "age": 31, "phone": "9845011024", "abha": "14-8291-4001-1024", "address": "42, Parvathi Nagar Main, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "SURV_GASTRO"},
     {"first": "Mohan", "last": "Bhat", "gender": "MALE", "age": 22, "phone": "9845011025", "abha": "14-8291-4001-1025", "address": "88, Kempegowda Nagar 3rd Cross, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "SURV_DENGUE"},
     {"first": "Archana", "last": "Kulkarni", "gender": "FEMALE", "age": 29, "phone": "9845011026", "abha": "14-8291-4001-1026", "address": "16, Pipeline Road Slum Cluster, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "SURV_TYPHOID"},
-    {"first": "Santosh", "last": "Gowda", "gender": "MALE", "age": 33, "phone": "9845011027", "abha": "14-8291-4001-1027", "address": "74, Bazaar Street, Ulsoor, Bengaluru", "fac": "HOSP-KC-01", "ward": 2, "cohort": "SURV_DENGUE"},
-    {"first": "Vidya", "last": "Shankar", "gender": "FEMALE", "age": 27, "phone": "9845011028", "abha": "14-8291-4001-1028", "address": "55, Someshwara Temple Lane, Ulsoor, Bengaluru", "fac": "HOSP-KC-01", "ward": 2, "cohort": "SURV_GASTRO"},
-    {"first": "Harish", "last": "Reddy", "gender": "MALE", "age": 40, "phone": "9845011029", "abha": "14-8291-4001-1029", "address": "22, Cambridge Road, Ulsoor, Bengaluru", "fac": "HOSP-KC-01", "ward": 2, "cohort": "SURV_TYPHOID"},
-    {"first": "Nalini", "last": "Hegde", "gender": "FEMALE", "age": 36, "phone": "9845011030", "abha": "14-8291-4001-1030", "address": "97, Varthur Lake Bund Road, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "SURV_MALARIA"},
-    {"first": "Kiran", "last": "Acharya", "gender": "MALE", "age": 25, "phone": "9845011031", "abha": "14-8291-4001-1031", "address": "11, Gunjur Main Road, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "SURV_GASTRO"},
-    {"first": "Bhavana", "last": "Rao", "gender": "FEMALE", "age": 30, "phone": "9845011032", "abha": "14-8291-4001-1032", "address": "63, Chowdeshwari Layout, Laggere, Bengaluru", "fac": "NC-LAG-01", "ward": 4, "cohort": "SURV_DENGUE"},
+    {"first": "Santosh", "last": "Gowda", "gender": "MALE", "age": 33, "phone": "9845011027", "abha": "14-8291-4001-1027", "address": "74, Bazaar Street, Ulsoor, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 2, "cohort": "SURV_DENGUE"},
+    {"first": "Vidya", "last": "Shankar", "gender": "FEMALE", "age": 27, "phone": "9845011028", "abha": "14-8291-4001-1028", "address": "55, Someshwara Temple Lane, Ulsoor, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 2, "cohort": "SURV_GASTRO"},
+    {"first": "Harish", "last": "Reddy", "gender": "MALE", "age": 40, "phone": "9845011029", "abha": "14-8291-4001-1029", "address": "22, Cambridge Road, Ulsoor, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 2, "cohort": "SURV_TYPHOID"},
+    {"first": "Nalini", "last": "Hegde", "gender": "FEMALE", "age": 36, "phone": "9845011030", "abha": "14-8291-4001-1030", "address": "97, 33rd Cross, Jayanagar 7th Block, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 3, "cohort": "SURV_MALARIA"},
+    {"first": "Kiran", "last": "Acharya", "gender": "MALE", "age": 25, "phone": "9845011031", "abha": "14-8291-4001-1031", "address": "11, Kanakapura Road Cross, Jayanagar, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 3, "cohort": "SURV_GASTRO"},
+    {"first": "Bhavana", "last": "Rao", "gender": "FEMALE", "age": 30, "phone": "9845011032", "abha": "14-8291-4001-1032", "address": "63, Chowdeshwari Layout, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "SURV_DENGUE"},
 
     # Cohort 3: General Acute Primary Care OPD - 14 Patients
     {"first": "Shivakumar", "last": "Swamy", "gender": "MALE", "age": 37, "phone": "9845011033", "abha": "14-8291-4001-1033", "address": "21, 5th Main, Parvathi Nagar, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "GEN_URTI"},
@@ -116,20 +116,20 @@ CITIZENS_ROSTER = [
     {"first": "Deepthi", "last": "Bhat", "gender": "FEMALE", "age": 29, "phone": "9845011040", "abha": "14-8291-4001-1040", "address": "44, Kempegowda Main, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "GEN_GASTRITIS"},
     {"first": "Jagadeesh", "last": "Murthy", "gender": "MALE", "age": 52, "phone": "9845011041", "abha": "14-8291-4001-1041", "address": "83, Pipeline Cross, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "GEN_JOINT_PAIN"},
     {"first": "Rashmi", "last": "Kamath", "gender": "FEMALE", "age": 38, "phone": "9845011042", "abha": "14-8291-4001-1042", "address": "26, Shivananda Layout, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "GEN_URTI"},
-    {"first": "Madhusudhan", "last": "Rao", "gender": "MALE", "age": 41, "phone": "9845011043", "abha": "14-8291-4001-1043", "address": "67, Laggere Main Road, Bengaluru", "fac": "NC-LAG-01", "ward": 4, "cohort": "GEN_BRONCHITIS"},
-    {"first": "Divya", "last": "Shenoy", "gender": "FEMALE", "age": 23, "phone": "9845011044", "abha": "14-8291-4001-1044", "address": "37, Peenya Cross, Laggere, Bengaluru", "fac": "NC-LAG-01", "ward": 4, "cohort": "GEN_ANEMIA"},
-    {"first": "Anil", "last": "Kumar", "gender": "MALE", "age": 36, "phone": "9845011045", "abha": "14-8291-4001-1045", "address": "19, Varthur Village Bazaar, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "GEN_URTI"},
-    {"first": "Padma", "last": "Sundaram", "gender": "FEMALE", "age": 48, "phone": "9845011046", "abha": "14-8291-4001-1046", "address": "52, Balagere Cross, Varthur, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "GEN_JOINT_PAIN"},
+    {"first": "Madhusudhan", "last": "Rao", "gender": "MALE", "age": 41, "phone": "9845011043", "abha": "14-8291-4001-1043", "address": "67, Laggere Main Road, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "GEN_BRONCHITIS"},
+    {"first": "Divya", "last": "Shenoy", "gender": "FEMALE", "age": 23, "phone": "9845011044", "abha": "14-8291-4001-1044", "address": "37, Peenya Cross, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "GEN_ANEMIA"},
+    {"first": "Anil", "last": "Kumar", "gender": "MALE", "age": 36, "phone": "9845011045", "abha": "14-8291-4001-1045", "address": "19, Laggere Village Main Road, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "GEN_URTI"},
+    {"first": "Padma", "last": "Sundaram", "gender": "FEMALE", "age": 48, "phone": "9845011046", "abha": "14-8291-4001-1046", "address": "52, Parvathi Nagar Extension, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "GEN_JOINT_PAIN"},
 
     # Cohort 4: Inter-Facility Referrals (Secondary & Tertiary) - 8 Patients
     {"first": "Sunil", "last": "Hegde", "gender": "MALE", "age": 55, "phone": "9845011047", "abha": "14-8291-4001-1047", "address": "17, 3rd Main, Parvathi Nagar, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "REF_KC_DENGUE"},
     {"first": "Bharati", "last": "Nayak", "gender": "FEMALE", "age": 43, "phone": "9845011048", "abha": "14-8291-4001-1048", "address": "71, MEI Layout, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "REF_KC_SURGICAL"},
     {"first": "Ashok", "last": "Kulkarni", "gender": "MALE", "age": 62, "phone": "9845011049", "abha": "14-8291-4001-1049", "address": "85, Chowdeshwari Nagar, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "REF_KC_HTN_RETINA"},
-    {"first": "Veena", "last": "Prabhu", "gender": "FEMALE", "age": 59, "phone": "9845011050", "abha": "14-8291-4001-1050", "address": "24, Kempegowda Extension, Laggere, Bengaluru", "fac": "NC-LAG-01", "ward": 4, "cohort": "REF_KC_DIABETIC_FOOT"},
-    {"first": "Prasanna", "last": "Kumar", "gender": "MALE", "age": 66, "phone": "9845011051", "abha": "14-8291-4001-1051", "address": "102, 100 Feet Road, Indiranagar, Bengaluru", "fac": "HOSP-DIST-01", "ward": 1, "cohort": "REF_VIC_NEPHRO"},
-    {"first": "Radhika", "last": "Bhat", "gender": "FEMALE", "age": 58, "phone": "9845011052", "abha": "14-8291-4001-1052", "address": "45, CMH Road, Indiranagar, Bengaluru", "fac": "HOSP-DIST-01", "ward": 1, "cohort": "REF_VIC_CARDIAC"},
-    {"first": "Nagaraj", "last": "Gowda", "gender": "MALE", "age": 70, "phone": "9845011053", "abha": "14-8291-4001-1053", "address": "78, Defense Colony, Indiranagar, Bengaluru", "fac": "HOSP-DIST-01", "ward": 1, "cohort": "REF_VIC_PULMO"},
-    {"first": "Swathi", "last": "Rao", "gender": "FEMALE", "age": 63, "phone": "9845011054", "abha": "14-8291-4001-1054", "address": "16, HAL 2nd Stage, Indiranagar, Bengaluru", "fac": "HOSP-DIST-01", "ward": 1, "cohort": "REF_VIC_ORTHO"},
+    {"first": "Veena", "last": "Prabhu", "gender": "FEMALE", "age": 59, "phone": "9845011050", "abha": "14-8291-4001-1050", "address": "24, Kempegowda Extension, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "REF_KC_DIABETIC_FOOT"},
+    {"first": "Prasanna", "last": "Kumar", "gender": "MALE", "age": 66, "phone": "9845011051", "abha": "14-8291-4001-1051", "address": "102, 100 Feet Road, Indiranagar, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 1, "cohort": "REF_VIC_NEPHRO"},
+    {"first": "Radhika", "last": "Bhat", "gender": "FEMALE", "age": 58, "phone": "9845011052", "abha": "14-8291-4001-1052", "address": "45, CMH Road, Indiranagar, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 1, "cohort": "REF_VIC_CARDIAC"},
+    {"first": "Nagaraj", "last": "Gowda", "gender": "MALE", "age": 70, "phone": "9845011053", "abha": "14-8291-4001-1053", "address": "78, Defense Colony, Indiranagar, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 1, "cohort": "REF_VIC_PULMO"},
+    {"first": "Swathi", "last": "Rao", "gender": "FEMALE", "age": 63, "phone": "9845011054", "abha": "14-8291-4001-1054", "address": "16, HAL 2nd Stage, Indiranagar, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 1, "cohort": "REF_VIC_ORTHO"},
 
     # Cohort 5: Active Real-Time Clinic Flow for Today (8 Oct 2026) - 6 Patients
     {"first": "Manjula", "last": "Devi", "gender": "FEMALE", "age": 33, "phone": "9845011055", "abha": "14-8291-4001-1055", "address": "12, MEI 4th Cross, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "TODAY_WAIT_TRIAGE_1"},
@@ -327,7 +327,7 @@ def generate_e2e_dataset():
             ("HH-LAG-004", "Patil Family Household", "33, 4th Cross, MEI Layout, Laggere, Bengaluru", 4, 4),
             ("HH-ULS-001", "Raman Family Household", "74, Bazaar Street, Ulsoor, Bengaluru", 2, 4),
             ("HH-IND-001", "Hegde Family Household", "102, 100 Feet Road, Indiranagar, Bengaluru", 1, 3),
-            ("HH-VAR-001", "Nayak Family Household", "29, Varthur Main Bazaar, Bengaluru Rural", 5, 5),
+            ("HH-JAY-001", "Kulkarni Family Household", "29, 4th Block, Jayanagar, Bengaluru", 3, 4),
         ]
         for hhid, hname, haddr, wid, count in hh_configs:
             hh, _ = Household.objects.get_or_create(
@@ -982,16 +982,16 @@ def generate_e2e_dataset():
             (47, "PHC-LOCAL-01", "HOSP-KC-01", "REF_KC_DENGUE", "Dengue Fever with Falling Platelets (< 50,000 /mcL) and Petechial Rash", "EMERGENCY", diag_dengue),
             (48, "PHC-LOCAL-01", "HOSP-KC-01", "REF_KC_SURGICAL", "Suspected Acute Appendicitis with Right Iliac Fossa Rebound Tenderness", "URGENT", diag_gastritis),
             (49, "PHC-LOCAL-01", "HOSP-KC-01", "REF_KC_HTN_RETINA", "Resistant Grade 3 Hypertension with Fundus Changes (Retinopathy)", "URGENT", diag_htn),
-            (50, "NC-LAG-01", "HOSP-KC-01", "REF_KC_DIABETIC_FOOT", "Uncontrolled Diabetes with Grade 2 Wagner Diabetic Foot Ulcer", "URGENT", diag_dm),
-            (51, "HOSP-DIST-01", "HOSP-DIST-01", "REF_VIC_NEPHRO", "Diabetic Nephropathy Stage 3 with Elevated Serum Creatinine (2.4 mg/dL)", "ROUTINE", diag_dm),
-            (52, "HOSP-DIST-01", "HOSP-DIST-01", "REF_VIC_CARDIAC", "Atypical Angina Pectoris on Exertion - Cardiology Evaluation", "URGENT", diag_htn),
-            (53, "HOSP-DIST-01", "HOSP-DIST-01", "REF_VIC_PULMO", "Chronic Productive Cough with Exertional Dyspnea - Pulmonology Review", "ROUTINE", diag_bronchitis),
-            (54, "HOSP-DIST-01", "HOSP-DIST-01", "REF_VIC_ORTHO", "Severe Tricompartmental Osteoarthritis Knee - Orthopedic Arthroplasty Review", "ROUTINE", diag_joint),
+            (50, "PHC-LOCAL-01", "HOSP-KC-01", "REF_KC_DIABETIC_FOOT", "Uncontrolled Diabetes with Grade 2 Wagner Diabetic Foot Ulcer", "URGENT", diag_dm),
+            (51, "PHC-LOCAL-01", "HOSP-DIST-01", "REF_VIC_NEPHRO", "Diabetic Nephropathy Stage 3 with Elevated Serum Creatinine (2.4 mg/dL)", "ROUTINE", diag_dm),
+            (52, "PHC-LOCAL-01", "HOSP-DIST-01", "REF_VIC_CARDIAC", "Atypical Angina Pectoris on Exertion - Cardiology Evaluation", "URGENT", diag_htn),
+            (53, "PHC-LOCAL-01", "HOSP-DIST-01", "REF_VIC_PULMO", "Chronic Productive Cough with Exertional Dyspnea - Pulmonology Review", "ROUTINE", diag_bronchitis),
+            (54, "PHC-LOCAL-01", "HOSP-DIST-01", "REF_VIC_ORTHO", "Severe Tricompartmental Osteoarthritis Knee - Orthopedic Arthroplasty Review", "ROUTINE", diag_joint),
         ]
 
         for p_idx, src_code, dst_code, cohort_tag, ref_reason, urgency, diag in ref_configs:
             pat, cit = patient_map[p_idx]
-            src_fac = facilities['PHC-LOCAL-01'] if src_code == 'PHC-LOCAL-01' else (facilities['NC-LAG-01'] if src_code == 'NC-LAG-01' else facilities['PHC-LOCAL-01'])
+            src_fac = facilities['PHC-LOCAL-01']
             dst_fac = facilities['HOSP-KC-01'] if 'KC' in cohort_tag else facilities['HOSP-DIST-01']
             enc_date = today - datetime.timedelta(days=(54 - p_idx) + 2)
 
@@ -1195,27 +1195,6 @@ def generate_e2e_dataset():
                 is_today=True
             )
 
-        # Also add a couple of visits today at NC-LAG-01, HOSP-KC-01, and RC-A4-01
-        for p_idx, fac_code, diag in [(16, 'NC-LAG-01', diag_htn), (27, 'HOSP-KC-01', diag_dengue), (19, 'RC-A4-01', diag_dm)]:
-            pat, cit = patient_map[p_idx]
-            create_full_encounter(
-                patient=pat,
-                facility=facilities[fac_code],
-                opd_date=today,
-                queue='COMPLETED',
-                status='COMPLETED',
-                complaint=f"OPD encounter at {facilities[fac_code].facility_name}",
-                doctor_staff=stf_doc_local,
-                doctor_user=u_doc_local,
-                nurse_staff=stf_nurse_local,
-                nurse_user=u_nurse_local,
-                vitals_data={'sys': 130, 'dia': 84, 'pulse': 76, 'temp_f': 98.6, 'spo2': 98, 'height': 165, 'weight': 66},
-                diag_master=diag,
-                clinical_notes=f"Regional clinic visit on {today}.",
-                meds_to_prescribe=[(med_paracetamol, "1-0-1 After Food", "Twice Daily", 5, 10)],
-                is_today=True
-            )
-
         print(f"Seeded today's live OPD queue: 14 visits at Local PHC across Triage, Doctor, Lab, Pharmacy, and Completed.")
 
     # 4. Final Verification and Assertions
@@ -1264,7 +1243,9 @@ def generate_e2e_dataset():
             print(f"  - {status_name:<25}: {cnt}")
 
     # Assert non-zero counts everywhere
+    local_pat_count = Patient.objects.filter(registered_at_facility__facility_code='PHC-LOCAL-01').count()
     assert pat_count == 60, f"Expected exactly 60 patients, got {pat_count}"
+    assert local_pat_count == 60, f"Expected exactly 60 patients registered at PHC-LOCAL-01, got {local_pat_count}"
     assert visit_count >= 100, f"Expected >= 100 visits, got {visit_count}"
     assert triage_count >= 90, f"Expected >= 90 triage records, got {triage_count}"
     assert consult_count >= 80, f"Expected >= 80 consultations, got {consult_count}"
