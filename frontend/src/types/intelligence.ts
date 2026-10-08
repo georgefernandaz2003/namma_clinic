@@ -149,6 +149,34 @@ export interface ForecastData {
   explanation: string;
 }
 
+export type ForecastRiskLevel = 'NORMAL' | 'ELEVATED' | 'HIGH_RISK' | 'INSUFFICIENT_DATA';
+export type ForecastRiskStatus = 'AVAILABLE' | 'INSUFFICIENT_DATA';
+
+export interface ForecastRiskPoint {
+  forecast_week?: number;
+  forecast_week_start: string;
+  forecast_week_end: string;
+  predicted_cases: number;
+  historical_baseline: number;
+  ratio_to_baseline: number | null;
+  risk_level: 'NORMAL' | 'ELEVATED' | 'HIGH_RISK';
+  explanation: string;
+}
+
+export interface ForecastRiskData {
+  status: ForecastRiskStatus;
+  historical_baseline: number | null;
+  elevation_ratio_threshold: number;
+  high_risk_ratio_threshold: number;
+  risk_points: ForecastRiskPoint[];
+  highest_risk_level: ForecastRiskLevel;
+  risk_points_count: number;
+  high_risk_points_count: number;
+  elevated_points_count: number;
+  normal_points_count: number;
+  explanation: string;
+}
+
 export interface MonthlyPatternItem {
   month_number: number;
   month_name: string;
@@ -247,6 +275,7 @@ export interface ForecastSummaryResponse {
     explanation: string;
   };
   forecast: ForecastData;
+  forecast_risk?: ForecastRiskData;
   seasonality: SeasonalityData;
   explanation: string;
 }

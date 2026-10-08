@@ -55,6 +55,7 @@ from apps.surveillance.intelligence_services import (
     resolve_facility_scope,
     ScopeResult
 )
+from apps.surveillance.intelligence_forecast_risk_services import calculate_forecast_risk
 
 MONTH_NAMES = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -841,7 +842,14 @@ def generate_forecast_summary(facility_id=None, district_id=None, disease_name=N
         has_demographic_filter=has_demo_filter
     )
 
-    # 4. Seasonal pattern analysis (respecting months_count if provided)
+    # 4. Forecast Risk calculation (derived from the exact same historical series & forecast points)
+    forecast_risk_data = calculate_forecast_risk(
+        historical_series=series,
+        forecast_points=forecast_data.get('points', []),
+        forecast_status=forecast_data.get('status')
+    )
+
+    # 5. Seasonal pattern analysis (respecting months_count if provided)
     seasonal_months = months_count if months_count else max(6, min(12, int(historical_weeks / 4.33)))
     seasonal_data = calculate_seasonal_pattern(
         facility_ids=scope.facility_ids,
@@ -901,6 +909,7 @@ def generate_forecast_summary(facility_id=None, district_id=None, disease_name=N
             'explanation': trend_expl
         },
         'forecast': forecast_data,
+        'forecast_risk': forecast_risk_data,
         'seasonality': seasonal_data,
         'explanation': summary_explanation
     }

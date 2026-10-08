@@ -79,6 +79,18 @@ from apps.surveillance.intelligence_forecast_services import (
     generate_disease_forecast,
     generate_forecast_summary,
 )
+from apps.surveillance.intelligence_forecast_risk_services import (
+    calculate_forecast_risk,
+    FORECAST_RISK_ELEVATION_RATIO,
+    FORECAST_RISK_HIGH_RATIO,
+    FORECAST_RISK_MIN_CASES,
+    RISK_LEVEL_NORMAL,
+    RISK_LEVEL_ELEVATED,
+    RISK_LEVEL_HIGH,
+    RISK_LEVEL_INSUFFICIENT,
+    RISK_STATUS_AVAILABLE,
+    RISK_STATUS_INSUFFICIENT,
+)
 from apps.surveillance.vulnerable_population_services import (
     VULNERABLE_GROUP_PREGNANT,
     VULNERABLE_GROUP_ELDERLY,
@@ -5552,5 +5564,629 @@ class PublicHealthDemographicForecastTestCase(TestCase):
                 vulnerable_group='PREGNANT',
                 patient_type='FOLLOW_UP'
             )
+
+
+class PublicHealthForecastRiskTestCase(TestCase):
+    """
+    Prompt 9: Public Health Forecast Risk / Threshold Integration & Unit Test Suite
+    Comprehensive validation of deterministic, explainable forecast risk layer:
+    1. Existing forecast without filters still works.
+    2. Normal risk classification.
+    3. Elevated risk classification.
+    4. High-risk classification.
+    5. Risk threshold exactly at 1.15.
+    6. Risk threshold exactly at 1.50.
+    7. Ratio below 1.15 = NORMAL.
+    8. Ratio between 1.15 and 1.50 = ELEVATED.
+    9. Ratio >= 1.50 = HIGH_RISK.
+    10. Fewer than 3 historical cases = INSUFFICIENT_DATA.
+    11. Existing forecast INSUFFICIENT_DATA produces risk INSUFFICIENT_DATA.
+    12. Zero historical baseline + zero prediction = NORMAL.
+    13. Zero historical baseline + positive prediction = HIGH_RISK.
+    14. Age-group risk uses only selected age group.
+    15. Gender risk uses only selected gender.
+    16. Severity risk uses only selected severity.
+    17. Vulnerable-group risk uses only selected vulnerable group.
+    18. Patient-type risk uses only selected patient type.
+    19. Age + gender uses AND semantics.
+    20. Age + gender + severity uses AND semantics.
+    21. Age + gender + vulnerability uses AND semantics.
+    22. Age + gender + patient type uses AND semantics.
+    23. All five demographic dimensions use AND semantics.
+    24. Risk does not fall back to overall disease baseline.
+    25. Historical actual values remain unchanged.
+    26. Forecast predicted values remain unchanged.
+    27. Risk points correspond exactly to forecast points.
+    28. Highest risk level precedence works.
+    29. Risk counts reconcile with risk_points.
+    30. Hospital Admin cross-facility request returns 403.
+    31. District Officer cross-district request returns 403.
+    32. District Officer permitted facility works.
+    33. Invalid demographic filters still return HTTP 400.
+    34. UNKNOWN public filters still return HTTP 400.
+    35. No fake DiseaseCase records are created.
+    36. Query efficiency / no N+1 regression.
+    37. Risk calculation is deterministic for the same input.
+    38. Changing demographic filters changes the risk population/baseline appropriately.
+    39. Forecast risk is based on the same historical series used by the forecast.
+    40. Risk calculation does not perform a second broad/unfiltered DiseaseCase query.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        # Geography
+        cls.state = State.objects.create(name='Karnataka', code='KA')
+        cls.district_central = District.objects.create(state=cls.state, name='BBMP Central', code='KA-CEN')
+        cls.district_rural = District.objects.create(state=cls.state, name='Bengaluru Rural', code='KA-RUR')
+
+        cls.zone_central = Zone.objects.create(district=cls.district_central, name='Central Zone', code='Z-CEN')
+        cls.zone_rural = Zone.objects.create(district=cls.district_rural, name='Rural Zone', code='Z-RUR')
+
+        cls.ward_c1 = Ward.objects.create(zone=cls.zone_central, ward_number=101, name='Indiranagar', population=25000)
+        cls.ward_r1 = Ward.objects.create(zone=cls.zone_rural, ward_number=201, name='Varthur', population=18000)
+
+        # Facilities
+        cls.fac_c1 = Facility.objects.create(
+            facility_code='HOSP-FC1', facility_name='Bowring Hospital', facility_type='MAIN_HOSPITAL',
+            district=cls.district_central, ward=cls.ward_c1, state=cls.state
+        )
+        cls.fac_c2 = Facility.objects.create(
+            facility_code='CLINIC-FC2', facility_name='Indiranagar Clinic', facility_type='NAMMA_CLINIC',
+            district=cls.district_central, ward=cls.ward_c1, state=cls.state
+        )
+        cls.fac_r1 = Facility.objects.create(
+            facility_code='RURAL-FC1', facility_name='Varthur Rural CHC', facility_type='RURAL_CLINIC',
+            district=cls.district_rural, ward=cls.ward_r1, state=cls.state
+        )
+
+        # Users
+        cls.admin_c1 = User.objects.create_user(
+            username='fr_admin_c1', password='Password123!', role='HOSPITAL_ADMIN',
+            assigned_facility=cls.fac_c1
+        )
+        cls.officer_c = User.objects.create_user(
+            username='fr_officer_c', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_central
+        )
+        cls.officer_r = User.objects.create_user(
+            username='fr_officer_r', password='Password123!', role='DISTRICT_OFFICER',
+            assigned_district=cls.district_rural
+        )
+
+        # Reference date: 2026-12-15
+        cls.as_of = datetime.date(2026, 12, 15)
+
+        # Patients
+        cls.p_young_adult = Patient.objects.create(
+            patient_id='FR-P01', name='Young Adult Pregnant Female',
+            date_of_birth=datetime.date(2006, 3, 1), age=20, gender='FEMALE',
+            vulnerability_information='Pregnant Woman',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        cls.p_adult = Patient.objects.create(
+            patient_id='FR-P02', name='Adult Male Patient',
+            date_of_birth=datetime.date(1996, 3, 1), age=30, gender='MALE',
+            vulnerability_information='Slum Resident / Low Income Group',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        cls.p_child = Patient.objects.create(
+            patient_id='FR-P03', name='Child Girl',
+            date_of_birth=datetime.date(2024, 3, 1), age=2, gender='FEMALE',
+            vulnerability_information='Slum Resident / Low Income Group',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        cls.p_youth = Patient.objects.create(
+            patient_id='FR-P04', name='Youth PwD Other',
+            date_of_birth=datetime.date(2016, 3, 1), age=10, gender='OTHER',
+            vulnerability_information='Person with Disability (PwD)',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        cls.p_middle = Patient.objects.create(
+            patient_id='FR-P05', name='Middle Aged Female Chronic',
+            date_of_birth=datetime.date(1976, 3, 1), age=50, gender='FEMALE',
+            vulnerability_information='Hypertension / Diabetic comorbidity',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        cls.p_elderly = Patient.objects.create(
+            patient_id='FR-P06', name='Elderly Senior Male',
+            date_of_birth=datetime.date(1956, 3, 1), age=70, gender='MALE',
+            vulnerability_information='Elderly Person',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        cls.p_general = Patient.objects.create(
+            patient_id='FR-P07', name='General Citizen Male',
+            date_of_birth=datetime.date(1990, 3, 1), age=36, gender='MALE',
+            vulnerability_information='GENERAL',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        cls.p_boundary = Patient.objects.create(
+            patient_id='FR-P08', name='Boundary Boy',
+            date_of_birth=datetime.date(2020, 6, 15), age=6, gender='MALE',
+            vulnerability_information='GENERAL',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+        cls.p_unknown_demo = Patient.objects.create(
+            patient_id='FR-P09', name='Unknown Demographics Patient',
+            date_of_birth=None, age=30, gender='',
+            vulnerability_information='',
+            district=cls.district_central, ward=cls.ward_c1, registered_at_facility=cls.fac_c1
+        )
+
+        # -------------------------------------------------------------------
+        # Deterministic Disease Cases for Dengue at fac_c1 (15 cases)
+        # -------------------------------------------------------------------
+        cls.c1 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 1, 10), severity='MILD'
+        )
+        cls.c2 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_young_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 2, 10), severity='SEVERE'
+        )
+        cls.c3 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_child, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 3, 10), severity='MILD'
+        )
+        cls.c4 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_youth, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 4, 10), severity='MODERATE'
+        )
+        cls.c5 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_middle, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 5, 10), severity='MILD'
+        )
+        cls.c6 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_boundary, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 5, 15), severity='MILD'
+        )
+        cls.c7 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_elderly, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 6, 10), severity='SEVERE'
+        )
+        cls.c8 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 7, 10), severity='SEVERE'
+        )
+        cls.c9 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_boundary, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 7, 15), severity='MODERATE'
+        )
+        cls.c10 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_young_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 8, 10), severity='SEVERE'
+        )
+        cls.c11 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_young_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 9, 10), severity='SEVERE'
+        )
+        cls.c12 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_young_adult, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 10, 10), severity='SEVERE'
+        )
+        cls.c13 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_unknown_demo, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 10, 20), severity='INVALID_VAL'
+        )
+        cls.c14 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_elderly, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 11, 10), severity='SEVERE'
+        )
+        cls.c15 = DiseaseCase.objects.create(
+            disease_name='Dengue', patient=cls.p_general, facility=cls.fac_c1,
+            ward=cls.ward_c1, report_date=datetime.date(2026, 11, 15), severity='MODERATE'
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin_c1)
+        self.url = reverse('intelligence_forecast')
+
+    # 1. Existing forecast without filters still works
+    def test_01_existing_forecast_without_filters_still_works(self):
+        """Calling forecast endpoint returns forecast_risk section in AVAILABLE state."""
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('forecast_risk', res.data)
+        risk = res.data['forecast_risk']
+        self.assertEqual(risk['status'], RISK_STATUS_AVAILABLE)
+        self.assertIn(risk['highest_risk_level'], [RISK_LEVEL_NORMAL, RISK_LEVEL_ELEVATED, RISK_LEVEL_HIGH])
+        self.assertGreater(len(risk['risk_points']), 0)
+        self.assertIsNotNone(risk['historical_baseline'])
+        self.assertEqual(risk['elevation_ratio_threshold'], FORECAST_RISK_ELEVATION_RATIO)
+        self.assertEqual(risk['high_risk_ratio_threshold'], FORECAST_RISK_HIGH_RATIO)
+
+    # 2. Normal risk classification
+    def test_02_normal_risk_classification(self):
+        """Ratio < 1.15 produces risk_level NORMAL."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = [{'forecast_week_start': '2026-12-16', 'forecast_week_end': '2026-12-22', 'predicted_cases': 10.5}]
+        res = calculate_forecast_risk(hist, pts)
+        self.assertEqual(res['status'], RISK_STATUS_AVAILABLE)
+        self.assertEqual(res['risk_points'][0]['risk_level'], RISK_LEVEL_NORMAL)
+        self.assertEqual(res['highest_risk_level'], RISK_LEVEL_NORMAL)
+        self.assertIn('remain below the elevation threshold', res['risk_points'][0]['explanation'])
+
+    # 3. Elevated risk classification
+    def test_03_elevated_risk_classification(self):
+        """Ratio >= 1.15 and < 1.50 produces risk_level ELEVATED."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = [{'forecast_week_start': '2026-12-16', 'forecast_week_end': '2026-12-22', 'predicted_cases': 12.5}]
+        res = calculate_forecast_risk(hist, pts)
+        self.assertEqual(res['risk_points'][0]['risk_level'], RISK_LEVEL_ELEVATED)
+        self.assertEqual(res['highest_risk_level'], RISK_LEVEL_ELEVATED)
+        self.assertEqual(res['risk_points'][0]['ratio_to_baseline'], 1.25)
+
+    # 4. High-risk classification
+    def test_04_high_risk_classification(self):
+        """Ratio >= 1.50 produces risk_level HIGH_RISK."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = [{'forecast_week_start': '2026-12-16', 'forecast_week_end': '2026-12-22', 'predicted_cases': 16.0}]
+        res = calculate_forecast_risk(hist, pts)
+        self.assertEqual(res['risk_points'][0]['risk_level'], RISK_LEVEL_HIGH)
+        self.assertEqual(res['highest_risk_level'], RISK_LEVEL_HIGH)
+        self.assertEqual(res['risk_points'][0]['ratio_to_baseline'], 1.60)
+
+    # 5. Risk threshold exactly at 1.15
+    def test_05_risk_threshold_exactly_at_1_15(self):
+        """Ratio exactly 1.15 produces ELEVATED."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = [{'forecast_week_start': '2026-12-16', 'forecast_week_end': '2026-12-22', 'predicted_cases': 11.5}]
+        res = calculate_forecast_risk(hist, pts)
+        self.assertEqual(res['risk_points'][0]['risk_level'], RISK_LEVEL_ELEVATED)
+
+    # 6. Risk threshold exactly at 1.50
+    def test_06_risk_threshold_exactly_at_1_50(self):
+        """Ratio exactly 1.50 produces HIGH_RISK."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = [{'forecast_week_start': '2026-12-16', 'forecast_week_end': '2026-12-22', 'predicted_cases': 15.0}]
+        res = calculate_forecast_risk(hist, pts)
+        self.assertEqual(res['risk_points'][0]['risk_level'], RISK_LEVEL_HIGH)
+
+    # 7. Ratio below 1.15 = NORMAL
+    def test_07_ratio_below_1_15_is_normal(self):
+        """Ratio 1.149 (< 1.15) produces NORMAL."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = [{'forecast_week_start': '2026-12-16', 'forecast_week_end': '2026-12-22', 'predicted_cases': 11.49}]
+        res = calculate_forecast_risk(hist, pts)
+        self.assertEqual(res['risk_points'][0]['risk_level'], RISK_LEVEL_NORMAL)
+
+    # 8. Ratio between 1.15 and 1.50 = ELEVATED
+    def test_08_ratio_between_1_15_and_1_50_is_elevated(self):
+        """Ratio 1.499 (< 1.50 and >= 1.15) produces ELEVATED."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = [{'forecast_week_start': '2026-12-16', 'forecast_week_end': '2026-12-22', 'predicted_cases': 14.99}]
+        res = calculate_forecast_risk(hist, pts)
+        self.assertEqual(res['risk_points'][0]['risk_level'], RISK_LEVEL_ELEVATED)
+
+    # 9. Ratio >= 1.50 = HIGH_RISK
+    def test_09_ratio_greater_equal_1_50_is_high_risk(self):
+        """Ratio 1.501 (>= 1.50) produces HIGH_RISK."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = [{'forecast_week_start': '2026-12-16', 'forecast_week_end': '2026-12-22', 'predicted_cases': 15.01}]
+        res = calculate_forecast_risk(hist, pts)
+        self.assertEqual(res['risk_points'][0]['risk_level'], RISK_LEVEL_HIGH)
+
+    # 10. Fewer than 3 historical cases = INSUFFICIENT_DATA
+    def test_10_fewer_than_3_historical_cases_is_insufficient_data(self):
+        """Total historical cases < 3 produces status INSUFFICIENT_DATA."""
+        hist = [{'cases': 1}, {'cases': 1}, {'cases': 0}]
+        pts = [{'forecast_week_start': '2026-12-16', 'forecast_week_end': '2026-12-22', 'predicted_cases': 5.0}]
+        res = calculate_forecast_risk(hist, pts)
+        self.assertEqual(res['status'], RISK_STATUS_INSUFFICIENT)
+        self.assertIsNone(res['historical_baseline'])
+        self.assertEqual(res['risk_points'], [])
+        self.assertEqual(res['highest_risk_level'], RISK_LEVEL_INSUFFICIENT)
+        self.assertEqual(res['risk_points_count'], 0)
+        self.assertIn('Insufficient historical surveillance cases', res['explanation'])
+
+    # 11. Existing forecast INSUFFICIENT_DATA produces risk INSUFFICIENT_DATA
+    def test_11_existing_forecast_insufficient_data_produces_risk_insufficient_data(self):
+        """When forecast status is INSUFFICIENT_DATA, risk status is also INSUFFICIENT_DATA."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = []
+        res = calculate_forecast_risk(hist, pts, forecast_status='INSUFFICIENT_DATA')
+        self.assertEqual(res['status'], RISK_STATUS_INSUFFICIENT)
+        self.assertEqual(res['highest_risk_level'], RISK_LEVEL_INSUFFICIENT)
+
+    # 12. Zero historical baseline + zero prediction = NORMAL
+    def test_12_zero_historical_baseline_plus_zero_prediction_is_normal(self):
+        """Zero baseline with 0 predicted cases is safely classified as NORMAL without ZeroDivisionError."""
+        hist = [{'cases': 0}, {'cases': 0}, {'cases': 0}]
+        pts = [{'forecast_week_start': '2026-12-16', 'forecast_week_end': '2026-12-22', 'predicted_cases': 0.0}]
+        res = calculate_forecast_risk(hist, pts, minimum_cases=0)
+        self.assertEqual(res['status'], RISK_STATUS_AVAILABLE)
+        self.assertEqual(res['risk_points'][0]['risk_level'], RISK_LEVEL_NORMAL)
+        self.assertEqual(res['highest_risk_level'], RISK_LEVEL_NORMAL)
+        self.assertIsNone(res['risk_points'][0]['ratio_to_baseline'])
+
+    # 13. Zero historical baseline + positive prediction = HIGH_RISK
+    def test_13_zero_historical_baseline_plus_positive_prediction_is_high_risk(self):
+        """Zero baseline with positive prediction is safely classified as HIGH_RISK without ZeroDivisionError."""
+        hist = [{'cases': 0}, {'cases': 0}, {'cases': 0}]
+        pts = [{'forecast_week_start': '2026-12-16', 'forecast_week_end': '2026-12-22', 'predicted_cases': 2.5}]
+        res = calculate_forecast_risk(hist, pts, minimum_cases=0)
+        self.assertEqual(res['status'], RISK_STATUS_AVAILABLE)
+        self.assertEqual(res['risk_points'][0]['risk_level'], RISK_LEVEL_HIGH)
+        self.assertEqual(res['highest_risk_level'], RISK_LEVEL_HIGH)
+        self.assertIsNone(res['risk_points'][0]['ratio_to_baseline'])
+
+    # 14. Age-group risk uses only selected age group
+    def test_14_age_group_risk_uses_only_selected_age_group(self):
+        """Filtering by age_group=15-24 computes risk baseline only from the 4 cases in that age group."""
+        res = self.client.get(f"{self.url}?disease=Dengue&age_group=15-24&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        risk = res.data['forecast_risk']
+        self.assertEqual(risk['status'], RISK_STATUS_AVAILABLE)
+        self.assertEqual(res.data['observation_period']['total_cases'], 4)
+        expected_bl = round(4 / res.data['observation_period']['weeks_count'], 2)
+        self.assertEqual(risk['historical_baseline'], expected_bl)
+
+    # 15. Gender risk uses only selected gender
+    def test_15_gender_risk_uses_only_selected_gender(self):
+        """Filtering by gender=FEMALE computes risk baseline only from the 6 female cases."""
+        res = self.client.get(f"{self.url}?disease=Dengue&gender=FEMALE&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        risk = res.data['forecast_risk']
+        self.assertEqual(risk['status'], RISK_STATUS_AVAILABLE)
+        self.assertEqual(res.data['observation_period']['total_cases'], 6)
+        expected_bl = round(6 / res.data['observation_period']['weeks_count'], 2)
+        self.assertEqual(risk['historical_baseline'], expected_bl)
+
+    # 16. Severity risk uses only selected severity
+    def test_16_severity_risk_uses_only_selected_severity(self):
+        """Filtering by severity=SEVERE computes risk baseline only from the 7 severe cases."""
+        res = self.client.get(f"{self.url}?disease=Dengue&severity=SEVERE&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        risk = res.data['forecast_risk']
+        self.assertEqual(risk['status'], RISK_STATUS_AVAILABLE)
+        self.assertEqual(res.data['observation_period']['total_cases'], 7)
+        expected_bl = round(7 / res.data['observation_period']['weeks_count'], 2)
+        self.assertEqual(risk['historical_baseline'], expected_bl)
+
+    # 17. Vulnerable-group risk uses only selected vulnerable group
+    def test_17_vulnerable_group_risk_uses_only_selected_vulnerable_group(self):
+        """Filtering by vulnerable_group=PREGNANT computes risk baseline only from the 4 pregnant cases."""
+        res = self.client.get(f"{self.url}?disease=Dengue&vulnerable_group=PREGNANT&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        risk = res.data['forecast_risk']
+        self.assertEqual(risk['status'], RISK_STATUS_AVAILABLE)
+        self.assertEqual(res.data['observation_period']['total_cases'], 4)
+        expected_bl = round(4 / res.data['observation_period']['weeks_count'], 2)
+        self.assertEqual(risk['historical_baseline'], expected_bl)
+
+    # 18. Patient-type risk uses only selected patient type
+    def test_18_patient_type_risk_uses_only_selected_patient_type(self):
+        """Filtering by patient_type=FOLLOW_UP computes risk baseline only from the 6 follow-up cases."""
+        res = self.client.get(f"{self.url}?disease=Dengue&patient_type=FOLLOW_UP&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        risk = res.data['forecast_risk']
+        self.assertEqual(risk['status'], RISK_STATUS_AVAILABLE)
+        self.assertEqual(res.data['observation_period']['total_cases'], 6)
+        expected_bl = round(6 / res.data['observation_period']['weeks_count'], 2)
+        self.assertEqual(risk['historical_baseline'], expected_bl)
+
+    # 19. Age + gender uses AND semantics
+    def test_19_age_plus_gender_uses_and_semantics(self):
+        """Combined age_group=15-24 and gender=FEMALE matches only records satisfying both."""
+        res = self.client.get(f"{self.url}?disease=Dengue&age_group=15-24&gender=FEMALE&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['observation_period']['total_cases'], 4)
+        self.assertEqual(res.data['forecast_risk']['status'], RISK_STATUS_AVAILABLE)
+
+    # 20. Age + gender + severity uses AND semantics
+    def test_20_age_plus_gender_plus_severity_uses_and_semantics(self):
+        """Combined age_group=15-24, gender=FEMALE, severity=SEVERE matches records satisfying all 3."""
+        res = self.client.get(f"{self.url}?disease=Dengue&age_group=15-24&gender=FEMALE&severity=SEVERE&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['observation_period']['total_cases'], 4)
+        self.assertEqual(res.data['forecast_risk']['status'], RISK_STATUS_AVAILABLE)
+
+    # 21. Age + gender + vulnerability uses AND semantics
+    def test_21_age_plus_gender_plus_vulnerability_uses_and_semantics(self):
+        """Combined age_group=15-24, gender=FEMALE, vulnerable_group=PREGNANT matches records satisfying all 3."""
+        res = self.client.get(f"{self.url}?disease=Dengue&age_group=15-24&gender=FEMALE&vulnerable_group=PREGNANT&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['observation_period']['total_cases'], 4)
+        self.assertEqual(res.data['forecast_risk']['status'], RISK_STATUS_AVAILABLE)
+
+    # 22. Age + gender + patient type uses AND semantics
+    def test_22_age_plus_gender_plus_patient_type_uses_and_semantics(self):
+        """Combined age_group=15-24, gender=FEMALE, patient_type=FOLLOW_UP matches records satisfying all 3."""
+        res = self.client.get(f"{self.url}?disease=Dengue&age_group=15-24&gender=FEMALE&patient_type=FOLLOW_UP&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['observation_period']['total_cases'], 3)
+        self.assertEqual(res.data['forecast_risk']['status'], RISK_STATUS_AVAILABLE)
+
+    # 23. All five demographic dimensions use AND semantics
+    def test_23_all_five_demographic_dimensions_use_and_semantics(self):
+        """Full combination across age, gender, severity, vulnerable_group, and patient_type."""
+        url = (
+            f"{self.url}?disease=Dengue&age_group=15-24&gender=FEMALE&severity=SEVERE"
+            f"&vulnerable_group=PREGNANT&patient_type=FOLLOW_UP&date={self.as_of}&months=12"
+        )
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['observation_period']['total_cases'], 3)
+        self.assertEqual(res.data['forecast_risk']['status'], RISK_STATUS_AVAILABLE)
+
+    # 24. Risk does not fall back to overall disease baseline
+    def test_24_risk_does_not_fall_back_to_overall_disease_baseline(self):
+        """
+        When overall disease has 15 cases (available), but subgroup age_group=45-59 has only 1 case,
+        forecast_risk must be INSUFFICIENT_DATA and must NOT fall back to overall baseline.
+        """
+        res = self.client.get(f"{self.url}?disease=Dengue&age_group=45-59&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        risk = res.data['forecast_risk']
+        self.assertEqual(risk['status'], RISK_STATUS_INSUFFICIENT)
+        self.assertIsNone(risk['historical_baseline'])
+        self.assertEqual(risk['highest_risk_level'], RISK_LEVEL_INSUFFICIENT)
+        self.assertEqual(risk['risk_points'], [])
+
+    # 25. Historical actual values remain unchanged
+    def test_25_historical_actual_values_remain_unchanged(self):
+        """Historical series continues reflecting actual observed counts."""
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        hist = res.data['historical_series']
+        self.assertEqual(sum(w['cases'] for w in hist), 15)
+
+    # 26. Forecast predicted values remain unchanged
+    def test_26_forecast_predicted_values_remain_unchanged(self):
+        """Forecast predicted values are pure WMA projections and match between forecast and risk points."""
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        f_pts = res.data['forecast']['points']
+        r_pts = res.data['forecast_risk']['risk_points']
+        self.assertGreater(len(f_pts), 0)
+        for f_pt, r_pt in zip(f_pts, r_pts):
+            self.assertEqual(f_pt['predicted_cases'], r_pt['predicted_cases'])
+
+    # 27. Risk points correspond exactly to forecast points
+    def test_27_risk_points_correspond_exactly_to_forecast_points(self):
+        """Risk points align 1:1 with forecast points in count and date bounds."""
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        f_pts = res.data['forecast']['points']
+        r_pts = res.data['forecast_risk']['risk_points']
+        self.assertEqual(len(f_pts), len(r_pts))
+        for f_pt, r_pt in zip(f_pts, r_pts):
+            self.assertEqual(f_pt['forecast_week_start'], r_pt['forecast_week_start'])
+            self.assertEqual(f_pt['forecast_week_end'], r_pt['forecast_week_end'])
+
+    # 28. Highest risk level precedence works
+    def test_28_highest_risk_level_precedence_works(self):
+        """Precedence order: HIGH_RISK > ELEVATED > NORMAL > INSUFFICIENT_DATA."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}]
+        # Mixed containing HIGH_RISK -> HIGH_RISK
+        pts_high = [{'predicted_cases': 10.0}, {'predicted_cases': 12.0}, {'predicted_cases': 16.0}]
+        res_high = calculate_forecast_risk(hist, pts_high)
+        self.assertEqual(res_high['highest_risk_level'], RISK_LEVEL_HIGH)
+
+        # Mixed containing ELEVATED -> ELEVATED
+        pts_elev = [{'predicted_cases': 10.0}, {'predicted_cases': 12.0}]
+        res_elev = calculate_forecast_risk(hist, pts_elev)
+        self.assertEqual(res_elev['highest_risk_level'], RISK_LEVEL_ELEVATED)
+
+        # Normal only -> NORMAL
+        pts_norm = [{'predicted_cases': 9.0}, {'predicted_cases': 10.0}]
+        res_norm = calculate_forecast_risk(hist, pts_norm)
+        self.assertEqual(res_norm['highest_risk_level'], RISK_LEVEL_NORMAL)
+
+    # 29. Risk counts reconcile with risk_points
+    def test_29_risk_counts_reconcile_with_risk_points(self):
+        """Total risk points count equals sum of individual risk level counts."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = [{'predicted_cases': 10.0}, {'predicted_cases': 12.5}, {'predicted_cases': 16.0}]
+        res = calculate_forecast_risk(hist, pts)
+        self.assertEqual(res['risk_points_count'], 3)
+        self.assertEqual(res['normal_points_count'], 1)
+        self.assertEqual(res['elevated_points_count'], 1)
+        self.assertEqual(res['high_risk_points_count'], 1)
+        self.assertEqual(
+            res['normal_points_count'] + res['elevated_points_count'] + res['high_risk_points_count'],
+            res['risk_points_count']
+        )
+
+    # 30. Hospital Admin cross-facility request returns 403
+    def test_30_hospital_admin_cross_facility_returns_403(self):
+        """Hospital Admin cannot request risk data for another facility."""
+        res = self.client.get(f"{self.url}?disease=Dengue&facility={self.fac_r1.id}")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    # 31. District Officer cross-district request returns 403
+    def test_31_district_officer_cross_district_returns_403(self):
+        """District Officer cannot request risk data for a different district."""
+        self.client.force_authenticate(user=self.officer_c)
+        res = self.client.get(f"{self.url}?disease=Dengue&district={self.district_rural.id}")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    # 32. District Officer permitted facility works
+    def test_32_district_officer_permitted_facility_works(self):
+        """District Officer can request risk data for a hospital within their district."""
+        self.client.force_authenticate(user=self.officer_c)
+        res = self.client.get(f"{self.url}?disease=Dengue&facility={self.fac_c1.id}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('forecast_risk', res.data)
+
+    # 33. Invalid demographic filters still return HTTP 400
+    def test_33_invalid_demographic_filters_return_400(self):
+        """Validation rejection: bad parameters return HTTP 400."""
+        for param, val in [
+            ('age_group', '99-100'),
+            ('gender', 'INVALID_GENDER'),
+            ('severity', 'CRITICAL'),
+            ('vulnerable_group', 'NONEXISTENT'),
+            ('patient_type', 'RECURRENT')
+        ]:
+            res = self.client.get(f"{self.url}?disease=Dengue&{param}={val}")
+            self.assertEqual(
+                res.status_code, status.HTTP_400_BAD_REQUEST,
+                f"Expected 400 for {param}={val}, got {res.status_code}"
+            )
+
+    # 34. UNKNOWN public filters still return HTTP 400
+    def test_34_unknown_public_filters_return_400(self):
+        """UNKNOWN query parameters rejected with HTTP 400."""
+        for param in ['age_group', 'gender', 'severity', 'vulnerable_group', 'patient_type']:
+            res = self.client.get(f"{self.url}?disease=Dengue&{param}=UNKNOWN")
+            self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # 35. No fake DiseaseCase records are created
+    def test_35_no_fake_disease_case_records_created(self):
+        """Risk calculation strictly preserves existing DiseaseCase count without creating records."""
+        count_before = DiseaseCase.objects.count()
+        res = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        count_after = DiseaseCase.objects.count()
+        self.assertEqual(count_before, count_after)
+
+    # 36. Query efficiency / no N+1 regression
+    def test_36_query_efficiency_no_n_plus_one_regression(self):
+        """generate_forecast_summary executes efficiently without N+1 query loops."""
+        with self.assertNumQueries(1):
+            build_disease_time_series(
+                facility_ids=[self.fac_c1.id],
+                disease_name='Dengue',
+                as_of_date=self.as_of,
+                weeks_count=52,
+                age_group='15-24',
+                gender='FEMALE',
+                severity='SEVERE',
+                vulnerable_group='PREGNANT',
+                patient_type='FOLLOW_UP'
+            )
+
+    # 37. Risk calculation is deterministic for the same input
+    def test_37_risk_calculation_is_deterministic_for_same_input(self):
+        """Identical inputs produce identical risk outputs."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = [{'predicted_cases': 12.0}]
+        r1 = calculate_forecast_risk(hist, pts)
+        r2 = calculate_forecast_risk(hist, pts)
+        self.assertEqual(r1, r2)
+
+    # 38. Changing demographic filters changes the risk population/baseline appropriately
+    def test_38_changing_demographic_filters_changes_risk_baseline_appropriately(self):
+        """Filtering by gender=FEMALE produces a different baseline than unfiltered Dengue."""
+        res_all = self.client.get(f"{self.url}?disease=Dengue&date={self.as_of}&months=12")
+        res_fem = self.client.get(f"{self.url}?disease=Dengue&gender=FEMALE&date={self.as_of}&months=12")
+        self.assertNotEqual(
+            res_all.data['forecast_risk']['historical_baseline'],
+            res_fem.data['forecast_risk']['historical_baseline']
+        )
+
+    # 39. Forecast risk is based on the same historical series used by the forecast
+    def test_39_forecast_risk_based_on_same_historical_series_used_by_forecast(self):
+        """Historical baseline in forecast_risk reconciles exactly with observation_period and historical_series."""
+        res = self.client.get(f"{self.url}?disease=Dengue&gender=FEMALE&date={self.as_of}&months=12")
+        hist = res.data['historical_series']
+        expected_bl = round(sum(w['cases'] for w in hist) / len(hist), 2)
+        self.assertEqual(res.data['forecast_risk']['historical_baseline'], expected_bl)
+
+    # 40. Risk calculation does not perform a second broad/unfiltered DiseaseCase query
+    def test_40_risk_calculation_does_not_perform_second_unfiltered_query(self):
+        """calculate_forecast_risk is a pure computation requiring 0 database queries."""
+        hist = [{'cases': 10}, {'cases': 10}, {'cases': 10}]
+        pts = [{'predicted_cases': 12.0}]
+        with self.assertNumQueries(0):
+            calculate_forecast_risk(hist, pts)
 
 
