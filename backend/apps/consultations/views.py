@@ -6,7 +6,10 @@ from rest_framework.response import Response
 from apps.consultations.models import Consultation, Prescription, PrescriptionItem
 from apps.visits.models import Visit
 from apps.audit.models import AuditLog
-from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
+from apps.accounts.permissions import (
+    get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope,
+    get_user_active_role_codes, has_role_permission
+)
 
 
 class PrescriptionItemSerializer(serializers.ModelSerializer):
@@ -323,7 +326,8 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def verify(self, request, pk=None):
         """Verify prescription by pharmacist."""
-        if request.user.role != 'PHARMACIST':
+        active_roles = get_user_active_role_codes(request.user)
+        if 'PHARMACIST' not in active_roles and not has_role_permission(request.user, 'prescription.verify'):
             return Response({'error': 'Only pharmacists are authorized to verify prescriptions.'}, status=status.HTTP_403_FORBIDDEN)
 
         prescription = self.get_object()
@@ -353,7 +357,8 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def hold(self, request, pk=None):
         """Put prescription on clinical hold."""
-        if request.user.role != 'PHARMACIST':
+        active_roles = get_user_active_role_codes(request.user)
+        if 'PHARMACIST' not in active_roles and not has_role_permission(request.user, 'prescription.hold'):
             return Response({'error': 'Only pharmacists are authorized to place prescriptions on hold.'}, status=status.HTTP_403_FORBIDDEN)
 
         prescription = self.get_object()
@@ -381,7 +386,8 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         """Reject prescription by pharmacist."""
-        if request.user.role != 'PHARMACIST':
+        active_roles = get_user_active_role_codes(request.user)
+        if 'PHARMACIST' not in active_roles and not has_role_permission(request.user, 'prescription.reject'):
             return Response({'error': 'Only pharmacists are authorized to reject prescriptions.'}, status=status.HTTP_403_FORBIDDEN)
 
         prescription = self.get_object()

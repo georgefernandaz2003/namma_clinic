@@ -248,11 +248,12 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         staff = get_request_staff(request)
         check_facility_permission(prescription.facility, staff, request.user)
 
+        from apps.accounts.permissions import get_user_active_role_codes
+        active_roles = get_user_active_role_codes(request.user)
         is_pharm = (
             request.user.is_superuser or
-            getattr(request.user, 'role', '') == 'PHARMACIST' or
-            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
-            staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists()
+            'PHARMACIST' in active_roles or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist']
         )
         if not is_pharm:
             return Response({'error': 'Only pharmacists are authorized to verify prescriptions.'}, status=status.HTTP_403_FORBIDDEN)
@@ -273,11 +274,12 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         staff = get_request_staff(request)
         check_facility_permission(prescription.facility, staff, request.user)
 
+        from apps.accounts.permissions import get_user_active_role_codes
+        active_roles = get_user_active_role_codes(request.user)
         is_pharm = (
             request.user.is_superuser or
-            getattr(request.user, 'role', '') == 'PHARMACIST' or
-            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
-            staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists()
+            'PHARMACIST' in active_roles or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist']
         )
         if not is_pharm:
             return Response({'error': 'Only pharmacists are authorized to place prescriptions on hold.'}, status=status.HTTP_403_FORBIDDEN)
@@ -301,11 +303,12 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         staff = get_request_staff(request)
         check_facility_permission(prescription.facility, staff, request.user)
 
+        from apps.accounts.permissions import get_user_active_role_codes
+        active_roles = get_user_active_role_codes(request.user)
         is_pharm = (
             request.user.is_superuser or
-            getattr(request.user, 'role', '') == 'PHARMACIST' or
-            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
-            staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists()
+            'PHARMACIST' in active_roles or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist']
         )
         if not is_pharm:
             return Response({'error': 'Only pharmacists are authorized to reject prescriptions.'}, status=status.HTTP_403_FORBIDDEN)
@@ -340,18 +343,30 @@ class DispensationViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         staff = get_request_staff(request)
 
+        from apps.accounts.permissions import get_user_active_role_codes
+        active_roles = get_user_active_role_codes(request.user)
         is_pharm = (
             request.user.is_superuser or
-            getattr(request.user, 'role', '') == 'PHARMACIST' or
-            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
-            (staff and staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists())
+            'PHARMACIST' in active_roles or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist']
         )
         if not is_pharm:
             return Response({'error': 'Only pharmacists are authorized to dispense medications.'}, status=status.HTTP_403_FORBIDDEN)
 
         from apps.facilities.models import Facility
-        rx = Prescription.objects.get(pk=serializer.validated_data['prescription_id'])
-        fac = Facility.objects.get(pk=serializer.validated_data['facility_id'])
+        prescription_id = serializer.validated_data['prescription_id']
+        facility_id = serializer.validated_data['facility_id']
+
+        try:
+            rx = Prescription.objects.get(pk=prescription_id)
+        except Prescription.DoesNotExist:
+            return Response({'error': f"Prescription #{prescription_id} does not exist."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            fac = Facility.objects.get(pk=facility_id)
+        except Facility.DoesNotExist:
+            return Response({'error': f"Facility #{facility_id} does not exist."}, status=status.HTTP_404_NOT_FOUND)
+
         check_facility_permission(fac, staff, request.user)
 
         from apps.facilities.models import FacilityService
@@ -363,8 +378,16 @@ class DispensationViewSet(viewsets.ModelViewSet):
 
         allocations = []
         for itm in serializer.validated_data['items']:
-            p_item = PrescriptionItem.objects.get(pk=itm['prescription_item_id'])
-            batch = MedicineBatch.objects.get(pk=itm['batch_id'])
+            try:
+                p_item = PrescriptionItem.objects.get(pk=itm['prescription_item_id'])
+            except PrescriptionItem.DoesNotExist:
+                return Response({'error': f"Prescription item #{itm['prescription_item_id']} does not exist."}, status=status.HTTP_404_NOT_FOUND)
+
+            try:
+                batch = MedicineBatch.objects.get(pk=itm['batch_id'])
+            except MedicineBatch.DoesNotExist:
+                return Response({'error': f"Medicine batch #{itm['batch_id']} does not exist."}, status=status.HTTP_404_NOT_FOUND)
+
             if p_item.prescription_id != rx.id:
                 return Response({'error': f"Prescription item #{p_item.id} does not belong to prescription #{rx.id}."}, status=status.HTTP_400_BAD_REQUEST)
             if batch.facility_id != fac.id:
@@ -532,11 +555,12 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         check_facility_permission(po.facility, staff, request.user)
 
         from apps.accounts.permissions import has_role_permission
+        from apps.accounts.permissions import get_user_active_role_codes
+        active_roles = get_user_active_role_codes(request.user)
         can_approve = (
             request.user.is_superuser or
             has_role_permission(request.user, 'purchase_order.approve') or
-            getattr(request.user, 'role', '') in ['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'] or
-            (staff and staff.role_assignments.filter(role__code__in=['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'], is_active=True).exists())
+            bool(active_roles.intersection({'HOSPITAL_ADMIN', 'DISTRICT_OFFICER'}))
         )
         if not can_approve:
             return Response({'error': 'Only users with purchase_order.approve permission can approve purchase orders.'}, status=status.HTTP_403_FORBIDDEN)

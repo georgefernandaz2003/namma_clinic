@@ -19,6 +19,7 @@ from rest_framework import status
 
 from apps.geography.models import State, District
 from apps.facilities.models import Facility, Department
+from apps.facilities.services import provision_standard_facility_services
 from apps.accounts.models import (
     User, Person, StaffProfile, RoleMaster, StaffRoleAssignment, StaffFacilityAssignment
 )
@@ -52,6 +53,8 @@ class Phase26APharmacyIntegrityTests(TransactionTestCase):
         )
         self.dept_a = Department.objects.create(facility=self.facility_a, code="GEN-A", name="General OPD A")
         self.dept_b = Department.objects.create(facility=self.facility_b, code="GEN-B", name="General OPD B")
+        provision_standard_facility_services(self.facility_a)
+        provision_standard_facility_services(self.facility_b)
 
         # Users & Staff Profiles
         self.users = {}

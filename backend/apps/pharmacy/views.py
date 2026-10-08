@@ -16,7 +16,10 @@ from apps.facilities.models import Facility
 from apps.consultations.models import Prescription, PrescriptionItem
 from apps.audit.models import AuditLog
 from apps.alerts.models import Alert
-from apps.accounts.permissions import get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope
+from apps.accounts.permissions import (
+    get_accessible_facility_ids_for_user, HasPermission, HasFacilityScope,
+    get_user_active_role_codes, has_role_permission
+)
 
 
 # -------------------------------------------------------------
@@ -290,7 +293,8 @@ class VendorViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        facility = user.assigned_facility if user.role != 'DISTRICT_OFFICER' else None
+        active_roles = get_user_active_role_codes(user)
+        facility = None if 'DISTRICT_OFFICER' in active_roles else getattr(user, 'assigned_facility', None)
         vendor = serializer.save(created_by=user, facility=facility)
         AuditLog.objects.create(
             user=user,
@@ -388,7 +392,8 @@ class MedicineBatchViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def quarantine(self, request, pk=None):
         """Move quantity from available_quantity to quarantined_quantity (Partial or Full)."""
-        if request.user.role not in ['PHARMACIST', 'HOSPITAL_ADMIN']:
+        active_roles = get_user_active_role_codes(request.user)
+        if not (active_roles.intersection({'PHARMACIST', 'HOSPITAL_ADMIN'}) or has_role_permission(request.user, 'inventory.update')):
             return Response({'error': 'Unauthorized to quarantine stock.'}, status=status.HTTP_403_FORBIDDEN)
 
         with transaction.atomic():
@@ -437,7 +442,8 @@ class MedicineBatchViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def release(self, request, pk=None):
         """Release stock from quarantined or recalled bucket back to available_quantity."""
-        if request.user.role not in ['PHARMACIST', 'HOSPITAL_ADMIN']:
+        active_roles = get_user_active_role_codes(request.user)
+        if not (active_roles.intersection({'PHARMACIST', 'HOSPITAL_ADMIN'}) or has_role_permission(request.user, 'inventory.update')):
             return Response({'error': 'Unauthorized to release held stock.'}, status=status.HTTP_403_FORBIDDEN)
 
         from_bucket = request.data.get('from_bucket', 'quarantined_quantity')
@@ -495,7 +501,8 @@ class MedicineBatchViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def dispose(self, request, pk=None):
         """Condemn and destroy stock from quarantined, damaged, or expired stock."""
-        if request.user.role not in ['PHARMACIST', 'HOSPITAL_ADMIN']:
+        active_roles = get_user_active_role_codes(request.user)
+        if not (active_roles.intersection({'PHARMACIST', 'HOSPITAL_ADMIN'}) or has_role_permission(request.user, 'inventory.update')):
             return Response({'error': 'Unauthorized to dispose stock.'}, status=status.HTTP_403_FORBIDDEN)
 
         from_bucket = request.data.get('from_bucket', 'quarantined_quantity')
@@ -572,8 +579,10 @@ def execute_goods_receipt(request, po, as_grn_direct=False):
     - Concurrency protection via row-level locking
     """
     from decimal import Decimal
-    if request.user.role in ['DISTRICT_OFFICER', 'DOCTOR', 'NURSE', 'LAB_TECHNICIAN', 'HOSPITAL_ADMIN']:
-        return Response({'error': f"Role '{request.user.role}' is not authorized to intake goods."}, status=status.HTTP_403_FORBIDDEN)
+    active_roles = get_user_active_role_codes(request.user)
+    if not (active_roles.intersection({'INVENTORY', 'PHARMACIST'}) or has_role_permission(request.user, 'goods_receipt.create')):
+        role_display = ', '.join(sorted(active_roles)) if active_roles else (getattr(request.user, 'role', None) or 'UNKNOWN')
+        return Response({'error': f"Role '{role_display}' is not authorized to intake goods."}, status=status.HTTP_403_FORBIDDEN)
 
     accessible_ids = get_accessible_facility_ids_for_user(request.user)
     if accessible_ids is not None and po.facility_id not in accessible_ids:
@@ -852,8 +861,10 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        if request.user.role in ['DISTRICT_OFFICER', 'DOCTOR', 'NURSE', 'LAB_TECHNICIAN']:
-            return Response({'error': f"Role '{request.user.role}' is not authorized to create purchase orders."}, status=status.HTTP_403_FORBIDDEN)
+        active_roles = get_user_active_role_codes(request.user)
+        if not (active_roles.intersection({'INVENTORY', 'HOSPITAL_ADMIN', 'PHARMACIST'}) or has_role_permission(request.user, 'purchase_order.create')):
+            role_display = ', '.join(sorted(active_roles)) if active_roles else (getattr(request.user, 'role', None) or 'UNKNOWN')
+            return Response({'error': f"Role '{role_display}' is not authorized to create purchase orders."}, status=status.HTTP_403_FORBIDDEN)
 
         items_data = request.data.get('items', [])
         vendor_id = request.data.get('vendor')
@@ -966,8 +977,10 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
-        if request.user.role not in ['HOSPITAL_ADMIN']:
-            return Response({'error': f"Role '{request.user.role}' is not authorized to approve purchase orders. Approval requires Hospital Admin."}, status=status.HTTP_403_FORBIDDEN)
+        active_roles = get_user_active_role_codes(request.user)
+        if 'HOSPITAL_ADMIN' not in active_roles and not has_role_permission(request.user, 'purchase_order.approve'):
+            role_display = ', '.join(sorted(active_roles)) if active_roles else (getattr(request.user, 'role', None) or 'UNKNOWN')
+            return Response({'error': f"Role '{role_display}' is not authorized to approve purchase orders. Approval requires Hospital Admin."}, status=status.HTTP_403_FORBIDDEN)
 
         po = self.get_object()
         if po.status not in ['PENDING_APPROVAL', 'PENDING', 'DRAFT']:
@@ -996,8 +1009,10 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
-        if request.user.role not in ['HOSPITAL_ADMIN']:
-            return Response({'error': f"Role '{request.user.role}' is not authorized to reject purchase orders."}, status=status.HTTP_403_FORBIDDEN)
+        active_roles = get_user_active_role_codes(request.user)
+        if 'HOSPITAL_ADMIN' not in active_roles and not has_role_permission(request.user, 'purchase_order.approve'):
+            role_display = ', '.join(sorted(active_roles)) if active_roles else (getattr(request.user, 'role', None) or 'UNKNOWN')
+            return Response({'error': f"Role '{role_display}' is not authorized to reject purchase orders."}, status=status.HTTP_403_FORBIDDEN)
 
         po = self.get_object()
         if po.status not in ['PENDING_APPROVAL', 'PENDING']:
@@ -1119,8 +1134,10 @@ class DispenseMedicineView(APIView):
     required_permission = 'pharmacy.dispense'
 
     def post(self, request):
-        if request.user.role in ['DISTRICT_OFFICER', 'DOCTOR', 'NURSE', 'LAB_TECHNICIAN']:
-            return Response({'error': f"Role '{request.user.role}' is not authorized to dispense medicines."}, status=status.HTTP_403_FORBIDDEN)
+        active_roles = get_user_active_role_codes(request.user)
+        if 'PHARMACIST' not in active_roles and not has_role_permission(request.user, 'pharmacy.dispense'):
+            role_display = ', '.join(sorted(active_roles)) if active_roles else (getattr(request.user, 'role', None) or 'UNKNOWN')
+            return Response({'error': f"Role '{role_display}' is not authorized to dispense medicines."}, status=status.HTTP_403_FORBIDDEN)
 
         prescription_id = request.data.get('prescription_id')
         items_to_dispense = request.data.get('items', [])
@@ -1435,7 +1452,8 @@ class DispensationReturnViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def assess(self, request, pk=None):
         """Phase 2: Pharmacist Clinical Assessment and Inventory Disposition."""
-        if request.user.role != 'PHARMACIST':
+        active_roles = get_user_active_role_codes(request.user)
+        if 'PHARMACIST' not in active_roles and not has_role_permission(request.user, 'pharmacy.dispense'):
             return Response({'error': 'Only pharmacists are authorized to assess returned medication.'}, status=status.HTTP_403_FORBIDDEN)
 
         disposition = request.data.get('disposition') or request.data.get('status')
@@ -1613,8 +1631,10 @@ class BatchRecallViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """Quantity-scoped regulatory batch recall."""
-        if request.user.role not in ['PHARMACIST', 'HOSPITAL_ADMIN']:
-            return Response({'error': f"Role '{request.user.role}' is not authorized to declare a batch recall."}, status=status.HTTP_403_FORBIDDEN)
+        active_roles = get_user_active_role_codes(request.user)
+        if not (active_roles.intersection({'PHARMACIST', 'HOSPITAL_ADMIN'}) or has_role_permission(request.user, 'inventory.update')):
+            role_display = ', '.join(sorted(active_roles)) if active_roles else (getattr(request.user, 'role', None) or 'UNKNOWN')
+            return Response({'error': f"Role '{role_display}' is not authorized to declare a batch recall."}, status=status.HTTP_403_FORBIDDEN)
 
         data = request.data
         batch_id = data.get('batch') or data.get('batch_id')
