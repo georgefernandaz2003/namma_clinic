@@ -41,12 +41,26 @@ vitals_df = pd.read_csv('04_triage_vitals.csv')
 print(patients_df.head())
 ```
 
-### C. Regenerating or Seeding Live in Namma Clinic Backend
-To regenerate this exact dataset from scratch in any Namma Clinic environment:
+### C. Ingesting / Migrating Data into PostgreSQL Database
+The recipient can easily ingest and load all 13 CSV files directly into the PostgreSQL / Django database using either of the two authoritative ingestion tools:
+
+#### Method 1: Using the Standalone Ingestion Script
+```bash
+python scripts/ingest_clean_e2e_dataset.py --source exports/clean_e2e_dataset
+```
+*(Optional: add `--dry-run` to test and validate without writing changes to the database)*
+
+#### Method 2: Using the Django Management Command
+```bash
+python backend/manage.py ingest_clean_e2e_dataset --dir exports/clean_e2e_dataset
+```
+*(Optional: add `--dry-run` for dry-run simulation)*
+
+#### Method 3: Regenerating or Seeding from Scratch
+To completely flush and re-synthesize this dataset end-to-end:
 ```bash
 python scripts/generate_clean_e2e_dataset.py
 ```
-This executes clean operational table flushing, recreates all 60 citizens, generates all 108 visits, runs all double-entry ledger transactions, and verifies all assertions automatically.
 
 ---
-Generated on: 2026-10-08 07:10:36
+Generated on: 2026-10-08 15:45:00

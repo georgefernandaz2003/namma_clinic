@@ -136,6 +136,7 @@ class MultiLevelAnalyticsView(APIView):
             f_ncd = NCDCondition.objects.filter(registering_facility=fac).count()
             f_surv = DiseaseSurveillanceCase.objects.filter(facility=fac).count()
             f_refs = ReferralOrder.objects.filter(source_facility=fac).count()
+            f_disp = Dispensation.objects.filter(visit__facility=fac).count()
 
             facilities_data.append({
                 "id": fac.id,
@@ -148,6 +149,7 @@ class MultiLevelAnalyticsView(APIView):
                 "today_opd_footfall": f_today_visits,
                 "ncd_cases": f_ncd,
                 "surveillance_cases": f_surv,
+                "pharmacy_dispensations": f_disp,
                 "referrals_initiated": f_refs
             })
 

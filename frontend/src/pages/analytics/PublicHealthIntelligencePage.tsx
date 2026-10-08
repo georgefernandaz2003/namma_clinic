@@ -446,7 +446,7 @@ export const PublicHealthIntelligencePage: React.FC = () => {
                         Ward #{w.ward_number}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500">Zone: <strong className="text-slate-700">{w.zone}</strong></p>
+                    <p className="text-[11px] text-slate-500">Zone: <strong className="text-slate-700">{w.zone_name || w.zone || 'Central Zone'}</strong></p>
                     <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200/60 text-xs">
                       <div>
                         <span className="text-[10px] text-slate-400 font-semibold block">POPULATION</span>
@@ -454,11 +454,11 @@ export const PublicHealthIntelligencePage: React.FC = () => {
                       </div>
                       <div>
                         <span className="text-[10px] text-slate-400 font-semibold block">PATIENTS</span>
-                        <span className="font-extrabold text-slate-900">{w.patients_registered}</span>
+                        <span className="font-extrabold text-slate-900">{w.registered_citizens ?? w.patients_registered ?? 0}</span>
                       </div>
                       <div>
                         <span className="text-[10px] text-slate-400 font-semibold block">IDSP CASES</span>
-                        <span className="font-extrabold text-rose-800">{w.surveillance_cases}</span>
+                        <span className="font-extrabold text-rose-800">{w.surveillance_cases ?? 0}</span>
                       </div>
                     </div>
                   </div>
@@ -484,39 +484,41 @@ export const PublicHealthIntelligencePage: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {facilities.map((f: any, idx: number) => (
+                {facilities
+                  .filter((f: any) => (f.registered_citizens > 0 || f.total_opd_encounters > 0 || f.facility_code === 'PHC-LOCAL-01' || f.facility_code === 'RC-A4-01'))
+                  .map((f: any, idx: number) => (
                   <div key={idx} className="p-5 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/50 hover:border-emerald-300 transition shadow-xs space-y-3">
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="font-black text-slate-900 text-sm">{f.name}</h3>
+                          <h3 className="font-black text-slate-900 text-sm">{f.facility_name || f.name}</h3>
                           <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md font-mono">
-                            {f.code}
+                            {f.facility_code || f.code}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Type: {f.type} • Ward: {f.ward}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Type: {f.facility_type || f.type} • District: {f.district_name || f.district}</p>
                       </div>
                       <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 text-[10px] font-bold rounded-lg border border-emerald-200">
-                        {f.district}
+                        {f.district_name || f.district}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-200 text-center">
                       <div className="p-2 bg-white rounded-lg border border-slate-200">
                         <p className="text-[10px] font-bold text-slate-400">PATIENTS</p>
-                        <p className="text-base font-black text-slate-900 mt-0.5">{f.patients_registered}</p>
+                        <p className="text-base font-black text-slate-900 mt-0.5">{f.registered_citizens ?? f.patients_registered ?? 0}</p>
                       </div>
                       <div className="p-2 bg-white rounded-lg border border-slate-200">
                         <p className="text-[10px] font-bold text-slate-400">OPD VISITS</p>
-                        <p className="text-base font-black text-blue-900 mt-0.5">{f.total_visits}</p>
+                        <p className="text-base font-black text-blue-900 mt-0.5">{f.total_opd_encounters ?? f.total_visits ?? 0}</p>
                       </div>
                       <div className="p-2 bg-white rounded-lg border border-slate-200">
                         <p className="text-[10px] font-bold text-slate-400">DISPENSED</p>
-                        <p className="text-base font-black text-emerald-900 mt-0.5">{f.pharmacy_dispensations}</p>
+                        <p className="text-base font-black text-emerald-900 mt-0.5">{f.pharmacy_dispensations ?? 0}</p>
                       </div>
                       <div className="p-2 bg-white rounded-lg border border-slate-200">
                         <p className="text-[10px] font-bold text-slate-400">REFERRALS</p>
-                        <p className="text-base font-black text-rose-900 mt-0.5">{f.referrals_initiated}</p>
+                        <p className="text-base font-black text-rose-900 mt-0.5">{f.referrals_initiated ?? 0}</p>
                       </div>
                     </div>
                   </div>

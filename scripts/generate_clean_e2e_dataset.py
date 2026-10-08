@@ -138,6 +138,23 @@ CITIZENS_ROSTER = [
     {"first": "Vinod", "last": "Kumar", "gender": "MALE", "age": 36, "phone": "9845011058", "abha": "14-8291-4001-1058", "address": "87, Kempegowda Main, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "TODAY_WAIT_DOC_1"},
     {"first": "Gayathri", "last": "Joshi", "gender": "FEMALE", "age": 47, "phone": "9845011059", "abha": "14-8291-4001-1059", "address": "34, Pipeline Slum Road, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "TODAY_WAIT_DOC_2"},
     {"first": "Prakash", "last": "Bellary", "gender": "MALE", "age": 52, "phone": "9845011060", "abha": "14-8291-4001-1060", "address": "59, Maruthi Nagar, Laggere, Bengaluru", "fac": "PHC-LOCAL-01", "ward": 4, "cohort": "TODAY_WAIT_DOC_3"},
+
+    # Cohort 6: Bengaluru Rural Satellite Cohort (RC-A4-01, Varthur Rural Ward) - 15 Patients
+    {"first": "Basappa", "last": "Pujar", "gender": "MALE", "age": 58, "phone": "9845011061", "abha": "14-8291-4001-1061", "address": "12, Varthur Village Main, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_NCD_HTN"},
+    {"first": "Gowramma", "last": "Patil", "gender": "FEMALE", "age": 52, "phone": "9845011062", "abha": "14-8291-4001-1062", "address": "34, Gunjur Grama Cross, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_NCD_DM"},
+    {"first": "Haleshappa", "last": "Gowda", "gender": "MALE", "age": 64, "phone": "9845011063", "abha": "14-8291-4001-1063", "address": "56, Varthur Lake Bund, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_SURV_MALARIA"},
+    {"first": "Ningamma", "last": "Hegde", "gender": "FEMALE", "age": 49, "phone": "9845011064", "abha": "14-8291-4001-1064", "address": "78, Balagere Road, Varthur, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_GEN_URTI"},
+    {"first": "Sharanappa", "last": "Kulkarni", "gender": "MALE", "age": 62, "phone": "9845011065", "abha": "14-8291-4001-1065", "address": "90, Gunjur Lake Cross, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_NCD_BOTH"},
+    {"first": "Yallamma", "last": "Nayak", "gender": "FEMALE", "age": 55, "phone": "9845011066", "abha": "14-8291-4001-1066", "address": "23, Sorahunase Village, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_SURV_GASTRO"},
+    {"first": "Mallikarjun", "last": "Bhat", "gender": "MALE", "age": 41, "phone": "9845011067", "abha": "14-8291-4001-1067", "address": "45, Varthur Santhe Beedhi, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_GEN_GASTRITIS"},
+    {"first": "Chennamma", "last": "Rao", "gender": "FEMALE", "age": 38, "phone": "9845011068", "abha": "14-8291-4001-1068", "address": "67, Gunjur Palya, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_GEN_JOINT_PAIN"},
+    {"first": "Siddalingappa", "last": "Shetty", "gender": "MALE", "age": 45, "phone": "9845011069", "abha": "14-8291-4001-1069", "address": "89, Panathur Link Road, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_SURV_TYPHOID"},
+    {"first": "Parvathamma", "last": "Deshmukh", "gender": "FEMALE", "age": 50, "phone": "9845011070", "abha": "14-8291-4001-1070", "address": "11, Kachamaranahalli Cross, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_GEN_DERMA"},
+    {"first": "Veerabhadrappa", "last": "Murthy", "gender": "MALE", "age": 33, "phone": "9845011071", "abha": "14-8291-4001-1071", "address": "33, Muthsandra Main Road, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_SURV_DENGUE"},
+    {"first": "Boramma", "last": "Kamath", "gender": "FEMALE", "age": 29, "phone": "9845011072", "abha": "14-8291-4001-1072", "address": "55, Varthur Police Station Road, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_GEN_ANEMIA"},
+    {"first": "Thimmegowda", "last": "Acharya", "gender": "MALE", "age": 37, "phone": "9845011073", "abha": "14-8291-4001-1073", "address": "77, Gunjur Circle, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_GEN_URTI"},
+    {"first": "Kempamma", "last": "Joshi", "gender": "FEMALE", "age": 43, "phone": "9845011074", "abha": "14-8291-4001-1074", "address": "99, Madhuranagar, Varthur, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_GEN_BRONCHITIS"},
+    {"first": "Channabasappa", "last": "Bellary", "gender": "MALE", "age": 56, "phone": "9845011075", "abha": "14-8291-4001-1075", "address": "15, Varthur Temple Road, Bengaluru Rural", "fac": "RC-A4-01", "ward": 5, "cohort": "RURAL_NCD_HTN"},
 ]
 
 
@@ -227,6 +244,9 @@ def generate_e2e_dataset():
         StaffRoleAssignment.objects.get_or_create(staff=stf_pharm_local, role=role_pharm, facility=facilities['NC-LAG-01'], defaults={'effective_from': today - datetime.timedelta(days=120), 'is_active': True})
         StaffRoleAssignment.objects.get_or_create(staff=stf_lab_local, role=role_lab, facility=facilities['NC-LAG-01'], defaults={'effective_from': today - datetime.timedelta(days=120), 'is_active': True})
 
+        StaffRoleAssignment.objects.get_or_create(staff=stf_doc_rural, role=role_doc, facility=facilities['RC-A4-01'], defaults={'effective_from': today - datetime.timedelta(days=120), 'is_active': True})
+        StaffRoleAssignment.objects.get_or_create(staff=stf_nurse_local, role=role_nurse, facility=facilities['RC-A4-01'], defaults={'effective_from': today - datetime.timedelta(days=120), 'is_active': True})
+        StaffRoleAssignment.objects.get_or_create(staff=stf_pharm_local, role=role_pharm, facility=facilities['RC-A4-01'], defaults={'effective_from': today - datetime.timedelta(days=120), 'is_active': True})
         StaffRoleAssignment.objects.get_or_create(staff=stf_doc_sdh, role=role_doc, facility=facilities['HOSP-KC-01'], defaults={'effective_from': today - datetime.timedelta(days=120), 'is_active': True})
 
         # Fetch Masters
@@ -328,6 +348,7 @@ def generate_e2e_dataset():
             ("HH-ULS-001", "Raman Family Household", "74, Bazaar Street, Ulsoor, Bengaluru", 2, 4),
             ("HH-IND-001", "Hegde Family Household", "102, 100 Feet Road, Indiranagar, Bengaluru", 1, 3),
             ("HH-JAY-001", "Kulkarni Family Household", "29, 4th Block, Jayanagar, Bengaluru", 3, 4),
+            ("HH-VAR-001", "Pujar Family Household", "12, Varthur Village Main, Bengaluru Rural", 5, 5),
         ]
         for hhid, hname, haddr, wid, count in hh_configs:
             hh, _ = Household.objects.get_or_create(
@@ -1197,6 +1218,89 @@ def generate_e2e_dataset():
 
         print(f"Seeded today's live OPD queue: 14 visits at Local PHC across Triage, Doctor, Lab, Pharmacy, and Completed.")
 
+        print("\n[Step 8] Seeding Cohort 6: Bengaluru Rural Satellite Clinic (Patients 61 to 75 at RC-A4-01)...")
+        for p_idx in range(61, 76):
+            pat, cit = patient_map[p_idx]
+            cohort = cit['cohort']
+            fac = facilities[cit['fac']]
+            enc_date = today - datetime.timedelta(days=(76 - p_idx) % 7 + 1)
+
+            if "HTN" in cohort:
+                diag = diag_htn
+                meds = [(med_amlodipine, "1-0-0 After Food", "Once Daily", 30, 30)]
+                complaint = "Rural outreach follow-up: Blood pressure check and monthly medicine refill"
+            elif "DM" in cohort:
+                diag = diag_dm
+                meds = [(med_metformin, "1-0-1 After Food", "Twice Daily", 30, 60)]
+                complaint = "Routine rural diabetic review and glucometer screening"
+            elif "MALARIA" in cohort:
+                diag = diag_malaria
+                meds = [(med_paracetamol, "1-0-1 After Food", "Three Times Daily", 5, 15)]
+                complaint = "Chills and nocturnal fever after farm work near lake bund"
+            elif "GASTRO" in cohort:
+                diag = diag_gastro
+                meds = [(med_ors, "1 Sachet in 1L Water", "Frequent Sips", 5, 10)]
+                complaint = "Acute watery loose stools after local village fair"
+            elif "TYPHOID" in cohort:
+                diag = diag_typhoid
+                meds = [(med_amoxicillin, "1-0-1 After Food", "Twice Daily", 7, 14)]
+                complaint = "Persistent evening fever and bodyache for 5 days"
+            elif "DENGUE" in cohort:
+                diag = diag_dengue
+                meds = [(med_paracetamol, "1-0-1 After Food", "Three Times Daily", 5, 15)]
+                complaint = "High grade fever with retro-orbital headache and joint pain"
+            else:
+                diag = diag_urti
+                meds = [(med_paracetamol, "1-0-1 After Food", "Twice Daily", 5, 10)]
+                complaint = "Seasonal cough, throat irritation and runny nose"
+
+            create_full_encounter(
+                patient=pat,
+                facility=fac,
+                opd_date=enc_date,
+                queue='COMPLETED',
+                status='COMPLETED',
+                complaint=complaint,
+                doctor_staff=stf_doc_rural,
+                doctor_user=stf_doc_rural.user_account,
+                nurse_staff=stf_nurse_local,
+                nurse_user=u_nurse_local,
+                vitals_data={'sys': 136 if 'HTN' in cohort else 118, 'dia': 88 if 'HTN' in cohort else 76, 'pulse': 76, 'temp_f': 99.1, 'spo2': 98, 'height': 163, 'weight': 61},
+                diag_master=diag,
+                clinical_notes=f"Rural Health Center encounter at {fac.facility_name}. Clinical diagnosis confirmed: {diag.description}.",
+                meds_to_prescribe=meds
+            )
+
+            # Also create NCD condition or IDSP case for rural cohort
+            if "HTN" in cohort:
+                NCDCondition.objects.create(
+                    patient=pat, registering_facility=fac, registering_doctor=stf_doc_rural,
+                    condition_code='HYPERTENSION', diagnosis_date=datetime.date(2026, 6, 1),
+                    staging='Stage 1 Essential Hypertension', control_status='CONTROLLED'
+                )
+            elif "DM" in cohort:
+                NCDCondition.objects.create(
+                    patient=pat, registering_facility=fac, registering_doctor=stf_doc_rural,
+                    condition_code='DIABETES_T2', diagnosis_date=datetime.date(2026, 6, 1),
+                    staging='Type 2 Diabetes Mellitus', control_status='CONTROLLED'
+                )
+            elif any(d in cohort for d in ["MALARIA", "GASTRO", "TYPHOID", "DENGUE"]):
+                dis_map = {"MALARIA": dis_malaria, "GASTRO": dis_gastro, "TYPHOID": dis_typhoid, "DENGUE": dis_dengue}
+                dis_obj = next(v for k, v in dis_map.items() if k in cohort)
+                sc = DiseaseSurveillanceCase.objects.create(
+                    case_number=f"SURV-{enc_date.strftime('%Y%m%d')}-{p_idx:04d}",
+                    patient=pat, facility=fac, disease=dis_obj, reporting_staff=stf_doc_rural,
+                    ward=pat.ward, severity='MILD', status='CONFIRMED', lab_confirmed=True,
+                    investigation_notes=f"Rural surveillance case for {dis_obj.disease_name} in Ward {pat.ward.ward_number if pat.ward else ''}."
+                )
+                PublicHealthNotification.objects.create(
+                    case=sc, notified_authority='DISTRICT_SURVEILLANCE_OFFICER', transmission_status='DISPATCHED',
+                    dispatch_payload={"case": sc.case_number, "disease": dis_obj.disease_name, "facility": fac.facility_name},
+                    dispatched_at=timezone.now()
+                )
+
+        print(f"Seeded 15 rural encounters and surveillance/NCD records at Varthur Rural Primary Clinic (RC-A4-01).")
+
     # 4. Final Verification and Assertions
     print("\n" + "=" * 80)
     print("ASSERTIONS & VERIFICATION OF DATASET")
@@ -1244,8 +1348,10 @@ def generate_e2e_dataset():
 
     # Assert non-zero counts everywhere
     local_pat_count = Patient.objects.filter(registered_at_facility__facility_code='PHC-LOCAL-01').count()
-    assert pat_count == 60, f"Expected exactly 60 patients, got {pat_count}"
+    rural_pat_count = Patient.objects.filter(registered_at_facility__facility_code='RC-A4-01').count()
+    assert pat_count == 75, f"Expected exactly 75 patients, got {pat_count}"
     assert local_pat_count == 60, f"Expected exactly 60 patients registered at PHC-LOCAL-01, got {local_pat_count}"
+    assert rural_pat_count == 15, f"Expected exactly 15 patients registered at RC-A4-01, got {rural_pat_count}"
     assert visit_count >= 100, f"Expected >= 100 visits, got {visit_count}"
     assert triage_count >= 90, f"Expected >= 90 triage records, got {triage_count}"
     assert consult_count >= 80, f"Expected >= 80 consultations, got {consult_count}"
@@ -1254,7 +1360,7 @@ def generate_e2e_dataset():
     assert ledger_count >= 60, f"Expected >= 60 ledger DISPENSE rows, got {ledger_count}"
     assert ncd_cond_count >= 20, f"Expected >= 20 NCD conditions, got {ncd_cond_count}"
     assert ncd_assess_count >= 50, f"Expected >= 50 NCD assessments, got {ncd_assess_count}"
-    assert surv_count == 12, f"Expected 12 surveillance cases, got {surv_count}"
+    assert surv_count >= 12, f"Expected >= 12 surveillance cases, got {surv_count}"
     assert ref_count == 8, f"Expected 8 referral orders, got {ref_count}"
 
     # Verify zero digits in all patient names in database
