@@ -158,6 +158,7 @@ class ReferralViewSet(viewsets.ModelViewSet):
 class FollowUpViewSet(viewsets.ModelViewSet):
     serializer_class = FollowUpSerializer
     permission_classes = [permissions.IsAuthenticated, HasPermission, HasFacilityScope]
+    pagination_class = None
     required_permissions = {
         'GET': 'patients.view',
         'POST': 'patients.update',
@@ -168,9 +169,22 @@ class FollowUpViewSet(viewsets.ModelViewSet):
     filterset_fields = ['facility', 'status', 'category']
 
     def get_queryset(self):
-        queryset = FollowUp.objects.all().select_related('patient', 'facility')
+        from django.db.models import Case, When, Value, IntegerField
+        queryset = FollowUp.objects.all().select_related('patient', 'facility').annotate(
+            status_priority=Case(
+                When(status='DUE_TODAY', then=Value(1)),
+                When(status='OVERDUE', then=Value(2)),
+                When(status='PENDING', then=Value(3)),
+                When(status='COMPLETED', then=Value(4)),
+                default=Value(5),
+                output_field=IntegerField()
+            )
+        ).order_by('status_priority', 'due_date', '-id')
         accessible_ids = get_accessible_facility_ids_for_user(self.request.user)
         if accessible_ids is not None:
             queryset = queryset.filter(facility_id__in=accessible_ids)
+        facility_param = self.request.query_params.get('facility')
+        if facility_param:
+            queryset = queryset.filter(facility_id=facility_param)
         return queryset
 

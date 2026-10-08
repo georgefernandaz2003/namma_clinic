@@ -28,6 +28,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  if (user?.is_superuser) {
+    return <DashboardLayout>{children}</DashboardLayout>;
+  }
+
   const userRoles = ([user?.role, ...(user?.roles || [])].filter(Boolean)) as Role[];
 
   // 1. Explicit allowedRoles check if defined on the route

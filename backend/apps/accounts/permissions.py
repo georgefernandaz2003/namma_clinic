@@ -368,6 +368,10 @@ def get_accessible_facility_ids_for_user(user):
     if not user or not user.is_authenticated or not getattr(user, 'is_active', True):
         return []
 
+    if getattr(user, 'is_superuser', False):
+        from apps.facilities.models import Facility
+        return list(Facility.objects.values_list('id', flat=True))
+
     staff_profile = getattr(user, 'staff_profile', None)
     if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') in ['INVITED', 'SUSPENDED', 'DEACTIVATED']:
         return []
@@ -418,6 +422,9 @@ def can_access_facility(user, facility_id):
     """
     if not user or not user.is_authenticated or not getattr(user, 'is_active', True) or not facility_id:
         return False
+
+    if getattr(user, 'is_superuser', False):
+        return True
 
     staff_profile = getattr(user, 'staff_profile', None)
     if staff_profile and getattr(staff_profile, 'status', 'ACTIVE') in ['INVITED', 'SUSPENDED', 'DEACTIVATED']:

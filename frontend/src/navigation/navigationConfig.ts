@@ -154,6 +154,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
         { name: 'Pharmacy & Stock', path: '/pharmacy', iconName: 'Pill', description: 'Dispensing records and medicine inventory batches' },
         { name: 'Inventory & Procurement', path: '/inventory', iconName: 'Package', description: 'Procurement orders, goods receipt, and stock ledger' },
         { name: 'Follow-up Tracking', path: '/followups', iconName: 'CalendarCheck', description: 'Post-consultation follow-up scheduling' },
+        { name: 'NCD Management', path: '/ncd', iconName: 'Activity', description: 'Non-communicable disease chronic care monitoring' },
         { name: 'Infra & Maintenance', path: '/infrastructure', iconName: 'Wrench', description: 'Facility maintenance tickets and consumable stock' },
       ],
     },

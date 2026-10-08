@@ -128,6 +128,28 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                     clinical_notes=data.get('clinical_notes', '')
                 )
 
+            if consultation.follow_up_date:
+                try:
+                    from apps.referrals.models import FollowUp
+                    import datetime
+                    today_val = datetime.date.today()
+                    st_val = 'DUE_TODAY' if consultation.follow_up_date == today_val else ('PENDING' if consultation.follow_up_date > today_val else 'OVERDUE')
+                    diag_str = str(consultation.diagnosis_name or '')
+                    cat_val = 'NCD' if ('Diabetes' in diag_str or 'Hypertension' in diag_str) else 'POST_CONSULT'
+                    FollowUp.objects.update_or_create(
+                        patient_id=consultation.patient_id,
+                        due_date=consultation.follow_up_date,
+                        defaults={
+                            'facility_id': consultation.facility_id,
+                            'visit_id': consultation.visit_id,
+                            'category': cat_val,
+                            'status': st_val,
+                            'notes': consultation.clinical_notes or f"Follow-up for {diag_str}"
+                        }
+                    )
+                except Exception:
+                    pass
+
             # Handle Prescriptions if provided
             prescription_items = data.get('prescription_items', [])
             if prescription_items:
