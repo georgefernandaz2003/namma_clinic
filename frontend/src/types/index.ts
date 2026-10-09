@@ -1,4 +1,4 @@
-﻿export * from './api';
+export * from './api';
 export * from './auth';
 
 
@@ -811,7 +811,7 @@ export interface PatientDocument {
   patient: number;
   patient_name?: string;
   patient_uhid?: string;
-  document_type: 'MEDICAL_RECORD' | 'LAB_REPORT' | 'PRESCRIPTION' | 'DISCHARGE_SUMMARY' | 'REFERRAL_DOC' | 'OTHER';
+  document_type: 'MEDICAL_RECORD' | 'LAB_REPORT' | 'PRESCRIPTION' | 'DISCHARGE_SUMMARY' | 'REFERRAL_DOCUMENT' | 'REFERRAL_DOC' | 'OTHER';
   document_type_display?: string;
   title: string;
   description: string;

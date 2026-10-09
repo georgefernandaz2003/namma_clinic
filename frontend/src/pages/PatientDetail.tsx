@@ -1157,7 +1157,7 @@ export const PatientDetail: React.FC = () => {
                   { label: 'Lab Reports', key: 'LAB_REPORT' },
                   { label: 'Prescriptions', key: 'PRESCRIPTION' },
                   { label: 'Discharge Summaries', key: 'DISCHARGE_SUMMARY' },
-                  { label: 'Referrals', key: 'REFERRAL_DOC' },
+                  { label: 'Referrals', key: 'REFERRAL_DOCUMENT' },
                   { label: 'Other', key: 'OTHER' }
                 ].map((cat) => (
                   <button
@@ -1338,7 +1338,7 @@ export const PatientDetail: React.FC = () => {
                     <option value="LAB_REPORT">Lab Report / Scan</option>
                     <option value="PRESCRIPTION">Prescription Slip</option>
                     <option value="DISCHARGE_SUMMARY">Discharge Summary</option>
-                    <option value="REFERRAL_DOC">Referral Document</option>
+                    <option value="REFERRAL_DOCUMENT">Referral Document</option>
                     <option value="OTHER">Other Clinical File</option>
                   </select>
                 </div>

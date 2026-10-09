@@ -123,7 +123,9 @@ export const canAccessPatientDocuments = (role: Role | string | undefined): bool
 
 export const canUploadPatientDocuments = (role: Role | string | undefined): boolean => {
   if (!role) return false;
-  // Front Desk Officers and District Officers (read-only governance) cannot upload documents
-  if (role === 'FRONT_DESK_OFFICER' || role === 'DISTRICT_OFFICER') return false;
-  return hasPermission(role as Role, 'patients.update') || role === 'DOCTOR';
+  // District Officers have read-only governance and cannot upload documents
+  if (role === 'DISTRICT_OFFICER') return false;
+  // Front Desk Officers, Doctors, and Nurses are authorized to upload patient documents
+  if (role === 'FRONT_DESK_OFFICER' || role === 'DOCTOR' || role === 'NURSE') return true;
+  return hasPermission(role as Role, 'patients.update');
 };

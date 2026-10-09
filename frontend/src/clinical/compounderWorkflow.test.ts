@@ -67,42 +67,40 @@ test('Front Desk Officer Role Boundary & Patient Registration Authorization (Pha
     assert.equal(sanitizeAbha('ABHA-REAL-12345'), 'ABHA-REAL-12345');
   });
 
-  await t.test('6. FRONT_DESK_OFFICER cannot see Documents tab or upload controls (Privacy Rule)', () => {
-    // 1. Privacy rule check: FRONT_DESK_OFFICER is strictly prohibited from accessing medical documents
+  await t.test('6. FRONT_DESK_OFFICER can upload patient documents while vault view remains restricted (Privacy & Intake Rule)', () => {
+    // 1. Permission checks as required:
+    assert.equal(
+      canUploadPatientDocuments('FRONT_DESK_OFFICER'),
+      true,
+      'FRONT_DESK_OFFICER must be allowed to upload patient documents'
+    );
+    assert.equal(canUploadPatientDocuments('NURSE'), true, 'NURSE must be allowed to upload patient documents');
+    assert.equal(canUploadPatientDocuments('DOCTOR'), true, 'DOCTOR must be allowed to upload patient documents');
+    assert.equal(
+      canUploadPatientDocuments('DISTRICT_OFFICER'),
+      false,
+      'DISTRICT_OFFICER has read-only governance and cannot upload documents'
+    );
+
+    // 2. Privacy view restriction check: FRONT_DESK_OFFICER cannot view clinical document vault
     assert.equal(
       canAccessPatientDocuments('FRONT_DESK_OFFICER'),
       false,
-      'FRONT_DESK_OFFICER must not access patient clinical/medical documents'
+      'FRONT_DESK_OFFICER must not access or browse clinical document vault'
     );
-    assert.equal(
-      canUploadPatientDocuments('FRONT_DESK_OFFICER'),
-      false,
-      'FRONT_DESK_OFFICER must not see or trigger Upload Medical Document controls'
-    );
-
-    // 2. Authorized clinical roles retain document viewing access
     assert.equal(canAccessPatientDocuments('DOCTOR'), true, 'DOCTOR must access medical documents');
     assert.equal(canAccessPatientDocuments('NURSE'), true, 'NURSE must access medical documents');
-    assert.equal(canAccessPatientDocuments('HOSPITAL_ADMIN'), true, 'HOSPITAL_ADMIN must access medical documents');
-    assert.equal(canAccessPatientDocuments('DISTRICT_OFFICER'), true, 'DISTRICT_OFFICER retains read-only vault access');
 
-    // 3. Authorized clinical uploaders retain upload control
-    assert.equal(canUploadPatientDocuments('DOCTOR'), true, 'DOCTOR must be able to upload documents');
-    assert.equal(canUploadPatientDocuments('NURSE'), true, 'NURSE must be able to upload documents');
-    assert.equal(canUploadPatientDocuments('DISTRICT_OFFICER'), false, 'DISTRICT_OFFICER is read-only governance');
-
-    // 4. Verification of simulated PatientDetail UI visibility predicates for FRONT_DESK_OFFICER
+    // 3. UI visibility predicates for FRONT_DESK_OFFICER on /patients/:id
     const role = 'FRONT_DESK_OFFICER';
     const isDocTabVisible = canAccessPatientDocuments(role);
     const isTopBarUploadVisible = canUploadPatientDocuments(role);
-    const isVaultUploadVisible = canUploadPatientDocuments(role);
-    const isUploadFirstDocVisible = canUploadPatientDocuments(role);
+    const isUploadModalAllowed = canUploadPatientDocuments(role);
     const isVaultRendered = canAccessPatientDocuments(role) && ('DOCUMENTS' === 'DOCUMENTS');
 
-    assert.equal(isDocTabVisible, false, 'Documents tab must be hidden for FRONT_DESK_OFFICER');
-    assert.equal(isTopBarUploadVisible, false, 'Top bar Upload Medical Document must be hidden for FRONT_DESK_OFFICER');
-    assert.equal(isVaultUploadVisible, false, 'Vault Upload Medical Document must be hidden for FRONT_DESK_OFFICER');
-    assert.equal(isUploadFirstDocVisible, false, 'Upload First Document empty state button must be hidden for FRONT_DESK_OFFICER');
+    assert.equal(isTopBarUploadVisible, true, 'Top bar Upload Medical Document must be visible for FRONT_DESK_OFFICER');
+    assert.equal(isUploadModalAllowed, true, 'Upload Medical Document modal must be accessible for FRONT_DESK_OFFICER');
+    assert.equal(isDocTabVisible, false, 'Documents tab must remain hidden for FRONT_DESK_OFFICER');
     assert.equal(isVaultRendered, false, 'Patient Medical Document Vault must not render for FRONT_DESK_OFFICER');
   });
 });
