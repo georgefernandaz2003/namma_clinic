@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Patient, PatientDocument } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { hasPermission } from '../utils/permissions';
+import { hasPermission, canAccessPatientDocuments, canUploadPatientDocuments } from '../utils/permissions';
 import { 
   ArrowLeft, User, Phone, MapPin, Activity, Clock, 
   FileText, Pill, Share2, Stethoscope, History, Plus,
@@ -20,6 +20,8 @@ export const PatientDetail: React.FC = () => {
   const isFrontDeskOfficer = user?.role === 'FRONT_DESK_OFFICER';
   const isLabTech = user?.role === 'LAB_TECHNICIAN';
   const isPharmacist = user?.role === 'PHARMACIST';
+  const canAccessDocuments = canAccessPatientDocuments(user?.role);
+  const canUploadDocuments = canUploadPatientDocuments(user?.role);
 
   // Navigation Tab State
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'VISITS' | 'MEDICAL_RECORDS' | 'LAB_REPORTS' | 'PRESCRIPTIONS' | 'DOCUMENTS'>('OVERVIEW');
@@ -103,6 +105,12 @@ export const PatientDetail: React.FC = () => {
   useEffect(() => {
     fetchPatientData();
   }, [id]);
+
+  useEffect(() => {
+    if (!canAccessDocuments && activeTab === 'DOCUMENTS') {
+      setActiveTab('OVERVIEW');
+    }
+  }, [canAccessDocuments, activeTab]);
 
   // Handle Document Upload Submit
   const handleUploadSubmit = async (e: React.FormEvent) => {
@@ -264,6 +272,7 @@ export const PatientDetail: React.FC = () => {
   // Filtered EMR Timeline
   const filteredTimelineEvents = useMemo(() => {
     return timelineEvents.filter((ev) => {
+      if (!canAccessDocuments && ev.type === 'DOCUMENT') return false;
       if (eventTypeFilter !== 'ALL') {
         if (eventTypeFilter === 'VISIT' && ev.type !== 'VISIT' && ev.type !== 'TRIAGE') return false;
         if (eventTypeFilter === 'CONSULTATION' && ev.type !== 'CONSULTATION') return false;
@@ -416,7 +425,7 @@ export const PatientDetail: React.FC = () => {
         </button>
 
         <div className="flex flex-wrap items-center gap-2">
-          {hasPermission(user?.role, 'patients.update') && (
+          {canUploadDocuments && (
             <button
               onClick={() => setShowUploadModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition"
@@ -563,17 +572,19 @@ export const PatientDetail: React.FC = () => {
           </button>
         )}
 
-        <button
-          onClick={() => setActiveTab('DOCUMENTS')}
-          className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
-            activeTab === 'DOCUMENTS'
-              ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <FolderOpen className="w-4 h-4 text-purple-600" />
-          <span>Documents ({recordsData.documents.length})</span>
-        </button>
+        {canAccessDocuments && (
+          <button
+            onClick={() => setActiveTab('DOCUMENTS')}
+            className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition ${
+              activeTab === 'DOCUMENTS'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-black'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <FolderOpen className="w-4 h-4 text-purple-600" />
+            <span>Documents ({recordsData.documents.length})</span>
+          </button>
+        )}
       </div>
 
       {/* TAB 1: OVERVIEW */}
@@ -697,7 +708,7 @@ export const PatientDetail: React.FC = () => {
                     >
                       <option value="ALL">All Events</option>
                       <option value="VISIT">{isFrontDeskOfficer ? 'OPD Encounters' : 'Clinic Visits'}</option>
-                      <option value="DOCUMENT">Uploaded Documents</option>
+                      {canAccessDocuments && <option value="DOCUMENT">Uploaded Documents</option>}
                       {!isFrontDeskOfficer && (
                         <>
                           <option value="TRIAGE">Nurse Triage</option>
@@ -795,7 +806,7 @@ export const PatientDetail: React.FC = () => {
                                   <p className="text-[11px] text-slate-700 leading-relaxed font-medium">{ev.details}</p>
                                   <div className="flex justify-between items-center pt-1">
                                     <span className="text-[10px] text-slate-500 font-semibold">{ev.facility}</span>
-                                    {ev.document_id && (
+                                    {canAccessDocuments && ev.document_id && (
                                       <button
                                         onClick={() => {
                                           const docObj = recordsData.documents.find(d => d.id === ev.document_id);
@@ -1102,7 +1113,7 @@ export const PatientDetail: React.FC = () => {
       )}
 
       {/* TAB 6: DOCUMENTS (PATIENT DOCUMENT VAULT) */}
-      {activeTab === 'DOCUMENTS' && (
+      {canAccessDocuments && activeTab === 'DOCUMENTS' && (
         <div className="space-y-5">
           {/* Documents Header & Controls Bar */}
           <div className="glass-panel p-6 rounded-2xl border border-slate-200 bg-white space-y-4 shadow-xs">
@@ -1117,7 +1128,7 @@ export const PatientDetail: React.FC = () => {
                 </p>
               </div>
 
-              {!isDistrictOfficer ? (
+              {canUploadDocuments ? (
                 <button
                   onClick={() => setShowUploadModal(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition shrink-0"
@@ -1125,11 +1136,11 @@ export const PatientDetail: React.FC = () => {
                   <Upload className="w-4 h-4" />
                   <span>Upload Medical Document</span>
                 </button>
-              ) : (
+              ) : isDistrictOfficer ? (
                 <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
                   District Officer: Read-Only Vault Access
                 </span>
-              )}
+              ) : null}
             </div>
 
             {/* Filter and Search Inputs Bar */}
@@ -1182,7 +1193,7 @@ export const PatientDetail: React.FC = () => {
             <div className="glass-panel p-12 rounded-2xl border border-slate-200 bg-white text-center text-xs text-slate-500 space-y-3 shadow-xs">
               <FolderOpen className="w-10 h-10 text-slate-300 mx-auto" />
               <p className="font-medium">No medical documents found in this view.</p>
-              {!isDistrictOfficer && (
+              {canUploadDocuments && (
                 <button
                   onClick={() => setShowUploadModal(true)}
                   className="px-4 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 transition inline-flex items-center gap-1.5"
@@ -1263,7 +1274,7 @@ export const PatientDetail: React.FC = () => {
                         <span>{downloadingDocId === doc.id ? 'Downloading...' : 'Download'}</span>
                       </button>
 
-                      {hasPermission(user?.role, 'patients.update') && (
+                      {canUploadDocuments && (
                         <button
                           onClick={() => handleDeleteDocument(doc.id, doc.title)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
@@ -1282,7 +1293,7 @@ export const PatientDetail: React.FC = () => {
       )}
 
       {/* UPLOAD DOCUMENT MODAL */}
-      {hasPermission(user?.role, 'patients.update') && showUploadModal && (
+      {canUploadDocuments && showUploadModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-lg space-y-4 shadow-xl">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
@@ -1391,7 +1402,7 @@ export const PatientDetail: React.FC = () => {
       )}
 
       {/* DOCUMENT PREVIEW & DETAILS MODAL */}
-      {previewDoc && (
+      {canAccessDocuments && previewDoc && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 border border-slate-200 w-full max-w-2xl space-y-4 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
@@ -1497,6 +1508,7 @@ export const PatientDetail: React.FC = () => {
                   >
                     <option value="GENERAL_OPD">General OPD</option>
                     <option value="NCD_SCREENING">NCD Screening</option>
+                    <option value="TELECONSULTATION">Teleconsultation</option>
                   </select>
                 </div>
 

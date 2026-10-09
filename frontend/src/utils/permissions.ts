@@ -113,3 +113,17 @@ export const isPathAllowedForRole = (role: Role | undefined, path: string): bool
     return path.startsWith(allowedPath);
   });
 };
+
+export const canAccessPatientDocuments = (role: Role | string | undefined): boolean => {
+  if (!role) return false;
+  // Front Desk Officers handle demographics, patient search, registration, and OPD tokens.
+  // Client privacy rule: Front Desk Officers must not access clinical/medical documents.
+  return role !== 'FRONT_DESK_OFFICER';
+};
+
+export const canUploadPatientDocuments = (role: Role | string | undefined): boolean => {
+  if (!role) return false;
+  // Front Desk Officers and District Officers (read-only governance) cannot upload documents
+  if (role === 'FRONT_DESK_OFFICER' || role === 'DISTRICT_OFFICER') return false;
+  return hasPermission(role as Role, 'patients.update') || role === 'DOCTOR';
+};
