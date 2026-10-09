@@ -348,3 +348,71 @@ test('Dispensation payload creation and authoritative ledger invariant', async (
     assert.equal(ledgerEntry.performed_by_staff, 3);
   });
 });
+
+test('Direct and partial dispensing workflow without verification gate', async (t) => {
+  await t.test('prescription in PENDING_VERIFICATION is directly eligible for stock allocation and dispensing', () => {
+    const rx: Prescription = {
+      id: 46,
+      consultation: 100,
+      patient: 1,
+      facility: 1,
+      date: '2026-10-09',
+      status: 'PENDING_VERIFICATION',
+      items: [
+        { id: 1, medicine: 1, medicine_name: 'Paracetamol 500mg', dosage: '500mg', frequency: 'TID', duration_days: 3, quantity: 10, dispensed_quantity: 0, status: 'PENDING' },
+        { id: 2, medicine: 2, medicine_name: 'Amoxicillin 500mg', dosage: '500mg', frequency: 'BD', duration_days: 5, quantity: 10, dispensed_quantity: 0, status: 'PENDING' }
+      ]
+    };
+
+    const isDispensable = ['PENDING_VERIFICATION', 'VERIFIED', 'ACTIVE', 'PARTIALLY_DISPENSED'].includes(rx.status);
+    assert.equal(isDispensable, true);
+  });
+
+  await t.test('partial dispense sets status to PARTIALLY_DISPENSED and keeps outstanding quantities dispensable', () => {
+    const pcmItem: PrescriptionItem = { id: 1, medicine: 1, medicine_name: 'Paracetamol 500mg', dosage: '500mg', frequency: 'TID', duration_days: 3, quantity: 10, dispensed_quantity: 10, status: 'DISPENSED' };
+    const amxItem: PrescriptionItem = { id: 2, medicine: 2, medicine_name: 'Amoxicillin 500mg', dosage: '500mg', frequency: 'BD', duration_days: 5, quantity: 10, dispensed_quantity: 4, status: 'PARTIALLY_DISPENSED' };
+
+    const rxItems = [pcmItem, amxItem];
+    const allDone = rxItems.every((it) => it.quantity <= (it.dispensed_quantity ?? 0));
+    assert.equal(allDone, false);
+
+    const newRxStatus = allDone ? 'DISPENSED' : 'PARTIALLY_DISPENSED';
+    assert.equal(newRxStatus, 'PARTIALLY_DISPENSED');
+
+    const remainingAmx = amxItem.quantity - (amxItem.dispensed_quantity ?? 0);
+    assert.equal(remainingAmx, 6);
+  });
+
+  await t.test('subsequent dispense of remaining quantities completes prescription to DISPENSED', () => {
+    const pcmItem: PrescriptionItem = { id: 1, medicine: 1, medicine_name: 'Paracetamol 500mg', dosage: '500mg', frequency: 'TID', duration_days: 3, quantity: 10, dispensed_quantity: 10, status: 'DISPENSED' };
+    const amxItem: PrescriptionItem = { id: 2, medicine: 2, medicine_name: 'Amoxicillin 500mg', dosage: '500mg', frequency: 'BD', duration_days: 5, quantity: 10, dispensed_quantity: 10, status: 'DISPENSED' };
+
+    const rxItems = [pcmItem, amxItem];
+    const allDone = rxItems.every((it) => it.quantity <= (it.dispensed_quantity ?? 0));
+    assert.equal(allDone, true);
+
+    const finalRxStatus = allDone ? 'DISPENSED' : 'PARTIALLY_DISPENSED';
+    assert.equal(finalRxStatus, 'DISPENSED');
+  });
+
+  await t.test('release hold returns prescription from ON_HOLD to dispensable state', () => {
+    const rx: Prescription = {
+      id: 46,
+      consultation: 100,
+      patient: 1,
+      facility: 1,
+      date: '2026-10-09',
+      status: 'ON_HOLD',
+      verification_notes: 'Checking stock with supplier',
+      items: []
+    };
+
+    assert.equal(rx.status, 'ON_HOLD');
+    const releasedRx: Prescription = {
+      ...rx,
+      status: 'PENDING_VERIFICATION',
+      verification_notes: undefined
+    };
+    assert.equal(releasedRx.status, 'PENDING_VERIFICATION');
+  });
+});

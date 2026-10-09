@@ -22,9 +22,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import {
   getPrescriptions,
-  verifyPrescription,
   holdPrescription,
-  rejectPrescription,
+  releaseHoldPrescription,
   getMedicineBatches,
   createDispensation,
   getInventoryLedger,
@@ -61,7 +60,7 @@ export const Pharmacy: React.FC = () => {
   // Selection & Queue State
   const [selectedRxId, setSelectedRxId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  type StatusFilter = 'ALL' | 'PENDING_VERIFICATION' | 'VERIFIED' | 'ON_HOLD' | 'DISPENSED' | 'REJECTED';
+  type StatusFilter = 'ALL' | 'PENDING' | 'PARTIALLY_DISPENSED' | 'ON_HOLD' | 'DISPENSED';
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
   // UI State
@@ -70,13 +69,9 @@ export const Pharmacy: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Verification / Hold / Reject Modal State
-  const [verifying, setVerifying] = useState<boolean>(false);
-  const [verificationNotes, setVerificationNotes] = useState<string>('');
+  // Hold Modal State
   const [holding, setHolding] = useState<boolean>(false);
   const [holdNotes, setHoldNotes] = useState<string>('');
-  const [rejecting, setRejecting] = useState<boolean>(false);
-  const [rejectionReason, setRejectionReason] = useState<string>('');
   const [actionInProgress, setActionInProgress] = useState<boolean>(false);
 
   // Dispensing Form State: Map of prescription_item_id -> { batch_id, quantity }
@@ -149,7 +144,12 @@ export const Pharmacy: React.FC = () => {
 
   // Filtered Queue
   const filteredPrescriptions = prescriptions.filter((rx) => {
-    const matchesStatus = statusFilter === 'ALL' || rx.status === statusFilter;
+    const matchesStatus =
+      statusFilter === 'ALL'
+        ? true
+        : statusFilter === 'PENDING'
+        ? rx.status === 'PENDING_VERIFICATION' || rx.status === 'VERIFIED' || rx.status === 'ACTIVE'
+        : rx.status === statusFilter;
     if (!matchesStatus) return false;
 
     if (!searchQuery.trim()) return true;
@@ -179,9 +179,20 @@ export const Pharmacy: React.FC = () => {
       .sort((a, b) => a.expiry_date.localeCompare(b.expiry_date));
   }, [batches, activeFacility, todayStr]);
 
-  // Pre-populate FEFO allocations when a verified prescription is selected
+  // Pre-populate FEFO allocations when a dispensable prescription is selected
   useEffect(() => {
-    if (!selectedRx || (selectedRx.status !== 'VERIFIED' && selectedRx.status !== 'PARTIALLY_DISPENSED')) {
+    if (!selectedRx) {
+      setAllocations({});
+      return;
+    }
+    const isDispensable =
+      selectedRx.status === 'PENDING_VERIFICATION' ||
+      selectedRx.status === 'VERIFIED' ||
+      selectedRx.status === 'ACTIVE' ||
+      selectedRx.status === 'PARTIALLY_DISPENSED';
+
+    if (!isDispensable) {
+      setAllocations({});
       return;
     }
 
@@ -203,26 +214,7 @@ export const Pharmacy: React.FC = () => {
     setAllocations(initialAlloc);
   }, [selectedRx, getFefoBatchesForMedicine]);
 
-  // Verification Actions
-  const handleVerify = async () => {
-    if (!selectedRx) return;
-    setActionInProgress(true);
-    setError(null);
-    setSuccessMsg(null);
-
-    try {
-      const updated = await verifyPrescription(selectedRx.id, verificationNotes);
-      setSuccessMsg(`Prescription #RX-${String(updated.id).padStart(5, '0')} verified successfully! Ready for dispensing.`);
-      setVerifying(false);
-      setVerificationNotes('');
-      await loadPharmacyData(true);
-    } catch (err) {
-      setError(parseApiError(err));
-    } finally {
-      setActionInProgress(false);
-    }
-  };
-
+  // Hold & Release Actions
   const handleHold = async () => {
     if (!selectedRx) return;
     if (!holdNotes.trim()) {
@@ -234,8 +226,8 @@ export const Pharmacy: React.FC = () => {
     setSuccessMsg(null);
 
     try {
-      const updated = await holdPrescription(selectedRx.id, holdNotes);
-      setSuccessMsg(`Prescription #RX-${String(updated.id).padStart(5, '0')} placed ON HOLD for clarification.`);
+      const updated = await holdPrescription(selectedRx.id, holdNotes.trim());
+      setSuccessMsg(`Prescription #RX-${String(updated.id).padStart(5, '0')} placed ON HOLD for physician clarification.`);
       setHolding(false);
       setHoldNotes('');
       await loadPharmacyData(true);
@@ -246,22 +238,15 @@ export const Pharmacy: React.FC = () => {
     }
   };
 
-  const handleReject = async () => {
+  const handleReleaseHold = async () => {
     if (!selectedRx) return;
-    if (!rejectionReason.trim()) {
-      setError('Clinical rejection reason is required.');
-      return;
-    }
-
     setActionInProgress(true);
     setError(null);
     setSuccessMsg(null);
 
     try {
-      const updated = await rejectPrescription(selectedRx.id, rejectionReason.trim());
-      setSuccessMsg(`Prescription #RX-${String(updated.id).padStart(5, '0')} rejected.`);
-      setRejecting(false);
-      setRejectionReason('');
+      const updated = await releaseHoldPrescription(selectedRx.id);
+      setSuccessMsg(`Prescription #RX-${String(updated.id).padStart(5, '0')} released from hold. Ready for dispensing.`);
       await loadPharmacyData(true);
     } catch (err) {
       setError(parseApiError(err));
@@ -308,16 +293,27 @@ export const Pharmacy: React.FC = () => {
     }
   };
 
+  // Check whether all required quantities are allocated for full dispense
+  const isFullDispense =
+    Boolean(selectedRx) &&
+    selectedRx!.items.length > 0 &&
+    selectedRx!.items.every((it) => {
+      const remaining = it.quantity - (it.dispensed_quantity ?? 0);
+      if (remaining <= 0) return true;
+      const alloc = it.id ? allocations[it.id] : undefined;
+      return alloc && alloc.batch_id && alloc.quantity >= remaining;
+    });
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'PENDING_VERIFICATION':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">AWAITING VERIFY</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">RECEIVED</span>;
       case 'VERIFIED':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">VERIFIED</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">READY</span>;
       case 'PARTIALLY_DISPENSED':
         return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-800">PARTIAL DISPENSED</span>;
       case 'DISPENSED':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">DISPENSED</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">FULLY DISPENSED</span>;
       case 'ON_HOLD':
         return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800">ON HOLD</span>;
       case 'REJECTED':
@@ -434,7 +430,7 @@ export const Pharmacy: React.FC = () => {
 
               {/* Status Filter Tabs */}
               <div className="flex flex-wrap gap-1">
-                {(['ALL', 'PENDING_VERIFICATION', 'VERIFIED', 'ON_HOLD', 'DISPENSED', 'REJECTED'] as const).map((st) => (
+                {(['ALL', 'PENDING', 'PARTIALLY_DISPENSED', 'ON_HOLD', 'DISPENSED'] as const).map((st) => (
                   <button
                     key={st}
                     onClick={() => setStatusFilter(st)}
@@ -444,7 +440,7 @@ export const Pharmacy: React.FC = () => {
                         : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    {st === 'PENDING_VERIFICATION' ? 'VERIFY' : st === 'DISPENSED' ? 'DISPENSED' : st}
+                    {st === 'PENDING' ? 'TO DISPENSE' : st === 'PARTIALLY_DISPENSED' ? 'PARTIAL' : st === 'ON_HOLD' ? 'ON HOLD' : st}
                   </button>
                 ))}
               </div>
@@ -547,94 +543,71 @@ export const Pharmacy: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Verification & Lifecycle Status Bar */}
-                  {selectedRx.status === 'PENDING_VERIFICATION' && (
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
-                        <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span>Prescription Awaiting Pharmacist Clinical Verification</span>
-                      </div>
-                      <p className="text-[11px] text-amber-800">
-                        Separation of Duties: Before any medication may be dispensed, the authenticated Pharmacist must verify prescription suitability, dosage intervals, and contraindications.
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <button
-                          onClick={() => { setVerifying(true); setHolding(false); setRejecting(false); }}
-                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1.5"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          <span>Verify Prescription</span>
-                        </button>
-                        <button
-                          onClick={() => { setHolding(true); setVerifying(false); setRejecting(false); }}
-                          className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1.5"
-                        >
-                          <PauseCircle className="w-3.5 h-3.5" />
-                          <span>Put On Hold</span>
-                        </button>
-                        <button
-                          onClick={() => { setRejecting(true); setVerifying(false); setHolding(false); }}
-                          className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1.5"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          <span>Reject Prescription</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
+                  {/* Dispensing Lifecycle Status Bar */}
                   {selectedRx.status === 'ON_HOLD' && (
                     <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-bold text-orange-900">
-                        <PauseCircle className="w-4 h-4 text-orange-600 shrink-0" />
-                        <span>Prescription is ON HOLD</span>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-xs font-bold text-orange-900">
+                          <PauseCircle className="w-4 h-4 text-orange-600 shrink-0" />
+                          <span>Prescription is ON HOLD</span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={actionInProgress}
+                          onClick={handleReleaseHold}
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>{actionInProgress ? 'Releasing...' : 'Release Hold & Resume Dispensing'}</span>
+                        </button>
                       </div>
                       <p className="text-xs text-orange-800">
-                        Notes: {selectedRx.verification_notes || 'Awaiting physician clarification.'}
+                        Hold Reason / Notes: <strong>{selectedRx.verification_notes || 'Awaiting physician clarification.'}</strong>
                       </p>
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          onClick={() => { setVerifying(true); setRejecting(false); }}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          <span>Release & Verify</span>
-                        </button>
-                        <button
-                          onClick={() => { setRejecting(true); setVerifying(false); }}
-                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          <span>Reject</span>
-                        </button>
-                      </div>
                     </div>
                   )}
 
-                  {selectedRx.status === 'REJECTED' && (
-                    <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-1 text-xs text-rose-900">
-                      <div className="flex items-center gap-2 font-bold">
-                        <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                        <span>Prescription Rejected by Pharmacist</span>
+                  {selectedRx.status === 'PARTIALLY_DISPENSED' && (
+                    <div className="p-4 bg-cyan-50 border border-cyan-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-cyan-900">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 font-bold text-cyan-900">
+                          <Clock className="w-4 h-4 text-cyan-600 shrink-0" />
+                          <span>Prescription Status: PARTIALLY DISPENSED</span>
+                        </div>
+                        <p className="text-[11px] text-cyan-800">
+                          Portion of medication dispensed. Review FEFO batches below to dispense remaining quantities as stock allows.
+                        </p>
                       </div>
-                      <p className="text-[11px] text-rose-800">
-                        Mandatory Reason: <strong>{selectedRx.rejection_reason || 'Clinical contradiction'}</strong>
-                      </p>
-                      <div className="text-[10px] text-slate-500 font-mono">
-                        Verified by Staff #{selectedRx.verified_by || 'Pharmacist'} on {selectedRx.verified_at || 'Recorded'}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setHolding(true)}
+                        className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
+                      >
+                        <PauseCircle className="w-3.5 h-3.5" />
+                        <span>Put On Hold</span>
+                      </button>
                     </div>
                   )}
 
-                  {(selectedRx.status === 'VERIFIED' || selectedRx.status === 'PARTIALLY_DISPENSED') && (
-                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">
-                      <div className="flex items-center gap-2 font-medium">
-                        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>Prescription Verified & Approved for FEFO Dispensing</span>
+                  {(selectedRx.status === 'PENDING_VERIFICATION' || selectedRx.status === 'VERIFIED' || selectedRx.status === 'ACTIVE') && (
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-800">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 font-bold text-slate-900">
+                          <Pill className="w-4 h-4 text-teal-600 shrink-0" />
+                          <span>Prescription Received — Review & Dispense Available Stock</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600">
+                          Review doctor's directions and FEFO stock allocations below. You can dispense all available items or partially dispense as stock permits.
+                        </p>
                       </div>
-                      <div className="text-[11px] text-emerald-700 font-mono">
-                        Verified by Staff #{selectedRx.verified_by || 'Pharmacist'}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setHolding(true)}
+                        className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
+                      >
+                        <PauseCircle className="w-3.5 h-3.5" />
+                        <span>Put On Hold</span>
+                      </button>
                     </div>
                   )}
 
@@ -642,51 +615,21 @@ export const Pharmacy: React.FC = () => {
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-900">
                       <div className="flex items-center gap-2 font-medium">
                         <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
-                        <span>All prescribed medications fully dispensed & ledgered.</span>
+                        <span>All prescribed medications fully dispensed & inventory ledger updated.</span>
                       </div>
                       <span className="font-bold text-blue-800 text-[11px]">Completed</span>
                     </div>
                   )}
 
-                  {/* Verification Modal / Inline Form */}
-                  {verifying && (
-                    <div className="p-4 bg-slate-50 border border-emerald-300 rounded-xl space-y-3">
-                      <div className="flex items-center justify-between text-xs font-bold text-slate-900">
-                        <span className="flex items-center gap-1.5 text-emerald-800">
-                          <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                          Confirm Pharmacist Clinical Verification
-                        </span>
-                        <button onClick={() => setVerifying(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
+                  {selectedRx.status === 'REJECTED' && (
+                    <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-1 text-xs text-rose-900">
+                      <div className="flex items-center gap-2 font-bold">
+                        <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>Prescription Cancelled / Rejected</span>
                       </div>
-                      <div>
-                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                          Clinical Verification Notes (Optional):
-                        </label>
-                        <input
-                          type="text"
-                          value={verificationNotes}
-                          onChange={(e) => setVerificationNotes(e.target.value)}
-                          placeholder="e.g. Dose and frequency verified against clinical indication..."
-                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                        />
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setVerifying(false)}
-                          className="px-3 py-1.5 border border-slate-300 text-slate-700 font-bold text-xs rounded-lg hover:bg-slate-100 cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          disabled={actionInProgress}
-                          onClick={handleVerify}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition cursor-pointer"
-                        >
-                          {actionInProgress ? 'Verifying...' : 'Approve & Verify (Status: VERIFIED)'}
-                        </button>
-                      </div>
+                      <p className="text-[11px] text-rose-800">
+                        Reason: <strong>{selectedRx.rejection_reason || 'Clinical contradiction'}</strong>
+                      </p>
                     </div>
                   )}
 
@@ -708,7 +651,7 @@ export const Pharmacy: React.FC = () => {
                           type="text"
                           value={holdNotes}
                           onChange={(e) => setHoldNotes(e.target.value)}
-                          placeholder="e.g. Clarifying allergy contraindication with ordering physician..."
+                          placeholder="e.g. Stock shortage / clarifying dosage with physician..."
                           className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
                         />
                       </div>
@@ -727,48 +670,6 @@ export const Pharmacy: React.FC = () => {
                           className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition cursor-pointer"
                         >
                           {actionInProgress ? 'Updating...' : 'Put On Hold'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Reject Modal / Inline Form */}
-                  {rejecting && (
-                    <div className="p-4 bg-slate-50 border border-rose-300 rounded-xl space-y-3">
-                      <div className="flex items-center justify-between text-xs font-bold text-slate-900">
-                        <span className="flex items-center gap-1.5 text-rose-800">
-                          <XCircle className="w-4 h-4 text-rose-600" />
-                          Reject Prescription
-                        </span>
-                        <button onClick={() => setRejecting(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
-                      </div>
-                      <div>
-                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                          Mandatory Rejection Reason: <span className="text-rose-600">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={rejectionReason}
-                          onChange={(e) => setRejectionReason(e.target.value)}
-                          placeholder="e.g. Prescribed dosage exceeds maximum safe physiological limits..."
-                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                        />
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setRejecting(false)}
-                          className="px-3 py-1.5 border border-slate-300 text-slate-700 font-bold text-xs rounded-lg hover:bg-slate-100 cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          disabled={actionInProgress || !rejectionReason.trim()}
-                          onClick={handleReject}
-                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition cursor-pointer disabled:opacity-50"
-                        >
-                          {actionInProgress ? 'Rejecting...' : 'Confirm Rejection (Status: REJECTED)'}
                         </button>
                       </div>
                     </div>
@@ -851,10 +752,10 @@ export const Pharmacy: React.FC = () => {
                           {/* Allocation Controls if remaining > 0 */}
                           {!isComplete && (
                             <div className="pt-3 space-y-2">
-                              {selectedRx.status !== 'VERIFIED' && selectedRx.status !== 'PARTIALLY_DISPENSED' ? (
+                              {selectedRx.status === 'ON_HOLD' ? (
                                 <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-center gap-2">
-                                  <Info className="w-4 h-4 text-amber-600 shrink-0" />
-                                  <span>Prescription verification required before batch allocation and dispensing.</span>
+                                  <PauseCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                                  <span>Prescription is ON HOLD. Please release hold to allocate stock and dispense.</span>
                                 </div>
                               ) : fefoBatches.length === 0 ? (
                                 <div className="text-xs text-rose-800 bg-rose-50 p-2.5 rounded-lg border border-rose-200 flex items-center gap-2">
@@ -930,19 +831,46 @@ export const Pharmacy: React.FC = () => {
                   </div>
 
                   {/* Execute Dispensation Action Button */}
-                  {(selectedRx.status === 'VERIFIED' || selectedRx.status === 'PARTIALLY_DISPENSED') && (
+                  {selectedRx.status !== 'DISPENSED' && selectedRx.status !== 'ON_HOLD' && selectedRx.status !== 'REJECTED' && (
                     <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="text-xs text-slate-500 font-medium">
-                        Stock deduction will be posted atomically to <strong className="text-slate-700">InventoryLedger</strong>.
+                      <div className="text-xs space-y-0.5">
+                        <div className="font-semibold text-slate-700">
+                          {isFullDispense ? (
+                            <span className="text-teal-700 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-4 h-4 text-teal-600" />
+                              Full Dispense: All remaining prescribed medicines allocated
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 flex items-center gap-1.5">
+                              <Clock className="w-4 h-4 text-amber-600" />
+                              Partial Dispense: Outstanding balance will remain active for later dispensing
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-medium">
+                          Stock deduction will decrement ONLY the dispensed quantity and be posted atomically to <strong className="text-slate-700">InventoryLedger</strong>.
+                        </div>
                       </div>
                       <button
                         type="button"
-                        disabled={dispensing || Object.keys(allocations).length === 0}
+                        disabled={
+                          dispensing ||
+                          Object.keys(allocations).length === 0 ||
+                          Object.values(allocations).every((a) => (a.quantity || 0) <= 0)
+                        }
                         onClick={handleExecuteDispensation}
-                        className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                        className={`px-5 py-2.5 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 ${
+                          isFullDispense ? 'bg-teal-600 hover:bg-teal-700' : 'bg-amber-600 hover:bg-amber-700'
+                        }`}
                       >
                         <PackageCheck className="w-4 h-4" />
-                        <span>{dispensing ? 'Recording Dispensation...' : 'Confirm & Execute Dispensation'}</span>
+                        <span>
+                          {dispensing
+                            ? 'Recording Dispensation...'
+                            : isFullDispense
+                            ? 'Dispense Medications (Fully Dispensed)'
+                            : 'Dispense Available Medicines (Partial Dispense)'}
+                        </span>
                       </button>
                     </div>
                   )}

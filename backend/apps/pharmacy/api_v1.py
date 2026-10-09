@@ -188,58 +188,71 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        from django.db import transaction
         staff = get_request_staff(self.request)
         fac = serializer.validated_data['facility']
         check_facility_permission(fac, staff, self.request.user)
 
         from apps.facilities.models import FacilityService
-        if not FacilityService.objects.filter(facility=fac, service__code='SRV_PHARMACY', is_available=True).exists():
-            raise exceptions.ValidationError({'service': 'Pharmacy & Dispensing Services (SRV_PHARMACY) is currently unavailable or disabled at this facility.'})
+        if FacilityService.objects.filter(facility=fac, service__code='SRV_PHARMACY', is_available=False).exists():
+            raise serializers.ValidationError({'service': 'Pharmacy & Dispensing Services (SRV_PHARMACY) is currently disabled at this facility.'})
+        if FacilityService.objects.filter(facility=fac).exists() and not FacilityService.objects.filter(facility=fac, service__code='SRV_PHARMACY', is_available=True).exists():
+            raise serializers.ValidationError({'service': 'Pharmacy & Dispensing Services (SRV_PHARMACY) is not offered at this facility.'})
 
-        rx = serializer.save(doctor=self.request.user, doctor_staff=staff)
-        items_data = self.request.data.get('items', [])
-        if items_data:
-            from apps.pharmacy.models import MedicineMaster
-            from apps.consultations.models import PrescriptionItem
-            for itm in items_data:
-                med_id = itm.get('medicine') or itm.get('medicine_id')
-                med = MedicineMaster.objects.get(pk=med_id)
-                PrescriptionItem.objects.create(
-                    prescription=rx,
-                    medicine=med,
-                    medicine_name=itm.get('medicine_name', med.generic_name),
-                    dosage=itm.get('dosage', '500mg'),
-                    frequency=itm.get('frequency', 'TDS'),
-                    duration_days=int(itm.get('duration_days', 3)),
-                    quantity=int(itm.get('quantity', 10)),
-                    status='PENDING'
-                )
-        elif not rx.items.exists():
-            from apps.pharmacy.models import MedicineMaster, MedicineBatch
-            matched_batch = MedicineBatch.objects.filter(
-                facility=fac,
-                status='AVAILABLE',
-                available_quantity__gt=0,
-                medicine__generic_name__icontains='Paracetamol'
-            ).order_by('expiry_date').first()
-            if not matched_batch:
-                matched_batch = MedicineBatch.objects.filter(
-                    facility=fac,
-                    status='AVAILABLE',
-                    available_quantity__gt=0
-                ).order_by('expiry_date').first()
-            if matched_batch:
-                matched_med = matched_batch.medicine
-                PrescriptionItem.objects.create(
-                    prescription=rx,
-                    medicine=matched_med,
-                    medicine_name=matched_med.generic_name,
-                    dosage='500mg',
-                    frequency='TDS',
-                    duration_days=3,
-                    quantity=10,
-                    status='PENDING'
-                )
+        with transaction.atomic():
+            rx = serializer.save(doctor=self.request.user, doctor_staff=staff)
+            items_data = self.request.data.get('items', [])
+            if items_data:
+                from apps.pharmacy.models import MedicineMaster
+                for itm in items_data:
+                    med_id = itm.get('medicine') or itm.get('medicine_id')
+                    med = None
+                    if med_id:
+                        med = MedicineMaster.objects.filter(pk=med_id).first()
+                    elif itm.get('medicine_name'):
+                        med = MedicineMaster.objects.filter(generic_name__iexact=itm.get('medicine_name')).first()
+                    med_name = itm.get('medicine_name') or (med.generic_name if med else 'Prescribed Medicine')
+                    PrescriptionItem.objects.create(
+                        prescription=rx,
+                        medicine=med,
+                        medicine_name=med_name,
+                        dosage=itm.get('dosage') or '1-0-1 After Food',
+                        frequency=itm.get('frequency') or 'Twice Daily',
+                        duration_days=int(itm.get('duration_days') or 5),
+                        quantity=int(itm.get('quantity') or 10),
+                        dispensed_quantity=0,
+                        status='PENDING'
+                    )
+            elif not rx.items.exists():
+                from apps.pharmacy.models import MedicineMaster, MedicineBatch
+                notes_lower = (rx.notes or '').lower()
+                matched_batch = None
+                if 'paracetamol' in notes_lower or 'fever' in notes_lower or 'pain' in notes_lower:
+                    matched_batch = MedicineBatch.objects.filter(
+                        facility=fac,
+                        status='AVAILABLE',
+                        available_quantity__gt=0,
+                        medicine__generic_name__icontains='Paracetamol'
+                    ).order_by('expiry_date').first()
+                if not matched_batch:
+                    matched_batch = MedicineBatch.objects.filter(
+                        facility=fac,
+                        status='AVAILABLE',
+                        available_quantity__gt=0
+                    ).order_by('expiry_date').first()
+                if matched_batch:
+                    matched_med = matched_batch.medicine
+                    PrescriptionItem.objects.create(
+                        prescription=rx,
+                        medicine=matched_med,
+                        medicine_name=matched_med.generic_name,
+                        dosage='500mg',
+                        frequency='TDS',
+                        duration_days=3,
+                        quantity=10,
+                        dispensed_quantity=0,
+                        status='PENDING'
+                    )
 
     @action(detail=True, methods=['post'], url_path='verify')
     def verify(self, request, pk=None):
@@ -248,12 +261,11 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         staff = get_request_staff(request)
         check_facility_permission(prescription.facility, staff, request.user)
 
-        from apps.accounts.permissions import get_user_active_role_codes
-        active_roles = get_user_active_role_codes(request.user)
         is_pharm = (
             request.user.is_superuser or
-            'PHARMACIST' in active_roles or
-            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist']
+            getattr(request.user, 'role', '') == 'PHARMACIST' or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
+            staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists()
         )
         if not is_pharm:
             return Response({'error': 'Only pharmacists are authorized to verify prescriptions.'}, status=status.HTTP_403_FORBIDDEN)
@@ -274,12 +286,11 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         staff = get_request_staff(request)
         check_facility_permission(prescription.facility, staff, request.user)
 
-        from apps.accounts.permissions import get_user_active_role_codes
-        active_roles = get_user_active_role_codes(request.user)
         is_pharm = (
             request.user.is_superuser or
-            'PHARMACIST' in active_roles or
-            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist']
+            getattr(request.user, 'role', '') == 'PHARMACIST' or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
+            staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists()
         )
         if not is_pharm:
             return Response({'error': 'Only pharmacists are authorized to place prescriptions on hold.'}, status=status.HTTP_403_FORBIDDEN)
@@ -296,6 +307,36 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         prescription.save(update_fields=['status', 'verification_notes'])
         return Response(self.get_serializer(prescription).data)
 
+    @action(detail=True, methods=['post'], url_path='release-hold')
+    def release_hold(self, request, pk=None):
+        prescription = self.get_object()
+        staff = get_request_staff(request)
+        check_facility_permission(prescription.facility, staff, request.user)
+
+        from apps.accounts.permissions import get_user_active_role_codes
+        active_roles = get_user_active_role_codes(request.user)
+        is_pharm = (
+            request.user.is_superuser or
+            'PHARMACIST' in active_roles or
+            getattr(request.user, 'role', '') == 'PHARMACIST' or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
+            (staff and staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists())
+        )
+        if not is_pharm:
+            return Response({'error': 'Only pharmacists are authorized to release prescriptions from hold.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if prescription.status != 'ON_HOLD':
+            return Response({'error': f"Prescription #{prescription.id} is not on hold (current: {prescription.status})."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if prescription.items.filter(dispensed_quantity__gt=0).exists():
+            prescription.status = 'PARTIALLY_DISPENSED'
+        else:
+            prescription.status = 'PENDING_VERIFICATION'
+
+        prescription.verification_notes = request.data.get('notes', 'Hold cleared by pharmacist')
+        prescription.save(update_fields=['status', 'verification_notes'])
+        return Response(self.get_serializer(prescription).data)
+
     @action(detail=True, methods=['post'], url_path='reject')
     def reject(self, request, pk=None):
         from django.utils import timezone
@@ -308,7 +349,9 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         is_pharm = (
             request.user.is_superuser or
             'PHARMACIST' in active_roles or
-            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist']
+            getattr(request.user, 'role', '') == 'PHARMACIST' or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
+            (staff and staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists())
         )
         if not is_pharm:
             return Response({'error': 'Only pharmacists are authorized to reject prescriptions.'}, status=status.HTTP_403_FORBIDDEN)
@@ -348,12 +391,14 @@ class DispensationViewSet(viewsets.ModelViewSet):
         is_pharm = (
             request.user.is_superuser or
             'PHARMACIST' in active_roles or
-            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist']
+            getattr(request.user, 'role', '') == 'PHARMACIST' or
+            getattr(staff, 'designation', '') in ['Pharmacist', 'Chief Pharmacist'] or
+            (staff and staff.role_assignments.filter(role__code='PHARMACIST', is_active=True).exists())
         )
         if not is_pharm:
             return Response({'error': 'Only pharmacists are authorized to dispense medications.'}, status=status.HTTP_403_FORBIDDEN)
 
-        from apps.facilities.models import Facility
+        from apps.facilities.models import Facility, FacilityService
         prescription_id = serializer.validated_data['prescription_id']
         facility_id = serializer.validated_data['facility_id']
 
@@ -368,13 +413,14 @@ class DispensationViewSet(viewsets.ModelViewSet):
             return Response({'error': f"Facility #{facility_id} does not exist."}, status=status.HTTP_404_NOT_FOUND)
 
         check_facility_permission(fac, staff, request.user)
-
-        from apps.facilities.models import FacilityService
-        if not FacilityService.objects.filter(facility=fac, service__code='SRV_PHARMACY', is_available=True).exists():
-            return Response({'error': 'Pharmacy & Dispensing Services (SRV_PHARMACY) is currently unavailable or disabled at this facility.'}, status=status.HTTP_400_BAD_REQUEST)
         check_facility_permission(rx.facility, staff, request.user)
         if rx.facility_id != fac.id:
             return Response({'error': 'Prescription does not belong to the specified facility scope.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if FacilityService.objects.filter(facility=fac, service__code='SRV_PHARMACY', is_available=False).exists():
+            return Response({'error': 'Pharmacy & Dispensing Services (SRV_PHARMACY) is currently disabled at this facility.'}, status=status.HTTP_400_BAD_REQUEST)
+        if FacilityService.objects.filter(facility=fac).exists() and not FacilityService.objects.filter(facility=fac, service__code='SRV_PHARMACY', is_available=True).exists():
+            return Response({'error': 'Pharmacy & Dispensing Services (SRV_PHARMACY) is not offered at this facility.'}, status=status.HTTP_400_BAD_REQUEST)
 
         allocations = []
         for itm in serializer.validated_data['items']:
@@ -398,12 +444,19 @@ class DispensationViewSet(viewsets.ModelViewSet):
                 "quantity": itm['quantity']
             })
 
-        dispensation = dispense_prescription(
-            prescription=rx,
-            items_to_dispense=allocations,
-            dispensing_staff=staff,
-            facility=fac
-        )
+        from apps.common.exceptions import DomainValidationError, InsufficientStockError
+        try:
+            dispensation = dispense_prescription(
+                prescription=rx,
+                items_to_dispense=allocations,
+                dispensing_staff=staff,
+                facility=fac
+            )
+        except DomainValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except InsufficientStockError as e:
+            return Response({'error': str(e)}, status=status.HTTP_409_CONFLICT)
+
         return Response(self.get_serializer(dispensation).data, status=status.HTTP_201_CREATED)
 
 class InventoryLedgerViewSet(viewsets.ReadOnlyModelViewSet):
@@ -555,12 +608,11 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         check_facility_permission(po.facility, staff, request.user)
 
         from apps.accounts.permissions import has_role_permission
-        from apps.accounts.permissions import get_user_active_role_codes
-        active_roles = get_user_active_role_codes(request.user)
         can_approve = (
             request.user.is_superuser or
             has_role_permission(request.user, 'purchase_order.approve') or
-            bool(active_roles.intersection({'HOSPITAL_ADMIN', 'DISTRICT_OFFICER'}))
+            getattr(request.user, 'role', '') in ['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'] or
+            (staff and staff.role_assignments.filter(role__code__in=['HOSPITAL_ADMIN', 'DISTRICT_OFFICER'], is_active=True).exists())
         )
         if not can_approve:
             return Response({'error': 'Only users with purchase_order.approve permission can approve purchase orders.'}, status=status.HTTP_403_FORBIDDEN)

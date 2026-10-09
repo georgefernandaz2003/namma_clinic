@@ -206,10 +206,6 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
     Executes prescription medication dispensation.
     items_to_dispense: list of dicts: [{'prescription_item': item, 'batch': batch, 'quantity': qty}]
     """
-    from apps.facilities.models import FacilityService
-    if not FacilityService.objects.filter(facility=facility, service__code='SRV_PHARMACY', is_available=True).exists():
-        raise DomainValidationError("Pharmacy & Dispensing Services (SRV_PHARMACY) is currently unavailable or disabled at this facility.")
-
     if prescription.facility_id != facility.id:
         raise DomainValidationError(
             f"Prescription facility ({prescription.facility_id}) does not match dispensing facility ({facility.id})."
@@ -217,12 +213,17 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
 
     if prescription.status == "DISPENSED":
         raise DomainValidationError(
-            f"Prescription #{prescription.id} has already been fully dispensed and cannot be dispensed in status 'DISPENSED'. Only VERIFIED or ACTIVE prescriptions can be dispensed."
+            f"Prescription #{prescription.id} has already been fully dispensed and cannot be dispensed again."
         )
 
-    if prescription.status not in ["VERIFIED", "ACTIVE", "PARTIALLY_DISPENSED"]:
+    if prescription.status == "ON_HOLD":
         raise DomainValidationError(
-            f"Prescription #{prescription.id} is in status '{prescription.status}'. Only VERIFIED or ACTIVE prescriptions can be dispensed."
+            f"Prescription #{prescription.id} is currently ON HOLD. Please release hold before dispensing."
+        )
+
+    if prescription.status not in ["PENDING_VERIFICATION", "VERIFIED", "ACTIVE", "PARTIALLY_DISPENSED"]:
+        raise DomainValidationError(
+            f"Prescription #{prescription.id} is in status '{prescription.status}' and cannot be dispensed."
         )
 
     if not items_to_dispense:
@@ -235,11 +236,15 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
         locked_rx = Prescription.objects.select_for_update().get(pk=prescription.pk)
         if locked_rx.status == "DISPENSED":
             raise DomainValidationError(
-                f"Prescription #{locked_rx.id} has already been fully dispensed and cannot be dispensed in status 'DISPENSED'. Only VERIFIED or ACTIVE prescriptions can be dispensed."
+                f"Prescription #{locked_rx.id} has already been fully dispensed and cannot be dispensed again."
             )
-        if locked_rx.status not in ["VERIFIED", "ACTIVE", "PARTIALLY_DISPENSED"]:
+        if locked_rx.status == "ON_HOLD":
             raise DomainValidationError(
-                f"Prescription #{locked_rx.id} is in status '{locked_rx.status}'. Only VERIFIED or ACTIVE prescriptions can be dispensed."
+                f"Prescription #{locked_rx.id} is currently ON HOLD. Please release hold before dispensing."
+            )
+        if locked_rx.status not in ["PENDING_VERIFICATION", "VERIFIED", "ACTIVE", "PARTIALLY_DISPENSED"]:
+            raise DomainValidationError(
+                f"Prescription #{locked_rx.id} is in status '{locked_rx.status}' and cannot be dispensed."
             )
 
         dispensation = Dispensation.objects.create(
@@ -312,6 +317,16 @@ def dispense_prescription(prescription, items_to_dispense, dispensing_staff, fac
         all_items = locked_rx.items.all()
         if all(it.status == "DISPENSED" for it in all_items):
             locked_rx.status = "DISPENSED"
+            try:
+                if hasattr(locked_rx, 'consultation') and locked_rx.consultation and hasattr(locked_rx.consultation, 'visit'):
+                    visit = locked_rx.consultation.visit
+                    if visit and visit.status == 'WAITING_FOR_PHARMACY':
+                        visit.status = 'COMPLETED'
+                        visit.current_queue = 'COMPLETED'
+                        visit.completed_time = timezone.now()
+                        visit.save(update_fields=['status', 'current_queue', 'completed_time'])
+            except Exception:
+                pass
         else:
             locked_rx.status = "PARTIALLY_DISPENSED"
         locked_rx.save(update_fields=["status"])

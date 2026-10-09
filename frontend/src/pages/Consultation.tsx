@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -41,7 +41,7 @@ import TriageReviewCard from '../components/clinical/TriageReviewCard';
 import ConsultationHistoryCard from '../components/clinical/ConsultationHistoryCard';
 import ConsultationFormCard from '../components/clinical/ConsultationFormCard';
 import DiagnosticOrderCard from '../components/clinical/DiagnosticOrderCard';
-import PrescriptionCard from '../components/clinical/PrescriptionCard';
+import PrescriptionCard, { type RxItemInput } from '../components/clinical/PrescriptionCard';
 import ReferralFollowUpCard from '../components/clinical/ReferralFollowUpCard';
 import { Stethoscope, ArrowLeft, CheckCircle2, Save } from 'lucide-react';
 
@@ -89,6 +89,7 @@ export const Consultation: React.FC = () => {
   const [prescriptionNotes, setPrescriptionNotes] = useState<string>('');
   const [selectedMedicineId, setSelectedMedicineId] = useState<number | ''>('');
   const [dosageInstructions, setDosageInstructions] = useState<string>('1-0-1 After Food for 5 days');
+  const [prescriptionItems, setPrescriptionItems] = useState<RxItemInput[]>([]);
 
   const [orderReferral, setOrderReferral] = useState<boolean>(false);
   const [destFacilityId, setDestFacilityId] = useState<number | ''>('');
@@ -251,12 +252,20 @@ export const Consultation: React.FC = () => {
       }
 
       let rxCreated = false;
-      if (orderPrescription && prescriptionNotes.trim()) {
+      if (orderPrescription && (prescriptionNotes.trim() || prescriptionItems.length > 0)) {
         await createPrescription({
           consultation: consultation.id,
           patient: patient.id,
           facility: facilityId,
-          notes: prescriptionNotes.trim()
+          notes: prescriptionNotes.trim() || 'Prescribed medications.',
+          items: prescriptionItems.map((it) => ({
+            medicine_id: it.medicine_id,
+            medicine_name: it.medicine_name,
+            dosage: it.dosage,
+            frequency: it.frequency,
+            duration_days: it.duration_days,
+            quantity: it.quantity
+          }))
         });
         rxCreated = true;
       }
@@ -413,6 +422,8 @@ export const Consultation: React.FC = () => {
             dosageInstructions={dosageInstructions}
             setDosageInstructions={setDosageInstructions}
             medicines={medicines}
+            prescriptionItems={prescriptionItems}
+            setPrescriptionItems={setPrescriptionItems}
           />
           <ReferralFollowUpCard
             visit={visit}

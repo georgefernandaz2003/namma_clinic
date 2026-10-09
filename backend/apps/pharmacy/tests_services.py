@@ -115,3 +115,93 @@ class PharmacyInventoryProcurementDomainTests(DomainServiceBaseTestCase):
         self.assertEqual(InventoryLedger.objects.count(), initial_ledger_count)
         po.refresh_from_db()
         self.assertEqual(po.status, "APPROVED")
+
+    def test_partial_dispensing_workflow_and_ledger_accuracy(self):
+        """
+        Verify partial dispensing workflow:
+        1. Prescription with 2 items (10 PCM, 10 AMOX) in PENDING_VERIFICATION can be directly dispensed.
+        2. Partial dispense of 10 PCM and 4 AMOX transitions Rx to PARTIALLY_DISPENSED.
+        3. Ledger decrements exactly 10 and 4.
+        4. Dispensing while ON_HOLD is blocked.
+        5. Dispensing remaining 6 AMOX completes prescription to DISPENSED.
+        """
+        rx = Prescription.objects.create(
+            consultation=self.consultation, patient=self.patient, facility=self.clinic_a, status="PENDING_VERIFICATION"
+        )
+        item1 = PrescriptionItem.objects.create(
+            prescription=rx, medicine=self.med_paracetamol, medicine_name="Paracetamol 500mg",
+            quantity=10, dispensed_quantity=0, status="PENDING"
+        )
+        item2 = PrescriptionItem.objects.create(
+            prescription=rx, medicine=self.med_amox, medicine_name="Amoxicillin 250mg",
+            quantity=10, dispensed_quantity=0, status="PENDING"
+        )
+
+        initial_para_avail = self.batch_para.available_quantity
+        initial_amox_avail = self.batch_amox.available_quantity
+
+        # 1. Partial dispense: 10 PCM and 4 AMOX
+        disp1 = dispense_prescription(
+            prescription=rx,
+            items_to_dispense=[
+                {"prescription_item": item1, "batch": self.batch_para, "quantity": 10},
+                {"prescription_item": item2, "batch": self.batch_amox, "quantity": 4},
+            ],
+            dispensing_staff=self.doc_staff,
+            facility=self.clinic_a
+        )
+
+        rx.refresh_from_db()
+        item1.refresh_from_db()
+        item2.refresh_from_db()
+        self.batch_para.refresh_from_db()
+        self.batch_amox.refresh_from_db()
+
+        self.assertEqual(rx.status, "PARTIALLY_DISPENSED")
+        self.assertEqual(item1.dispensed_quantity, 10)
+        self.assertEqual(item1.status, "DISPENSED")
+        self.assertEqual(item2.dispensed_quantity, 4)
+        self.assertEqual(item2.status, "PARTIALLY_DISPENSED")
+
+        # Ledger accuracy
+        self.assertEqual(self.batch_para.available_quantity, initial_para_avail - 10)
+        self.assertEqual(self.batch_amox.available_quantity, initial_amox_avail - 4)
+
+        ledger_pcm = InventoryLedger.objects.filter(batch=self.batch_para, reference_entity_id=disp1.id).first()
+        ledger_amx = InventoryLedger.objects.filter(batch=self.batch_amox, reference_entity_id=disp1.id).first()
+        self.assertIsNotNone(ledger_pcm)
+        self.assertIsNotNone(ledger_amx)
+        self.assertEqual(ledger_pcm.quantity_delta, -10)
+        self.assertEqual(ledger_amx.quantity_delta, -4)
+
+        # 2. Block dispense when ON_HOLD
+        rx.status = "ON_HOLD"
+        rx.save(update_fields=["status"])
+        with self.assertRaises(DomainValidationError):
+            dispense_prescription(
+                prescription=rx,
+                items_to_dispense=[{"prescription_item": item2, "batch": self.batch_amox, "quantity": 6}],
+                dispensing_staff=self.doc_staff,
+                facility=self.clinic_a
+            )
+
+        # Release hold
+        rx.status = "PARTIALLY_DISPENSED"
+        rx.save(update_fields=["status"])
+
+        # 3. Subsequent dispense of remaining 6 AMOX completes the prescription
+        disp2 = dispense_prescription(
+            prescription=rx,
+            items_to_dispense=[{"prescription_item": item2, "batch": self.batch_amox, "quantity": 6}],
+            dispensing_staff=self.doc_staff,
+            facility=self.clinic_a
+        )
+
+        rx.refresh_from_db()
+        item2.refresh_from_db()
+        self.batch_amox.refresh_from_db()
+
+        self.assertEqual(rx.status, "DISPENSED")
+        self.assertEqual(item2.dispensed_quantity, 10)
+        self.assertEqual(item2.status, "DISPENSED")
+        self.assertEqual(self.batch_amox.available_quantity, initial_amox_avail - 10)

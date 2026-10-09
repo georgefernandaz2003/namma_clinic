@@ -73,11 +73,22 @@ export interface AmendDiagnosticResultPayload {
   amended_value_numeric?: number | null;
 }
 
+export interface CreatePrescriptionItemPayload {
+  medicine?: number;
+  medicine_id?: number;
+  medicine_name?: string;
+  dosage?: string;
+  frequency?: string;
+  duration_days?: number;
+  quantity?: number;
+}
+
 export interface CreatePrescriptionPayload {
   consultation: number;
   patient: number;
   facility: number;
   notes: string;
+  items?: CreatePrescriptionItemPayload[];
 }
 
 export interface CreateReferralOrderPayload {
@@ -263,6 +274,11 @@ export const verifyPrescription = async (id: number, notes?: string): Promise<Pr
 
 export const holdPrescription = async (id: number, notes?: string): Promise<Prescription> => {
   const res = await apiClient.post<Prescription>(`v1/pharmacy/prescriptions/${id}/hold/`, { notes: notes || '' });
+  return res.data;
+};
+
+export const releaseHoldPrescription = async (id: number, notes?: string): Promise<Prescription> => {
+  const res = await apiClient.post<Prescription>(`v1/pharmacy/prescriptions/${id}/release-hold/`, { notes: notes || '' });
   return res.data;
 };
 
