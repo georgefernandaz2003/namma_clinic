@@ -118,7 +118,7 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
     {
       title: 'PUBLIC HEALTH & SURVEILLANCE',
       items: [
-        { name: 'Karnataka Command Center', path: '/admin/analytics', iconName: 'Activity', description: 'State-wide public health command center, disease intelligence & predictive governance' },
+        { name: 'Healthcare Dashboard', path: '/admin/analytics', iconName: 'Activity', description: 'Karnataka state-wide healthcare overview, disease trends & predictive analytics' },
         { name: 'NCD Management', path: '/ncd', iconName: 'Activity', description: 'Non-communicable disease chronic care monitoring' },
         { name: 'Disease Surveillance', path: '/surveillance', iconName: 'Radio', description: 'Outbreak signals and infectious disease tracking' },
       ],
@@ -163,10 +163,10 @@ export const ROLE_NAVIGATION_CONFIG: Record<Role, NavSection[]> = {
       title: 'PUBLIC HEALTH INTELLIGENCE',
       items: [
         {
-          name: 'Karnataka Command Center',
+          name: 'Healthcare Dashboard',
           path: '/admin/analytics',
           iconName: 'Activity',
-          description: 'State-wide public health command center, disease intelligence & predictive governance',
+          description: 'Karnataka state-wide healthcare overview, disease trends & predictive analytics',
         },
       ],
     },

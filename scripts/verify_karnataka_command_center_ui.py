@@ -20,26 +20,55 @@ with sync_playwright() as p:
     page.wait_for_url(lambda u: "/dashboard" in u or "/admin" in u, timeout=10000)
     print(f"Landed at: {page.url}")
 
-    print("2. Navigating to Karnataka Command Center (/admin/analytics)...")
+    print("2. Navigating to Healthcare Dashboard (/admin/analytics)...")
     page.goto(f"{BASE_URL}/admin/analytics")
     page.wait_for_load_state("networkidle")
     time.sleep(2)
 
-    # Verify Command Center Header
+    # Verify Simplified Header
     header_text = page.locator("h1").inner_text()
     print(f"Header Verified: {header_text}")
-    assert "KARNATAKA PUBLIC HEALTH COMMAND CENTER" in header_text
+    assert "Healthcare Dashboard" in header_text
 
-    # Screenshot 1: Command Center Overview (State-Wide Karnataka default)
-    page.screenshot(path=os.path.join(ARTIFACT_DIR, "karnataka_cc_tab1_overview.png"))
-    print("Captured: karnataka_cc_tab1_overview.png")
+    # Verify Health Overview
+    assert page.locator("text=WHAT'S CHANGING").is_visible()
+    assert page.locator("text=Outpatient visits increased 12%.").is_visible()
+
+    # Verify District Healthcare Overview Title
+    assert page.locator("text=District Healthcare Overview").is_visible()
+
+    # Screenshot 1: Overview (State-Wide Karnataka default)
+    page.screenshot(path=os.path.join(ARTIFACT_DIR, "healthcare_dashboard_overview.png"))
+    print("Captured: healthcare_dashboard_overview.png")
+
+    # Test Metric Selector Toggle on District Healthcare Overview
+    print("Testing District Metric Selector toggle...")
+    page.click("button:has-text('Total Beds')")
+    time.sleep(1)
+    page.click("button:has-text('Active Emergency Cases')")
+    time.sleep(1)
+    page.click("button:has-text('OPD Visits (Thousands)')")
+    time.sleep(1)
+
+    # Scroll down to capture Trend Charts, District Comparison, Predictions, and Alerts
+    page.evaluate("const el = document.getElementById('main-content'); if (el) el.scrollTop = 550;")
+    time.sleep(1)
+    page.screenshot(path=os.path.join(ARTIFACT_DIR, "healthcare_dashboard_overview_bottom.png"))
+    print("Captured: healthcare_dashboard_overview_bottom.png")
+
+    # Scroll further down to capture Predictions and Alerts
+    page.evaluate("const el = document.getElementById('main-content'); if (el) el.scrollTop = 1100;")
+    time.sleep(1)
+    page.screenshot(path=os.path.join(ARTIFACT_DIR, "healthcare_dashboard_overview_predictions_alerts.png"))
+    print("Captured: healthcare_dashboard_overview_predictions_alerts.png")
 
     # 3. Test Cascading Filter: Select Dakshina Kannada
     print("3. Testing Cascading Filter: Select Dakshina Kannada...")
+    page.evaluate("const el = document.getElementById('main-content'); if (el) el.scrollTop = 0;")
     page.select_option("#district-filter-select", "dakshina_kannada")
     time.sleep(1.5)
-    page.screenshot(path=os.path.join(ARTIFACT_DIR, "karnataka_cc_district_dakshina.png"))
-    print("Captured: karnataka_cc_district_dakshina.png")
+    page.screenshot(path=os.path.join(ARTIFACT_DIR, "healthcare_dashboard_dakshina.png"))
+    print("Captured: healthcare_dashboard_dakshina.png")
 
     # Select Zone: Mangalore Zone
     print("4. Testing Cascading Filter: Select Mangalore Zone...")
@@ -50,62 +79,34 @@ with sync_playwright() as p:
     print("5. Testing Cascading Filter: Select Wenlock District Hospital...")
     page.select_option("#hospital-filter-select", "wenlock_dh")
     time.sleep(1.5)
-    page.screenshot(path=os.path.join(ARTIFACT_DIR, "karnataka_cc_hospital_wenlock.png"))
-    print("Captured: karnataka_cc_hospital_wenlock.png")
+    page.screenshot(path=os.path.join(ARTIFACT_DIR, "healthcare_dashboard_wenlock.png"))
+    print("Captured: healthcare_dashboard_wenlock.png")
 
     # Reset to All Districts for broad state-wide inspection
     print("6. Resetting filter to All Karnataka Districts...")
     page.select_option("#district-filter-select", "all")
     time.sleep(1.5)
 
-    # 7. Test Tab 2: Trend Analysis
-    print("7. Testing Tab 2: Trend Analysis...")
-    page.click("button:has-text('2. Trend Analysis')")
+    # 7. Test Tab: Trend Analysis
+    print("7. Testing Tab: Trend Analysis...")
+    page.click("button:has-text('Trend Analysis')")
     time.sleep(1)
-    page.screenshot(path=os.path.join(ARTIFACT_DIR, "karnataka_cc_tab2_trends.png"))
-    print("Captured: karnataka_cc_tab2_trends.png")
+    page.screenshot(path=os.path.join(ARTIFACT_DIR, "healthcare_dashboard_trends.png"))
+    print("Captured: healthcare_dashboard_trends.png")
 
-    # 8. Test Tab 3: Disease Intelligence
-    print("8. Testing Tab 3: Disease Intelligence...")
-    page.click("button:has-text('3. Disease Intelligence')")
+    # 8. Test Tab: Predictions & Trends
+    print("8. Testing Tab: Predictions & Trends...")
+    page.click("button:has-text('Predictions & Trends')")
     time.sleep(1)
-    page.screenshot(path=os.path.join(ARTIFACT_DIR, "karnataka_cc_tab3_diseases.png"))
-    print("Captured: karnataka_cc_tab3_diseases.png")
+    page.screenshot(path=os.path.join(ARTIFACT_DIR, "healthcare_dashboard_predictions.png"))
+    print("Captured: healthcare_dashboard_predictions.png")
 
-    # 9. Test Tab 4: Healthcare Operations
-    print("9. Testing Tab 4: Healthcare Operations...")
-    page.click("button:has-text('4. Healthcare Operations')")
+    # 9. Test Tab: Alerts & Recommendations
+    print("9. Testing Tab: Alerts & Recommendations...")
+    page.click("button:has-text('Alerts & Recommendations')")
     time.sleep(1)
-    page.screenshot(path=os.path.join(ARTIFACT_DIR, "karnataka_cc_tab4_operations.png"))
-    print("Captured: karnataka_cc_tab4_operations.png")
-
-    # 10. Test Tab 5: Pharmacy & Supply Chain
-    print("10. Testing Tab 5: Pharmacy & Supply Chain...")
-    page.click("button:has-text('5. Pharmacy & Supply Chain')")
-    time.sleep(1)
-    page.screenshot(path=os.path.join(ARTIFACT_DIR, "karnataka_cc_tab5_pharmacy.png"))
-    print("Captured: karnataka_cc_tab5_pharmacy.png")
-
-    # 11. Test Tab 6: Workforce Intelligence
-    print("11. Testing Tab 6: Workforce Intelligence...")
-    page.click("button:has-text('6. Workforce Intelligence')")
-    time.sleep(1)
-    page.screenshot(path=os.path.join(ARTIFACT_DIR, "karnataka_cc_tab6_workforce.png"))
-    print("Captured: karnataka_cc_tab6_workforce.png")
-
-    # 12. Test Tab 7: Predictive Intelligence
-    print("12. Testing Tab 7: Predictive Intelligence...")
-    page.click("button:has-text('7. Predictive Intelligence')")
-    time.sleep(1)
-    page.screenshot(path=os.path.join(ARTIFACT_DIR, "karnataka_cc_tab7_predictions.png"))
-    print("Captured: karnataka_cc_tab7_predictions.png")
-
-    # 13. Test Tab 8: Alerts & Actions
-    print("13. Testing Tab 8: Alerts & Actions...")
-    page.click("button:has-text('8. Alerts & Actions')")
-    time.sleep(1)
-    page.screenshot(path=os.path.join(ARTIFACT_DIR, "karnataka_cc_tab8_alerts.png"))
-    print("Captured: karnataka_cc_tab8_alerts.png")
+    page.screenshot(path=os.path.join(ARTIFACT_DIR, "healthcare_dashboard_alerts.png"))
+    print("Captured: healthcare_dashboard_alerts.png")
 
     browser.close()
-    print("=== All Karnataka Command Center UI Validations Passed Successfully! ===")
+    print("=== All Healthcare Dashboard UI Validations Passed Successfully! ===")

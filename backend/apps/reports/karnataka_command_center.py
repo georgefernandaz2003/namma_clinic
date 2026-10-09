@@ -332,7 +332,7 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
         available_hospitals += all_dist_hospitals
 
     # Breadcrumbs
-    breadcrumbs = ["Central Command", "Karnataka State"]
+    breadcrumbs = ["Karnataka"]
     if selected_district:
         breadcrumbs.append(selected_district["name"])
     if selected_zone:
@@ -352,11 +352,11 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
     elif selected_district:
         scope_level = "DISTRICT"
         scope_name = f"{selected_district['name']} District"
-        scope_type = f"District Administration ({selected_district['region']})"
+        scope_type = f"District Healthcare Network ({selected_district['region']})"
     else:
         scope_level = "STATE"
-        scope_name = "Karnataka State Apex Command"
-        scope_type = "State-Wide Healthcare Ecosystem (31 Districts)"
+        scope_name = "Karnataka State Overview"
+        scope_type = "State-Wide Healthcare Overview (31 Districts)"
 
     # 2. Filter Active Hospitals
     active_hospitals = []
@@ -413,7 +413,7 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
         {"id": "opd", "label": "OPD Visits", "value": f"{tot_opd:,}", "change": "+12.1% Surge", "unit": f"{time_info['label']}", "status": "normal"},
         {"id": "ipd", "label": "IPD Admissions", "value": f"{tot_ipd:,}", "change": "+4.2% Inflow", "unit": f"{time_info['label']}", "status": "normal"},
         {"id": "emergency", "label": "Emergency Cases", "value": f"{tot_emer:,}", "change": "+18.6% Acute", "unit": "Trauma & Acute", "status": "warning" if tot_emer > 500 else "normal"},
-        {"id": "bed_occupancy", "label": "Bed Occupancy Rate", "value": f"{bed_occ_rate}%", "change": f"{occupied_beds:,}/{total_beds:,} Beds", "unit": "Ward Load", "status": "warning" if bed_occ_rate > 85 else "normal"},
+        {"id": "bed_occupancy", "label": "Bed Occupancy", "value": f"{bed_occ_rate}%", "change": f"{occupied_beds:,}/{total_beds:,} Beds", "unit": "Ward Load", "status": "warning" if bed_occ_rate > 85 else "normal"},
         {"id": "disease_alerts", "label": "Disease Alerts", "value": str(disease_alert_count), "change": "Dengue & Enteric", "unit": "Outbreak Signals", "status": "critical" if disease_alert_count >= 4 else "warning"},
         {"id": "stock_alerts", "label": "Medicine Stock Alerts", "value": str(stock_alert_count), "change": "Stockout <7 Days", "unit": "Critical Generics", "status": "critical" if stock_alert_count >= 3 else "warning"}
     ]
@@ -446,7 +446,7 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
     comparison_chart = {}
     if scope_level == "STATE":
         comparison_chart = {
-            "title": "District Healthcare Workload & Bed Utilization across Karnataka",
+            "title": "District Healthcare Overview",
             "categories": [d["name"] for d in KARNATAKA_DISTRICTS],
             "series": [
                 {"name": "OPD Visits (Thousands)", "values": [round(sum(h["base_opd"] for z in d["zones"] for h in z["hospitals"]) * 30 * t_mult / 1000, 1) for d in KARNATAKA_DISTRICTS], "color": "#3B82F6"},
@@ -456,7 +456,7 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
         }
     elif scope_level == "DISTRICT":
         comparison_chart = {
-            "title": f"Zone Healthcare Workload in {selected_district['name']}",
+            "title": f"Zone Healthcare Overview — {selected_district['name']}",
             "categories": [z["name"] for z in selected_district["zones"]],
             "series": [
                 {"name": "OPD Visits (Thousands)", "values": [round(sum(h["base_opd"] for h in z["hospitals"]) * 30 * t_mult / 1000, 1) for z in selected_district["zones"]], "color": "#3B82F6"},
@@ -467,7 +467,7 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
     else:
         # Zone or Hospital comparison
         comparison_chart = {
-            "title": f"Hospital Capacity & Intake Comparison in {scope_name}",
+            "title": f"Facility Healthcare Overview — {scope_name}",
             "categories": [h["name"][:20] for h in active_hospitals],
             "series": [
                 {"name": "Daily OPD Capacity", "values": [h["base_opd"] for h in active_hospitals], "color": "#3B82F6"},
@@ -777,121 +777,85 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
         }
     }
 
-    # 11. Predictive Intelligence Suite (Current, Trend, Prediction, Risk, Recommended Action)
-    predictions = [
+    # 11. Predictions & Trends (Clean, compact format: Title, Current, Forecast, Risk, Recommendation)
+    compact_predictions = [
         {
-            "id": "pred_disease",
-            "category": "Disease Outbreak Prediction",
-            "title": "Vector-Borne Dengue Clustering Forecast",
-            "current": f"{int(tot_patients * 0.038):,} Active Clinical Presentations",
-            "trend": "Increasing (+18% MoM across coastal & peri-urban taluks)",
-            "prediction": "+24% case surge projected over next 14 days due to late monsoon drainage stagnation",
+            "id": "pred_dengue",
+            "title": "Dengue Cases",
+            "current": "13,427" if scope_level == "STATE" else f"{int(tot_patients * 0.038):,}",
+            "forecast": "+24%",
             "risk": "HIGH",
-            "recommended_action": "Increase ASHA active fever surveillance squads; dispatch municipal ULV larvicide fogging teams."
+            "recommendation": "Increase surveillance."
         },
         {
-            "id": "pred_crowd",
-            "category": "Hospital Crowd & Waiting Hall Prediction",
-            "title": f"OPD Intake Rush & Token Queue Surge in {scope_name}",
-            "current": f"{int(daily_opd * 0.95):,} Daily Consultations",
-            "trend": "Surging (+14% over baseline intake)",
-            "prediction": f"Tomorrow peak rush forecasted at {int(daily_opd * 1.15):,} patients between 09:30 AM – 11:30 AM",
+            "id": "pred_hospital_demand",
+            "title": "Hospital Demand",
+            "current": "13,722 / day" if scope_level == "STATE" else f"{int(daily_opd * 0.95):,} / day",
+            "forecast": "+21%",
             "risk": "HIGH",
-            "recommended_action": "Open 2 supplemental token registration counters and assign senior triage nurses to pre-screen vital signs."
+            "recommendation": "Prepare additional capacity."
         },
         {
-            "id": "pred_beds",
-            "category": "Bed Demand & Ward Capacity Prediction",
-            "title": "ICU & High-Dependency Unit Bed Ceiling",
-            "current": f"{icu_occ_rate}% ICU Occupancy ({occupied_icu}/{total_icu} Beds)",
-            "trend": "Approaching Critical Saturation (+6.1% this week)",
-            "prediction": "ICU bed demand projected to exceed 96% within 72 hours across referral hospitals",
-            "risk": "CRITICAL" if icu_occ_rate > 90 else "HIGH",
-            "recommended_action": "Authorize immediate step-down transfer of stable post-op cases to general HDU; alert district referral coordinator."
-        },
-        {
-            "id": "pred_stock",
-            "category": "Medicine Stock-out & Procurement Prediction",
-            "title": "Oral Rehydration Salt (ORS) & Paracetamol Buffer Runout",
-            "current": "ORS: 5.7 days runway • Paracetamol: 12.0 days runway",
-            "trend": "Daily burn rate accelerating by +28% due to seasonal acute gastroenteritis and viral fevers",
-            "prediction": "ORS sachets predicted to stock out in 6 days; Paracetamol in 12 days without depot delivery",
+            "id": "pred_icu",
+            "title": "ICU Occupancy",
+            "current": "91.8%" if scope_level == "STATE" else f"{icu_occ_rate}%",
+            "forecast": "96%",
             "risk": "CRITICAL",
-            "recommended_action": "Auto-indent KSMSCL PO-2026-KA-49 for 30,000 units with expedited warehouse dispatch."
+            "recommendation": "Review bed capacity."
         },
         {
-            "id": "pred_lab",
-            "category": "Laboratory Workload & Turnaround Prediction",
-            "title": "Platelet Count & Dengue NS1 Diagnostic Order Surge",
-            "current": f"{int(tot_opd * 0.42):,} Lab Tests Conducted ({int(tot_opd * 0.05):,} Pending)",
-            "trend": "+22% week-on-week increase in complete blood count (CBC) requests",
-            "prediction": "Laboratory diagnostic workload expected to exceed current automated analyzer capacity by 15% next week",
+            "id": "pred_medicine",
+            "title": "Medicine Stock",
+            "current": f"{medicines[3]['current_stock']:,} units",
+            "forecast": "Run out in 6 days",
             "risk": "HIGH",
-            "recommended_action": "Activate backup cell counter analyzer; schedule overtime laboratory technician shift."
-        },
-        {
-            "id": "pred_staff",
-            "category": "Workforce & Nursing Capacity Prediction",
-            "title": "Emergency & Inpatient Nursing Ratio Deficit",
-            "current": f"{total_nurses} Total Nurses • Shift Ratio {workforce['nurses']['patient_to_nurse_ratio']}",
-            "trend": "+18% rise in acute bed occupancy over the last 14 days",
-            "prediction": f"Projected shortage of {max(2, int(total_facilities * 1.5))} staff nurses during evening triage and emergency shifts",
-            "risk": "HIGH",
-            "recommended_action": "Deploy reserve rotational nurses from community outreach rosters to acute clinical inpatient wards."
+            "recommendation": "Initiate replenishment."
         }
     ]
 
-    # 12. Alerts & Actions
-    alerts = [
+    # 12. Alerts & Recommendations (Clean, compact format: Alert, Status, Short explanation, Recommendation)
+    compact_alerts = [
         {
             "id": "alt_1",
+            "title": "ICU Occupancy",
             "severity": "CRITICAL",
-            "problem": "ICU Capacity Ceiling Approached (96.2% Saturation)",
-            "location": f"{scope_name} → High Dependency Care Unit",
-            "impact": "Only 3 ventilator-equipped emergency beds remaining in critical triage",
-            "recommended_action": "Authorize immediate transfer of stabilized convalescent patients to step-down secondary care wards."
+            "status": "96.2% occupied" if scope_level == "STATE" else f"{icu_occ_rate}% occupied",
+            "explanation": "Expected to exceed capacity.",
+            "recommendation": "Review available ICU capacity."
         },
         {
             "id": "alt_2",
-            "severity": "CRITICAL",
-            "problem": "ORS Sachet Stockout Imminent (<6 Days Runway)",
-            "location": f"{scope_name} → Central Pharmacy Store",
-            "impact": "Severe dehydration treatment risk during acute gastroenteritis presentations",
-            "recommended_action": "Expedite KSMSCL regional depot delivery requisition #PO-2026-KA-82 under emergency procurement protocol."
+            "title": "Medicine Stock",
+            "severity": "HIGH",
+            "status": "ORS stock projected to run out within 6 days.",
+            "explanation": "Accelerated consumption due to seasonal fevers.",
+            "recommendation": "Initiate replenishment."
         },
         {
             "id": "alt_3",
+            "title": "Dengue Cases",
             "severity": "HIGH",
-            "problem": "Vector-Borne Dengue Infection Spike (+32 Cases in 48h)",
-            "location": f"{scope_name} → Infectious Surveillance Catchment",
-            "impact": "Intense acute fever admissions straining outpatient clinic consultation slots",
-            "recommended_action": "Deploy rapid ASHA fever-detection teams; initiate chemical larvicide thermal fogging in affected clusters."
+            "status": "Cases increased by 32 in the last 48 hours.",
+            "explanation": "Clusters detected in peri-urban catchments.",
+            "recommendation": "Increase surveillance."
         },
         {
             "id": "alt_4",
-            "severity": "HIGH",
-            "problem": "Laboratory Analyzer Diagnostic Queue Backlog",
-            "location": f"{scope_name} → Central Diagnostic Unit",
-            "impact": "Diagnostic report turnaround time prolonged to 3.8 hours for CBC and platelet profiles",
-            "recommended_action": "Activate secondary cell-counter backup; reassign senior technician to evening verification shifts."
-        },
-        {
-            "id": "alt_5",
+            "title": "Outpatient Waiting Time",
             "severity": "WARNING",
-            "problem": "OPD Morning Registration Hall Queue Delay (>40 min Wait)",
-            "location": f"{scope_name} → Outpatient Triage & Token Desks",
-            "impact": "Patient waiting hall congestion during morning 09:30 AM rush window",
-            "recommended_action": "Open 2 auxiliary digital token counters and assign nursing students for vital sign pre-screening."
-        },
-        {
-            "id": "alt_6",
-            "severity": "NORMAL",
-            "problem": "Non-Communicable Chronic Disease Control Rate Stabilized (91.5%)",
-            "location": f"{scope_name} → NCD Hypertension & Diabetes Clinic",
-            "impact": "High generic therapy compliance averted an estimated 14 secondary cardiovascular hospitalizations",
-            "recommended_action": "Maintain 30-day automated repeat dispensing and monthly digital tele-monitoring recalls."
+            "status": "Average waiting time reached 34 minutes.",
+            "explanation": "Morning registration queue congestion.",
+            "recommendation": "Open auxiliary registration counters."
         }
     ]
+
+    # Health Overview (4 short insights)
+    health_overview = {
+        "whats_changing": "Outpatient visits increased 12%.",
+        "where": f"Highest demand: {selected_district['name'] if selected_district else 'Mysuru'} district.",
+        "forecast": "Dengue cases expected to increase 24%.",
+        "action": "Increase surveillance in affected zones."
+    }
 
     # 13. Role-Based Tailored Highlights
     role_lens = {
@@ -905,14 +869,14 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
             "PHARMACIST": "Focus on Paracetamol & ORS Stockout Forecast (<12 days), FEFO Batch Audit, and Generic Dispensation Velocity.",
             "INVENTORY_OFFICER": "Focus on KSMSCL Reorder Indents #PO-2026-KA-49, Depot Transit Latencies, and Buffer Safety Stock.",
             "DISTRICT_OFFICER": "Focus on Inter-Zone Healthcare Disparities, Tertiary Referral Load, and State Resource Reallocation."
-        }.get(role, "State-wide Command Center Governance & Public Health Intelligence.")
+        }.get(role, "State-wide Healthcare Telemetry & Predictive Analytics.")
     }
 
     # 14. Return Master Payload
     return {
         "metadata": {
-            "title": "KARNATAKA PUBLIC HEALTH COMMAND CENTER",
-            "subtitle": "State-wide healthcare intelligence & predictive governance",
+            "title": "Healthcare Dashboard",
+            "subtitle": "Karnataka • State-wide Health Overview",
             "classification": "DEMO / SYNTHETIC DATA",
             "disclaimer": "This system operates on simulated Karnataka healthcare data covering 9 representative districts, 21 zones, and 33 hospitals for public health demonstration and decision-support training.",
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
@@ -940,10 +904,11 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
             }
         },
         "command_center": {
+            "health_overview": health_overview,
             "kpis": kpis,
             "comparison_chart": comparison_chart,
-            "top_predictions": predictions[:3],
-            "critical_alerts": [a for a in alerts if a["severity"] in ["CRITICAL", "HIGH"]][:4]
+            "top_predictions": compact_predictions,
+            "critical_alerts": compact_alerts
         },
         "trend_analysis": {
             "months": trend_series["months"],
@@ -963,9 +928,9 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
         },
         "workforce_intelligence": workforce,
         "predictive_intelligence": {
-            "predictions": predictions,
+            "predictions": compact_predictions,
             "stockout_risk_medicines": [m for m in medicines if m["risk"] in ["CRITICAL", "HIGH"]]
         },
-        "alerts_actions": alerts,
+        "alerts_actions": compact_alerts,
         "role_lens": role_lens
     }
