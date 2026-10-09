@@ -415,3 +415,259 @@ test('API failure and error parsing in clinical operations', async (t) => {
     );
   });
 });
+
+// =========================================================================
+// 9. STATE-AWARE DOCTOR CONSULTATION & LABORATORY LIFECYCLE WORKFLOW
+// =========================================================================
+
+test('Doctor consultation state-aware workflow and lab order lifecycle', async (t) => {
+  // Helper to determine consultation action state
+  const getConsultationWorkflowState = (params: {
+    existingOrders: DiagnosticOrder[];
+    orderDiagnostics: boolean;
+    testsToOrder: number[];
+  }) => {
+    const hasExistingOrders = params.existingOrders.length > 0;
+    const allLabOrdersCompleted =
+      hasExistingOrders &&
+      params.existingOrders.every((order) => {
+        if (order.status === 'VERIFIED' || order.status === 'AMENDED') return true;
+        if (order.test_requests && order.test_requests.length > 0) {
+          return order.test_requests.every(
+            (tr) =>
+              tr.status === 'COMPLETED' &&
+              (tr.diagnostic_result?.status === 'VERIFIED' || tr.diagnostic_result?.status === 'AMENDED')
+          );
+        }
+        return false;
+      });
+
+    const hasPendingLabOrders = hasExistingOrders && !allLabOrdersCompleted;
+    const isOrderingNewLab = params.orderDiagnostics && params.testsToOrder.length > 0;
+
+    let buttonLabel = 'Save & Complete Consultation';
+    let isCompletionBlocked = false;
+
+    if (isOrderingNewLab) {
+      buttonLabel = 'Save & Send to Laboratory';
+    } else if (hasPendingLabOrders) {
+      buttonLabel = 'Awaiting Laboratory Results';
+      isCompletionBlocked = true;
+    } else if (allLabOrdersCompleted) {
+      buttonLabel = 'Complete Consultation';
+    }
+
+    return {
+      allLabOrdersCompleted,
+      hasPendingLabOrders,
+      isOrderingNewLab,
+      buttonLabel,
+      isCompletionBlocked,
+      statusBadge: hasPendingLabOrders
+        ? 'Lab Ordered — Awaiting Results'
+        : allLabOrdersCompleted
+        ? 'Lab Results Available — Review & Complete'
+        : null,
+    };
+  };
+
+  await t.test('Scenario 1: Consultation without lab -> "Save & Complete Consultation" and not blocked', () => {
+    const state = getConsultationWorkflowState({
+      existingOrders: [],
+      orderDiagnostics: false,
+      testsToOrder: [],
+    });
+
+    assert.equal(state.buttonLabel, 'Save & Complete Consultation');
+    assert.equal(state.isCompletionBlocked, false);
+    assert.equal(state.isOrderingNewLab, false);
+    assert.equal(state.statusBadge, null);
+  });
+
+  await t.test('Scenario 2: Consultation with one lab -> "Save & Send to Laboratory"', () => {
+    const state = getConsultationWorkflowState({
+      existingOrders: [],
+      orderDiagnostics: true,
+      testsToOrder: [101], // CBC
+    });
+
+    assert.equal(state.buttonLabel, 'Save & Send to Laboratory');
+    assert.equal(state.isOrderingNewLab, true);
+    assert.equal(state.isCompletionBlocked, false);
+  });
+
+  await t.test('Scenario 3: Lab in-progress -> completion is blocked with "Awaiting Laboratory Results"', () => {
+    const mockPendingOrder: DiagnosticOrder = {
+      id: 50,
+      order_number: 'ORD-20261009-001',
+      visit: 1,
+      facility: 1,
+      order_date: '2026-10-09',
+      priority: 'ROUTINE',
+      status: 'ORDERED',
+      clinical_indication: 'Check infection',
+      created_at: '2026-10-09T10:00:00Z',
+      test_requests: [
+        {
+          id: 1,
+          diagnostic_order: 50,
+          test_master: 101,
+          test_code: 'CBC',
+          test_master_name: 'Complete Blood Count',
+          status: 'PENDING',
+          created_at: '2026-10-09T10:00:00Z',
+        },
+      ],
+    };
+
+    const state = getConsultationWorkflowState({
+      existingOrders: [mockPendingOrder],
+      orderDiagnostics: false,
+      testsToOrder: [],
+    });
+
+    assert.equal(state.buttonLabel, 'Awaiting Laboratory Results');
+    assert.equal(state.isCompletionBlocked, true);
+    assert.equal(state.hasPendingLabOrders, true);
+    assert.equal(state.statusBadge, 'Lab Ordered — Awaiting Results');
+  });
+
+  await t.test('Scenario 4: Multiple labs -> completion blocked until ALL results are verified', () => {
+    // 2 tests ordered: 1 verified, 1 still in testing/pending
+    const mockMultiOrderPartial: DiagnosticOrder = {
+      id: 51,
+      order_number: 'ORD-20261009-002',
+      visit: 1,
+      facility: 1,
+      order_date: '2026-10-09',
+      priority: 'ROUTINE',
+      status: 'SAMPLE_COLLECTED',
+      clinical_indication: 'Fever evaluation',
+      created_at: '2026-10-09T10:00:00Z',
+      test_requests: [
+        {
+          id: 1,
+          diagnostic_order: 51,
+          test_master: 101,
+          test_code: 'CBC',
+          status: 'COMPLETED',
+          diagnostic_result: {
+            id: 201,
+            test_request: 1,
+            result_value_text: '13.5 g/dL',
+            is_abnormal: false,
+            is_critical_panic: false,
+            status: 'VERIFIED',
+          },
+          created_at: '2026-10-09T10:00:00Z',
+        },
+        {
+          id: 2,
+          diagnostic_order: 51,
+          test_master: 102,
+          test_code: 'ESR',
+          status: 'IN_TESTING',
+          diagnostic_result: null, // ESR pending!
+          created_at: '2026-10-09T10:00:00Z',
+        },
+      ],
+    };
+
+    const partialState = getConsultationWorkflowState({
+      existingOrders: [mockMultiOrderPartial],
+      orderDiagnostics: false,
+      testsToOrder: [],
+    });
+
+    assert.equal(partialState.isCompletionBlocked, true);
+    assert.equal(partialState.buttonLabel, 'Awaiting Laboratory Results');
+    assert.equal(partialState.allLabOrdersCompleted, false);
+
+    // Now 2nd test completes and is VERIFIED
+    const mockMultiOrderAllVerified: DiagnosticOrder = {
+      ...mockMultiOrderPartial,
+      status: 'VERIFIED',
+      test_requests: [
+        mockMultiOrderPartial.test_requests![0],
+        {
+          id: 2,
+          diagnostic_order: 51,
+          test_master: 102,
+          test_code: 'ESR',
+          status: 'COMPLETED',
+          diagnostic_result: {
+            id: 202,
+            test_request: 2,
+            result_value_text: '15 mm/hr',
+            is_abnormal: false,
+            is_critical_panic: false,
+            status: 'VERIFIED',
+          },
+          created_at: '2026-10-09T10:00:00Z',
+        },
+      ],
+    };
+
+    const verifiedState = getConsultationWorkflowState({
+      existingOrders: [mockMultiOrderAllVerified],
+      orderDiagnostics: false,
+      testsToOrder: [],
+    });
+
+    assert.equal(verifiedState.isCompletionBlocked, false);
+    assert.equal(verifiedState.allLabOrdersCompleted, true);
+    assert.equal(verifiedState.buttonLabel, 'Complete Consultation');
+    assert.equal(verifiedState.statusBadge, 'Lab Results Available — Review & Complete');
+  });
+
+  await t.test('Scenario 5: Next patient queue resolution logic prioritizes DOCTOR_REVIEW visits', () => {
+    const queueVisits: Visit[] = [
+      {
+        id: 1,
+        visit_id: 'VIS-001',
+        patient: 1,
+        facility: 1,
+        visit_date: '2026-10-09',
+        opd_date: '2026-10-09',
+        visit_type: 'GENERAL',
+        status: 'TRIAGED',
+        current_queue: 'DOCTOR',
+        chief_complaint: 'Headache',
+      },
+      {
+        id: 2,
+        visit_id: 'VIS-002',
+        patient: 2,
+        facility: 1,
+        visit_date: '2026-10-09',
+        opd_date: '2026-10-09',
+        visit_type: 'GENERAL',
+        status: 'DOCTOR_REVIEW',
+        current_queue: 'DOCTOR',
+        chief_complaint: 'Returned from lab with CBC',
+      },
+      {
+        id: 3,
+        visit_id: 'VIS-003',
+        patient: 3,
+        facility: 1,
+        visit_date: '2026-10-09',
+        opd_date: '2026-10-09',
+        visit_type: 'GENERAL',
+        status: 'WAITING_FOR_DOCTOR',
+        current_queue: 'DOCTOR',
+        chief_complaint: 'Cough',
+      },
+    ];
+
+    const currentVisitId = 999;
+    const nextVisit =
+      queueVisits.find((v) => v.id !== currentVisitId && v.status === 'DOCTOR_REVIEW') ||
+      queueVisits.find((v) => v.id !== currentVisitId && ['TRIAGED', 'WAITING_FOR_DOCTOR'].includes(v.status));
+
+    assert.ok(nextVisit);
+    assert.equal(nextVisit.id, 2);
+    assert.equal(nextVisit.status, 'DOCTOR_REVIEW');
+  });
+});
+

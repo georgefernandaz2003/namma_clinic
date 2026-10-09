@@ -17,6 +17,9 @@ from apps.common.exceptions import (
 class LaboratoryDomainServiceTests(DomainServiceBaseTestCase):
     def setUp(self):
         super().setUp()
+        from apps.facilities.models import ServiceMaster, FacilityService
+        diag_srv, _ = ServiceMaster.objects.get_or_create(code='SRV_DIAGNOSTICS', defaults={'name': 'Diagnostics', 'category': 'CLINICAL'})
+        FacilityService.objects.get_or_create(facility=self.clinic_a, service=diag_srv, defaults={'is_available': True})
         self.test_cbc = DiagnosticTestMaster.objects.create(test_code="CBC", test_name="Complete Blood Count", specimen_type="WHOLE_BLOOD")
         self.test_esr = DiagnosticTestMaster.objects.create(test_code="ESR", test_name="Erythrocyte Sedimentation Rate", specimen_type="WHOLE_BLOOD")
 
@@ -67,3 +70,43 @@ class LaboratoryDomainServiceTests(DomainServiceBaseTestCase):
         self.assertEqual(amended_res.status, "AMENDED")
         self.assertEqual(amendment.previous_value_text, "10.5 g/dL")
         self.assertEqual(amendment.amended_value_text, "11.2 g/dL")
+
+    def test_multi_lab_order_verification_progression(self):
+        """
+        Verify that multiple tests ordered for a visit block completion / DOCTOR_REVIEW
+        until ALL tests have verified results.
+        """
+        order = create_diagnostic_order(self.visit, self.clinic_a, self.doc_staff)
+        req_cbc = create_test_request(order, self.test_cbc)
+        req_esr = create_test_request(order, self.test_esr)
+
+        # 1. Specimen collection updates order to SAMPLE_COLLECTED
+        collect_specimen(order, "SMP-TEST-001", "WHOLE_BLOOD", self.doc_staff, [req_cbc, req_esr])
+        order.refresh_from_db()
+        self.assertEqual(order.status, "SAMPLE_COLLECTED")
+
+        # 2. Record 1st result - order is still SAMPLE_COLLECTED (partial)
+        res_cbc = record_diagnostic_result(req_cbc, entered_by_staff=self.doc_staff, result_value_text="13.5 g/dL")
+        order.refresh_from_db()
+        self.assertEqual(order.status, "SAMPLE_COLLECTED")
+
+        # 3. Record 2nd result - order transitions to RESULT_ENTERED (all requests completed)
+        res_esr = record_diagnostic_result(req_esr, entered_by_staff=self.doc_staff, result_value_text="15 mm/hr")
+        order.refresh_from_db()
+        self.assertEqual(order.status, "RESULT_ENTERED")
+
+        # 4. Verify ONLY 1st test - order should NOT be VERIFIED yet, visit should NOT be DOCTOR_REVIEW
+        verify_diagnostic_result(res_cbc, verified_by_staff=self.doc_staff)
+        order.refresh_from_db()
+        self.visit.refresh_from_db()
+        self.assertNotEqual(order.status, "VERIFIED")
+        self.assertNotEqual(self.visit.status, "DOCTOR_REVIEW")
+
+        # 5. Verify 2nd test - now ALL tests are verified -> order.status = VERIFIED, visit.status = DOCTOR_REVIEW
+        verify_diagnostic_result(res_esr, verified_by_staff=self.doc_staff)
+        order.refresh_from_db()
+        self.visit.refresh_from_db()
+        self.assertEqual(order.status, "VERIFIED")
+        self.assertEqual(self.visit.status, "DOCTOR_REVIEW")
+        self.assertEqual(self.visit.current_queue, "DOCTOR")
+

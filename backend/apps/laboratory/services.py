@@ -31,11 +31,6 @@ def create_diagnostic_order(
     """
     Creates an encounter-linked DiagnosticOrder.
     """
-    from apps.facilities.models import FacilityService
-    from apps.common.exceptions import DomainValidationError
-    if not FacilityService.objects.filter(facility=facility, service__code='SRV_DIAGNOSTICS', is_available=True).exists():
-        raise DomainValidationError("Diagnostic Laboratory Services (SRV_DIAGNOSTICS) is currently unavailable or disabled at this facility.")
-
     today = order_date or datetime.date.today()
     ord_num = order_number or f"ORD-{today.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 
@@ -99,6 +94,10 @@ def collect_specimen(
                 tr.specimen = specimen
                 tr.save(update_fields=["specimen"])
 
+        if diagnostic_order.status == "ORDERED":
+            diagnostic_order.status = "SAMPLE_COLLECTED"
+            diagnostic_order.save(update_fields=["status"])
+
         return specimen
 
 
@@ -132,6 +131,13 @@ def record_diagnostic_result(
             )
             test_request.status = "COMPLETED"
             test_request.save(update_fields=["status"])
+
+            diag_order = test_request.diagnostic_order
+            all_requests = diag_order.test_requests.all()
+            if all_requests.exists() and all(tr.status == "COMPLETED" for tr in all_requests):
+                diag_order.status = "RESULT_ENTERED"
+                diag_order.save(update_fields=["status"])
+
             return result
         except IntegrityError as exc:
             raise DiagnosticResultAlreadyExistsError(test_request.id) from exc
@@ -153,6 +159,31 @@ def verify_diagnostic_result(diagnostic_result, verified_by_staff):
         locked_result.verified_by_staff = verified_by_staff
         locked_result.verified_at = timezone.now()
         locked_result.save(update_fields=["status", "verified_by_staff", "verified_at"])
+
+        diag_order = locked_result.test_request.diagnostic_order
+        all_requests = diag_order.test_requests.all()
+        if all_requests.exists():
+            all_verified = True
+            for tr in all_requests:
+                try:
+                    res = tr.diagnostic_result
+                    if res.status not in ["VERIFIED", "AMENDED"]:
+                        all_verified = False
+                        break
+                except DiagnosticResult.DoesNotExist:
+                    all_verified = False
+                    break
+            if all_verified:
+                diag_order.status = "VERIFIED"
+                diag_order.save(update_fields=["status"])
+
+                visit = diag_order.visit
+                if visit:
+                    all_visit_orders = visit.diagnostic_orders.all()
+                    if all_visit_orders.exists() and all(o.status in ["VERIFIED", "AMENDED"] for o in all_visit_orders):
+                        visit.status = "DOCTOR_REVIEW"
+                        visit.current_queue = "DOCTOR"
+                        visit.save(update_fields=["status", "current_queue"])
 
         record_audit_event(
             actor_staff=verified_by_staff,

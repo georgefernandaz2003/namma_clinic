@@ -173,6 +173,11 @@ export const createConsultation = async (payload: CreateConsultationPayload): Pr
   return res.data;
 };
 
+export const updateConsultation = async (consultationId: number, payload: Partial<CreateConsultationPayload>): Promise<Consultation> => {
+  const res = await apiClient.patch<Consultation>(`v1/clinical/consultations/${consultationId}/`, payload);
+  return res.data;
+};
+
 // 5. Diagnostics
 export const getDiagnosticTestMasters = async (): Promise<DiagnosticTestMaster[]> => {
   const res = await apiClient.get<PaginatedResponse<DiagnosticTestMaster> | DiagnosticTestMaster[]>('v1/diagnostics/tests/');

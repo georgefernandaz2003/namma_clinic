@@ -86,6 +86,7 @@ export const PrescriptionCard: React.FC<PrescriptionCardProps> = ({
         <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
           <input
             type="checkbox"
+            id="prescribe-medications-checkbox"
             checked={orderPrescription}
             onChange={(e) => setOrderPrescription(e.target.checked)}
             className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
@@ -192,11 +193,11 @@ export const PrescriptionCard: React.FC<PrescriptionCardProps> = ({
           )}
 
           <div>
-            <label htmlFor="rx-notes" className="block text-xs font-bold text-slate-700 mb-1">
+            <label htmlFor="prescription-notes" className="block text-xs font-bold text-slate-700 mb-1">
               Prescription Directions & Dispensing Orders <span className="text-rose-500">*</span>
             </label>
             <textarea
-              id="rx-notes"
+              id="prescription-notes"
               rows={3}
               value={prescriptionNotes}
               onChange={(e) => setPrescriptionNotes(e.target.value)}

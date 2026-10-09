@@ -19,7 +19,8 @@ import {
   getFacilities,
   createReferralOrder,
   createFollowUpTask,
-  updateVisit
+  updateVisit,
+  updateConsultation
 } from '../api/clinical';
 import type {
   Visit,
@@ -43,7 +44,7 @@ import ConsultationFormCard from '../components/clinical/ConsultationFormCard';
 import DiagnosticOrderCard from '../components/clinical/DiagnosticOrderCard';
 import PrescriptionCard, { type RxItemInput } from '../components/clinical/PrescriptionCard';
 import ReferralFollowUpCard from '../components/clinical/ReferralFollowUpCard';
-import { Stethoscope, ArrowLeft, CheckCircle2, Save } from 'lucide-react';
+import { Stethoscope, ArrowLeft, ArrowRight, CheckCircle2, Save, Clock, AlertCircle } from 'lucide-react';
 
 export const Consultation: React.FC = () => {
   const { user, activeFacility } = useAuth();
@@ -71,6 +72,7 @@ export const Consultation: React.FC = () => {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isEncounterCompleted, setIsEncounterCompleted] = useState<boolean>(false);
 
   const [chiefComplaint, setChiefComplaint] = useState<string>('');
   const [clinicalHistory, setClinicalHistory] = useState<string>('');
@@ -82,6 +84,7 @@ export const Consultation: React.FC = () => {
 
   const [orderDiagnostics, setOrderDiagnostics] = useState<boolean>(false);
   const [selectedTestMasterId, setSelectedTestMasterId] = useState<number | ''>('');
+  const [selectedTestMasterIds, setSelectedTestMasterIds] = useState<number[]>([]);
   const [diagPriority, setDiagPriority] = useState<'ROUTINE' | 'URGENT' | 'STAT'>('ROUTINE');
   const [diagIndication, setDiagIndication] = useState<string>('');
 
@@ -129,7 +132,11 @@ export const Consultation: React.FC = () => {
         const data = await getVisits(params);
         setAvailableVisits(data);
         if (!selectedVisitId && data.length > 0) {
-          const firstEligible = data.find((v) => v.status !== 'COMPLETED') || data[0];
+          const firstEligible =
+            data.find((v) => v.status === 'DOCTOR_REVIEW' && (v.current_queue === 'DOCTOR' || !v.current_queue)) ||
+            data.find((v) => ['TRIAGED', 'WAITING_FOR_DOCTOR'].includes(v.status) && (v.current_queue === 'DOCTOR' || !v.current_queue)) ||
+            data.find((v) => v.status !== 'COMPLETED' && (v.current_queue === 'DOCTOR' || !v.current_queue)) ||
+            data[0];
           setSelectedVisitId(firstEligible.id);
         }
       } catch (err: unknown) {
@@ -149,6 +156,7 @@ export const Consultation: React.FC = () => {
       const visitData = await getVisit(vId);
       setVisit(visitData);
       setChiefComplaint(visitData.chief_complaint || '');
+      setIsEncounterCompleted(visitData.status === 'COMPLETED' || visitData.status === 'WAITING_FOR_PHARMACY');
 
       const patientData = await getPatient(visitData.patient);
       setPatient(patientData);
@@ -159,7 +167,7 @@ export const Consultation: React.FC = () => {
       const [consults, diagOrders, diagRes, rxList] = await Promise.all([
         getConsultations({ patient: visitData.patient }),
         getDiagnosticOrders({ visit: vId }),
-        getDiagnosticResults(),
+        getDiagnosticResults({ visit: vId }),
         getPrescriptions({ patient: visitData.patient })
       ]);
 
@@ -201,6 +209,123 @@ export const Consultation: React.FC = () => {
     }
   }, [selectedVisitId, loadClinicalContext]);
 
+  // Status and workflow calculations
+  const hasExistingOrders = existingOrders.length > 0;
+
+  // Check if ALL existing diagnostic orders and test requests are completed and verified
+  const allLabOrdersCompleted =
+    hasExistingOrders &&
+    existingOrders.every((order) => {
+      if (order.status === 'VERIFIED' || order.status === 'AMENDED') return true;
+      if (order.test_requests && order.test_requests.length > 0) {
+        return order.test_requests.every(
+          (tr) =>
+            tr.status === 'COMPLETED' &&
+            (tr.diagnostic_result?.status === 'VERIFIED' || tr.diagnostic_result?.status === 'AMENDED')
+        );
+      }
+      return false;
+    });
+
+  // Visit has active lab orders that are still pending
+  const hasPendingLabOrders = hasExistingOrders && !allLabOrdersCompleted;
+
+  // Has doctor selected any tests to order in the form right now?
+  const testsToOrder = Array.from(
+    new Set([
+      ...selectedTestMasterIds,
+      ...(selectedTestMasterId ? [Number(selectedTestMasterId)] : [])
+    ])
+  );
+  const isOrderingNewLab = orderDiagnostics && testsToOrder.length > 0;
+
+  let primaryButtonLabel = 'Save & Complete Consultation';
+  let PrimaryButtonIcon = Save;
+  let isPrimaryDisabled = submitting;
+  let primaryButtonClass =
+    'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white';
+
+  if (isOrderingNewLab) {
+    primaryButtonLabel = 'Save & Send to Laboratory';
+    primaryButtonClass =
+      'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white';
+  } else if (hasPendingLabOrders) {
+    primaryButtonLabel = 'Awaiting Laboratory Results';
+    isPrimaryDisabled = true;
+    primaryButtonClass = 'bg-slate-300 text-slate-500 cursor-not-allowed';
+  } else if (allLabOrdersCompleted) {
+    primaryButtonLabel = 'Complete Consultation';
+    PrimaryButtonIcon = CheckCircle2;
+    primaryButtonClass =
+      'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white';
+  }
+
+  const handleSaveDraft = async () => {
+    if (!visit || !patient) return;
+    if (!chiefComplaint.trim()) {
+      setError('Chief Complaint is required for clinical encounter documentation.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const facilityId = visit.facility;
+      const thisVisitConsult = previousConsultations.find((c) => c.visit === visit.id);
+      const consultPayload = {
+        visit: visit.id,
+        patient: patient.id,
+        facility: facilityId,
+        chief_complaint: chiefComplaint.trim(),
+        clinical_history: clinicalHistory.trim(),
+        clinical_assessment: clinicalAssessment.trim(),
+        diagnosis_code: diagnosisCode.trim() || 'E11',
+        diagnosis_name: diagnosisName.trim() || 'Under Evaluation',
+        treatment_plan: treatmentPlan.trim(),
+        clinical_notes: clinicalNotes.trim(),
+        follow_up_date: scheduleFollowUp && followUpDate ? followUpDate : null
+      };
+
+      if (thisVisitConsult) {
+        await updateConsultation(thisVisitConsult.id, consultPayload);
+      } else {
+        await createConsultation(consultPayload);
+      }
+      setSuccessMessage('Draft clinical notes saved successfully.');
+      await loadClinicalContext(visit.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save draft notes.';
+      setError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleNextPatient = async () => {
+    try {
+      const params: Record<string, string | number> = {};
+      if (activeFacility?.id) {
+        params.facility = activeFacility.id;
+      }
+      const data = await getVisits(params);
+      setAvailableVisits(data);
+
+      const nextVisit =
+        data.find((v) => v.id !== visit?.id && v.status === 'DOCTOR_REVIEW' && (v.current_queue === 'DOCTOR' || !v.current_queue)) ||
+        data.find((v) => v.id !== visit?.id && ['TRIAGED', 'WAITING_FOR_DOCTOR'].includes(v.status) && (v.current_queue === 'DOCTOR' || !v.current_queue)) ||
+        data.find((v) => v.id !== visit?.id && v.status !== 'COMPLETED' && (v.current_queue === 'DOCTOR' || !v.current_queue));
+
+      if (nextVisit) {
+        setIsEncounterCompleted(false);
+        setSelectedVisitId(nextVisit.id);
+        navigate(`/consultation?visit=${nextVisit.id}`);
+      } else {
+        navigate('/dashboard/doctor');
+      }
+    } catch {
+      navigate('/dashboard/doctor');
+    }
+  };
+
   const handleSaveConsultation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!visit || !patient) return;
@@ -214,13 +339,20 @@ export const Consultation: React.FC = () => {
       return;
     }
 
+    if (hasPendingLabOrders && !isOrderingNewLab) {
+      setError('Cannot complete consultation while required laboratory investigations are awaiting results.');
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     setSuccessMessage(null);
 
     try {
       const facilityId = visit.facility;
-      const consultation = await createConsultation({
+      const thisVisitConsult = previousConsultations.find((c) => c.visit === visit.id);
+
+      const consultPayload = {
         visit: visit.id,
         patient: patient.id,
         facility: facilityId,
@@ -232,10 +364,14 @@ export const Consultation: React.FC = () => {
         treatment_plan: treatmentPlan.trim(),
         clinical_notes: clinicalNotes.trim(),
         follow_up_date: scheduleFollowUp && followUpDate ? followUpDate : null
-      });
+      };
+
+      const consultation = thisVisitConsult
+        ? await updateConsultation(thisVisitConsult.id, consultPayload)
+        : await createConsultation(consultPayload);
 
       let diagOrderCreated = false;
-      if (orderDiagnostics && selectedTestMasterId) {
+      if (isOrderingNewLab) {
         const order = await createDiagnosticOrder({
           visit: visit.id,
           facility: facilityId,
@@ -244,10 +380,12 @@ export const Consultation: React.FC = () => {
           order_date: new Date().toISOString().split('T')[0]
         });
 
-        await createTestRequest({
-          diagnostic_order: order.id,
-          test_master: Number(selectedTestMasterId)
-        });
+        for (const testId of testsToOrder) {
+          await createTestRequest({
+            diagnostic_order: order.id,
+            test_master: testId
+          });
+        }
         diagOrderCreated = true;
       }
 
@@ -293,25 +431,40 @@ export const Consultation: React.FC = () => {
         });
       }
 
-      let nextStatus = 'COMPLETED';
-      let nextQueue = 'COMPLETED';
       if (diagOrderCreated) {
-        nextStatus = 'WAITING_FOR_LAB';
-        nextQueue = 'LAB';
-      } else if (rxCreated) {
-        nextStatus = 'WAITING_FOR_PHARMACY';
-        nextQueue = 'PHARMACY';
+        // CASE 2: Lab ordered -> Send to Laboratory. DO NOT mark completed.
+        await updateVisit(visit.id, {
+          status: 'WAITING_FOR_LAB',
+          current_queue: 'LAB',
+          chief_complaint: chiefComplaint.trim()
+        });
+
+        setSuccessMessage(
+          `Diagnostic order issued for ${patient.name}. Patient sent to Laboratory Queue (Awaiting Results).`
+        );
+        setOrderDiagnostics(false);
+        setSelectedTestMasterId('');
+        setSelectedTestMasterIds([]);
+      } else {
+        // CASE 1 or CASE 4: Finalizing consultation
+        let nextStatus = 'COMPLETED';
+        let nextQueue = 'COMPLETED';
+        if (rxCreated) {
+          nextStatus = 'WAITING_FOR_PHARMACY';
+          nextQueue = 'PHARMACY';
+        }
+
+        await updateVisit(visit.id, {
+          status: nextStatus,
+          current_queue: nextQueue,
+          chief_complaint: chiefComplaint.trim()
+        });
+
+        setIsEncounterCompleted(true);
+        setSuccessMessage(
+          `Consultation completed successfully for ${patient.name} (Visit #${visit.visit_id}). Workflow advanced to ${nextStatus}.`
+        );
       }
-
-      await updateVisit(visit.id, {
-        status: nextStatus,
-        current_queue: nextQueue,
-        chief_complaint: chiefComplaint.trim()
-      });
-
-      setSuccessMessage(
-        `Consultation recorded successfully for ${patient.name} (Visit #${visit.visit_id}). Workflow advanced to ${nextStatus}.`
-      );
 
       await loadClinicalContext(visit.id);
     } catch (err: unknown) {
@@ -405,12 +558,17 @@ export const Consultation: React.FC = () => {
             setOrderDiagnostics={setOrderDiagnostics}
             selectedTestMasterId={selectedTestMasterId}
             setSelectedTestMasterId={setSelectedTestMasterId}
+            selectedTestMasterIds={selectedTestMasterIds}
+            setSelectedTestMasterIds={setSelectedTestMasterIds}
             diagPriority={diagPriority}
             setDiagPriority={setDiagPriority}
             diagIndication={diagIndication}
             setDiagIndication={setDiagIndication}
             testMasters={testMasters}
+            existingOrders={existingOrders}
             existingResults={existingResults}
+            hasPendingLabOrders={hasPendingLabOrders}
+            allLabOrdersCompleted={allLabOrdersCompleted}
           />
           <PrescriptionCard
             orderPrescription={orderPrescription}
@@ -448,11 +606,19 @@ export const Consultation: React.FC = () => {
 
           {/* Form Actions & Save */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-white border border-slate-200 rounded-2xl shadow-xs">
-            <div className="text-xs text-slate-600">
-              Preserving Medical Officer clinical authorship. Prescribing Doctor: <strong>{user?.username}</strong>.
+            <div className="text-xs text-slate-600 space-y-1">
+              <div>
+                Preserving Medical Officer clinical authorship. Prescribing Doctor: <strong>{user?.username}</strong>.
+              </div>
+              {hasPendingLabOrders && !isOrderingNewLab && (
+                <div className="text-amber-700 font-bold flex items-center gap-1.5 text-[11px]">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Lab orders pending — Consultation completion locked until all results are verified.</span>
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={() => navigate('/dashboard/doctor')}
@@ -460,20 +626,46 @@ export const Consultation: React.FC = () => {
               >
                 Cancel / Return to Queue
               </button>
+
+              {hasPendingLabOrders && !isOrderingNewLab && (
+                <button
+                  type="button"
+                  id="save-draft-button"
+                  onClick={handleSaveDraft}
+                  disabled={submitting}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl border border-slate-300 transition cursor-pointer"
+                >
+                  Save Draft Notes
+                </button>
+              )}
+
               <button
                 type="submit"
-                disabled={submitting}
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                id="consultation-primary-button"
+                disabled={isPrimaryDisabled}
+                className={`inline-flex items-center gap-2 px-6 py-2.5 font-bold text-xs rounded-xl shadow-md transition disabled:opacity-60 cursor-pointer focus:outline-none focus-visible:ring-2 ${primaryButtonClass}`}
               >
                 {submitting ? (
                   <LoadingSpinner size="sm" label="Saving..." />
                 ) : (
                   <>
-                    <Save className="w-4 h-4" aria-hidden="true" />
-                    <span>Save & Complete Consultation</span>
+                    <PrimaryButtonIcon className="w-4 h-4" aria-hidden="true" />
+                    <span>{primaryButtonLabel}</span>
                   </>
                 )}
               </button>
+
+              {(isEncounterCompleted || visit.status === 'COMPLETED' || visit.status === 'WAITING_FOR_PHARMACY') && (
+                <button
+                  type="button"
+                  id="next-patient-button"
+                  onClick={handleNextPatient}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  <span>Next Patient</span>
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                </button>
+              )}
             </div>
           </div>
         </form>

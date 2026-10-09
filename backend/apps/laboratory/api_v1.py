@@ -3,7 +3,7 @@ Diagnostics REST API (v1).
 Delegates requisition, specimen collection, result entry, verification, and amendment to domain services.
 Enforces facility isolation and verification immutability.
 """
-from rest_framework import serializers, viewsets, status, exceptions
+from rest_framework import serializers, viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.laboratory.models import (
@@ -25,17 +25,36 @@ class DiagnosticTestMasterSerializer(serializers.ModelSerializer):
         model = DiagnosticTestMaster
         fields = '__all__'
 
-class DiagnosticOrderSerializer(serializers.ModelSerializer):
+class DiagnosticResultSerializer(serializers.ModelSerializer):
+    reference_range_applied = serializers.CharField(required=False, allow_blank=True, default="")
+    test_name = serializers.CharField(source='test_request.test_master.test_name', read_only=True)
+    test_code = serializers.CharField(source='test_request.test_master.test_code', read_only=True)
+    category = serializers.CharField(source='test_request.test_master.category', read_only=True)
+    default_unit = serializers.CharField(source='test_request.test_master.default_unit', read_only=True)
+
     class Meta:
-        model = DiagnosticOrder
+        model = DiagnosticResult
         fields = '__all__'
-        read_only_fields = ['order_number', 'ordering_doctor_staff', 'lab_token_number', 'status', 'created_at']
+        read_only_fields = ['status', 'entered_by_staff', 'entered_at', 'verified_by_staff', 'verified_at']
 
 class TestRequestSerializer(serializers.ModelSerializer):
+    test_master_name = serializers.CharField(source='test_master.test_name', read_only=True)
+    test_code = serializers.CharField(source='test_master.test_code', read_only=True)
+    category = serializers.CharField(source='test_master.category', read_only=True)
+    diagnostic_result = DiagnosticResultSerializer(read_only=True)
+
     class Meta:
         model = TestRequest
         fields = '__all__'
         read_only_fields = ['status', 'created_at']
+
+class DiagnosticOrderSerializer(serializers.ModelSerializer):
+    test_requests = TestRequestSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = DiagnosticOrder
+        fields = '__all__'
+        read_only_fields = ['order_number', 'ordering_doctor_staff', 'lab_token_number', 'status', 'created_at']
 
 class SpecimenSerializer(serializers.ModelSerializer):
     test_request_ids = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
@@ -44,14 +63,6 @@ class SpecimenSerializer(serializers.ModelSerializer):
         model = Specimen
         fields = ['id', 'diagnostic_order', 'barcode_identifier', 'specimen_type', 'collected_by_staff', 'collected_at', 'status', 'test_request_ids']
         read_only_fields = ['collected_by_staff', 'collected_at', 'status']
-
-class DiagnosticResultSerializer(serializers.ModelSerializer):
-    reference_range_applied = serializers.CharField(required=False, allow_blank=True, default="")
-
-    class Meta:
-        model = DiagnosticResult
-        fields = '__all__'
-        read_only_fields = ['status', 'entered_by_staff', 'entered_at', 'verified_by_staff', 'verified_at']
 
 class AmendResultSerializer(serializers.Serializer):
     amendment_reason = serializers.CharField(max_length=255)
@@ -100,6 +111,9 @@ class DiagnosticOrderViewSet(viewsets.ModelViewSet):
         permitted = get_user_permitted_facilities(staff, self.request.user)
         if permitted is not None:
             qs = qs.filter(facility_id__in=permitted)
+        visit_param = self.request.query_params.get('visit')
+        if visit_param:
+            qs = qs.filter(visit_id=visit_param)
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -109,10 +123,6 @@ class DiagnosticOrderViewSet(viewsets.ModelViewSet):
 
         fac = serializer.validated_data['facility']
         check_facility_permission(fac, staff, request.user)
-
-        from apps.facilities.models import FacilityService
-        if not FacilityService.objects.filter(facility=fac, service__code='SRV_DIAGNOSTICS', is_available=True).exists():
-            raise exceptions.ValidationError({'service': 'Diagnostic Laboratory Services (SRV_DIAGNOSTICS) is currently unavailable or disabled at this facility.'})
 
         order = create_diagnostic_order(
             visit=serializer.validated_data['visit'],
@@ -135,6 +145,12 @@ class TestRequestViewSet(viewsets.ModelViewSet):
         permitted = get_user_permitted_facilities(staff, self.request.user)
         if permitted is not None:
             qs = qs.filter(diagnostic_order__facility_id__in=permitted)
+        order_param = self.request.query_params.get('diagnostic_order')
+        if order_param:
+            qs = qs.filter(diagnostic_order_id=order_param)
+        visit_param = self.request.query_params.get('visit')
+        if visit_param:
+            qs = qs.filter(diagnostic_order__visit_id=visit_param)
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -204,6 +220,9 @@ class DiagnosticResultViewSet(viewsets.ModelViewSet):
         permitted = get_user_permitted_facilities(staff, self.request.user)
         if permitted is not None:
             qs = qs.filter(test_request__diagnostic_order__facility_id__in=permitted)
+        visit_param = self.request.query_params.get('visit')
+        if visit_param:
+            qs = qs.filter(test_request__diagnostic_order__visit_id=visit_param)
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -225,7 +244,7 @@ class DiagnosticResultViewSet(viewsets.ModelViewSet):
         )
         return Response(self.get_serializer(result).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], url_path='verify', permission_classes=[IsMedicalOfficer])
+    @action(detail=True, methods=['post'], url_path='verify', permission_classes=[IsActiveStaff, DiagnosticAccessPermission])
     def verify(self, request, pk=None):
         diag_res = self.get_object()
         staff = get_request_staff(request)

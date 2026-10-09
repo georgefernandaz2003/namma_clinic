@@ -113,7 +113,12 @@ export interface Patient {
   vulnerability_information?: string;
   registration_date?: string;
   registered_at_facility?: number | null;
+  registered_at_facility_details?: { facility_name?: string } | null;
   facility_name?: string;
+  taluk_name?: string;
+  state_name?: string;
+  pincode?: string;
+  alternate_mobile?: string;
 }
 
 export interface CreateTriagePayload {
@@ -868,6 +873,7 @@ export interface DiagnosticOrder {
   status: 'ORDERED' | 'SAMPLE_COLLECTED' | 'RECEIVED_IN_LAB' | 'IN_TESTING' | 'RESULT_ENTERED' | 'VERIFIED' | 'AMENDED' | 'CANCELLED' | string;
   clinical_indication: string;
   lab_token_number?: number | string | null;
+  test_requests?: TestRequest[];
   created_at: string;
   updated_at?: string;
 }
@@ -889,7 +895,10 @@ export interface TestRequest {
   diagnostic_order: number;
   test_master: number;
   test_master_name?: string;
+  test_code?: string;
+  category?: string;
   specimen?: number | null;
+  diagnostic_result?: DiagnosticResult | null;
   status: 'PENDING' | 'IN_TESTING' | 'COMPLETED' | 'CANCELLED' | string;
   created_at: string;
 }
@@ -897,6 +906,9 @@ export interface TestRequest {
 export interface DiagnosticResult {
   id: number;
   test_request: number;
+  test_name?: string;
+  test_code?: string;
+  default_unit?: string;
   result_value_text: string;
   result_value_numeric?: number | string | null;
   reference_range_applied?: string;

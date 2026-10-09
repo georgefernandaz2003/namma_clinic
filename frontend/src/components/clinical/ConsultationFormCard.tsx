@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Activity } from 'lucide-react';
 
 interface ConsultationFormCardProps {
@@ -93,11 +93,11 @@ export const ConsultationFormCard: React.FC<ConsultationFormCardProps> = ({
         </span>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label htmlFor="diag-code" className="block text-[11px] font-bold text-slate-700 mb-1">
+            <label htmlFor="diagnosis-code" className="block text-[11px] font-bold text-slate-700 mb-1">
               Diagnosis Code (ICD-10) <span className="text-rose-500">*</span>
             </label>
             <input
-              id="diag-code"
+              id="diagnosis-code"
               type="text"
               value={diagnosisCode}
               onChange={(e) => setDiagnosisCode(e.target.value)}
@@ -107,11 +107,11 @@ export const ConsultationFormCard: React.FC<ConsultationFormCardProps> = ({
             />
           </div>
           <div className="sm:col-span-2">
-            <label htmlFor="diag-name" className="block text-[11px] font-bold text-slate-700 mb-1">
+            <label htmlFor="diagnosis-name" className="block text-[11px] font-bold text-slate-700 mb-1">
               Diagnosis Name / Condition <span className="text-rose-500">*</span>
             </label>
             <input
-              id="diag-name"
+              id="diagnosis-name"
               type="text"
               value={diagnosisName}
               onChange={(e) => setDiagnosisName(e.target.value)}
