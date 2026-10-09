@@ -50,7 +50,11 @@ export const PublicHealthIntelligencePage: React.FC = () => {
   const [hoveredBarCategory, setHoveredBarCategory] = useState<string | null>(null);
 
   // Sub-filter States
-  const [selectedDiseaseCategory, setSelectedDiseaseCategory] = useState<string>('ALL');
+  const [selectedDiseaseCategory, setSelectedDiseaseCategory] = useState<string>('All');
+  const [selectedTrendDiseaseId, setSelectedTrendDiseaseId] = useState<string>('dengue');
+  const [selectedGeoDiseaseId, setSelectedGeoDiseaseId] = useState<string>('dengue');
+  const [selectedDetailDisease, setSelectedDetailDisease] = useState<any | null>(null);
+  const [hoveredGeoBar, setHoveredGeoBar] = useState<string | null>(null);
   const [selectedMedicineFilter, setSelectedMedicineFilter] = useState<string>('ALL');
   const [selectedAlertSeverity, setSelectedAlertSeverity] = useState<string>('ALL');
 
@@ -921,97 +925,660 @@ export const PublicHealthIntelligencePage: React.FC = () => {
       {/* =========================================================================== */}
       {/* SECTION 3: DISEASE INTELLIGENCE                                            */}
       {/* =========================================================================== */}
-      {activeSection === 'disease_intelligence' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">
-                Disease Intelligence & Surveillance
-              </h2>
-              <p className="text-xs text-slate-500">
-                Track disease trends, active cases, and short-term projections
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5">
-              {['ALL', 'Vector-Borne', 'Airborne', 'Non-Communicable'].map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedDiseaseCategory(cat)}
-                  className={`px-3 py-1 rounded-md text-xs font-semibold transition ${
-                    selectedDiseaseCategory === cat
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </div>
+      {activeSection === 'disease_intelligence' && (() => {
+        const rawDiseases = data?.disease_intelligence?.diseases || [];
+        const filteredDiseases = rawDiseases.filter((d: any) => {
+          if (selectedDiseaseCategory === 'All') return true;
+          return d.category.toLowerCase().includes(selectedDiseaseCategory.toLowerCase());
+        });
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {data?.disease_intelligence?.diseases
-              ?.filter((d: any) => {
-                if (selectedDiseaseCategory === 'ALL') return true;
-                return d.category.toLowerCase().includes(selectedDiseaseCategory.toLowerCase());
-              })
-              .map((disease: any) => {
-                const isHigh = disease.risk.includes('HIGH');
-                return (
-                  <div
-                    key={disease.id}
-                    className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 space-y-3 text-xs"
+        const summaryKpis = data?.disease_intelligence?.summary_kpis || {
+          total_active_cases: 72450,
+          new_cases: 4280,
+          high_risk_diseases: 3,
+          diseases_increasing: 6
+        };
+
+        const activeTrendDisease = rawDiseases.find((d: any) => d.id === selectedTrendDiseaseId) || rawDiseases[0] || {};
+        const activeGeoDisease = rawDiseases.find((d: any) => d.id === selectedGeoDiseaseId) || rawDiseases[0] || {};
+
+        const monthlyTrends = data?.disease_intelligence?.monthly_trends || {};
+        const trendValues = monthlyTrends[activeTrendDisease.id] || [];
+        const months = data?.disease_intelligence?.months || data?.trend_analysis?.months || ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov (F)', 'Dec (F)'];
+        const splitIdx = data?.disease_intelligence?.split_index || 10;
+        const trendMax = Math.max(...trendValues, 1);
+        const trendMin = Math.min(...trendValues, 0);
+
+        const geoDistributions = data?.disease_intelligence?.geographic_distribution || {};
+        const geoList = geoDistributions[activeGeoDisease.id] || [];
+        const geoMax = Math.max(...geoList.map((g: any) => g.cases), 1);
+        const geoScopeType = data?.disease_intelligence?.geo_scope_type || 'District';
+
+        // Sort diseases for Current Disease Burden horizontal bar chart
+        const sortedBurdenDiseases = [...filteredDiseases].sort((a: any, b: any) => (b.current_cases || 0) - (a.current_cases || 0));
+        const maxBurdenCases = Math.max(...sortedBurdenDiseases.map((d: any) => d.current_cases || 0), 1);
+
+        return (
+          <div className="space-y-6">
+            {/* 1. Page Header (Section 1: Title, Subtitle, Category Filter Buttons) */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">
+                  Disease Intelligence
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Monitor disease burden, trends, hotspots and short-term forecasts.
+                </p>
+              </div>
+
+              {/* Category Filter Buttons: [All] [Vector-Borne] [Airborne] [Non-Communicable] */}
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg text-xs font-semibold">
+                {['All', 'Vector-Borne', 'Airborne', 'Non-Communicable'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedDiseaseCategory(cat)}
+                    className={`px-3 py-1 rounded-md transition ${
+                      selectedDiseaseCategory === cat
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
                   >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="font-bold text-slate-900 text-sm">{disease.name}</h4>
-                        <span className="text-[11px] text-slate-500">{disease.category}</span>
-                      </div>
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          isHigh ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 2. Top KPI Row (Section 3: Exactly 4 compact KPIs, no long descriptions) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-xl p-4 border border-slate-200/90 shadow-sm space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide block">
+                  Total Active Cases
+                </span>
+                <div className="text-2xl font-black text-slate-900 tracking-tight">
+                  {summaryKpis.total_active_cases?.toLocaleString()}
+                </div>
+                <span className="text-[11px] text-slate-400 block">Across tracked diseases</span>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 border border-slate-200/90 shadow-sm space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide block">
+                  New Cases
+                </span>
+                <div className="text-2xl font-black text-slate-900 tracking-tight text-blue-600">
+                  {summaryKpis.new_cases?.toLocaleString()}
+                </div>
+                <span className="text-[11px] text-slate-400 block">Reported in current period</span>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 border border-slate-200/90 shadow-sm space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide block">
+                  High-Risk Diseases
+                </span>
+                <div className="text-2xl font-black text-rose-600 tracking-tight">
+                  {summaryKpis.high_risk_diseases}
+                </div>
+                <span className="text-[11px] text-rose-600/80 font-medium block">Action required</span>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 border border-slate-200/90 shadow-sm space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide block">
+                  Diseases Increasing
+                </span>
+                <div className="text-2xl font-black text-amber-600 tracking-tight">
+                  {summaryKpis.diseases_increasing}
+                </div>
+                <span className="text-[11px] text-amber-600/80 font-medium block">Upward trajectory</span>
+              </div>
+            </div>
+
+            {/* 3. Main Disease Trend (Section 4: Large clean line chart with disease selector) */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Disease Trend
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Historical surveillance data and predictive forecast
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Disease Selector Dropdown */}
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="trend-disease-select" className="text-xs text-slate-500 font-medium">
+                      Disease:
+                    </label>
+                    <select
+                      id="trend-disease-select"
+                      aria-label="Disease Trend Selector"
+                      value={selectedTrendDiseaseId}
+                      onChange={(e) => setSelectedTrendDiseaseId(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      {rawDiseases.map((d: any) => (
+                        <option key={d.id} value={d.id}>
+                          {d.short_name || d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Legend */}
+                  <div className="flex items-center gap-3 text-xs font-medium text-slate-600">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-1 bg-blue-600 rounded" />
+                      <span>Historical</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500" />
+                      <span>Current</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-1 bg-amber-500 border-dashed rounded" />
+                      <span>Forecast</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Banner for the Selected Disease */}
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-slate-900 text-sm">
+                    {activeTrendDisease.name}
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-200 text-slate-700">
+                    {activeTrendDisease.category}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      activeTrendDisease.risk === 'HIGH'
+                        ? 'bg-rose-100 text-rose-700'
+                        : activeTrendDisease.risk === 'MODERATE'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-emerald-100 text-emerald-700'
+                    }`}
+                  >
+                    Risk: {activeTrendDisease.risk}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-4 text-xs font-medium text-slate-600">
+                  <span>Current: <strong className="text-slate-900 font-bold">{activeTrendDisease.current_cases?.toLocaleString()}</strong></span>
+                  <span>Trend: <strong className={activeTrendDisease.trend === 'Increasing' ? 'text-amber-600' : 'text-emerald-600'}>{activeTrendDisease.trend}</strong></span>
+                  <span>7-Day Forecast: <strong className={activeTrendDisease.forecast_7d?.includes('+') ? 'text-rose-600' : 'text-emerald-600'}>{activeTrendDisease.forecast_7d}</strong></span>
+                </div>
+              </div>
+
+              {/* Large Line Chart */}
+              <div className="w-full h-56 bg-white rounded-xl p-4 border border-slate-100 flex flex-col justify-end">
+                <svg viewBox="0 0 700 140" className="w-full h-40 overflow-visible">
+                  <line x1="0" y1="20" x2="700" y2="20" stroke="#F1F5F9" strokeDasharray="3,3" />
+                  <line x1="0" y1="60" x2="700" y2="60" stroke="#F1F5F9" strokeDasharray="3,3" />
+                  <line x1="0" y1="100" x2="700" y2="100" stroke="#F1F5F9" strokeDasharray="3,3" />
+                  <line x1="0" y1="130" x2="700" y2="130" stroke="#E2E8F0" />
+
+                  {/* Historical Solid Line */}
+                  {trendValues.slice(0, splitIdx).map((val: number, i: number, arr: number[]) => {
+                    if (i === arr.length - 1) return null;
+                    const x1 = (i / 11) * 660 + 20;
+                    const y1 = 125 - ((val - trendMin) / (trendMax - trendMin || 1)) * 95;
+                    const x2 = ((i + 1) / 11) * 660 + 20;
+                    const y2 = 125 - ((arr[i + 1] - trendMin) / (trendMax - trendMin || 1)) * 95;
+                    return (
+                      <line
+                        key={`hist-${i}`}
+                        x1={x1}
+                        y1={y1}
+                        x2={x2}
+                        y2={y2}
+                        stroke="#2563EB"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                      />
+                    );
+                  })}
+
+                  {/* Current Data Point */}
+                  {trendValues[splitIdx - 1] !== undefined && (() => {
+                    const cx = ((splitIdx - 1) / 11) * 660 + 20;
+                    const cy = 125 - ((trendValues[splitIdx - 1] - trendMin) / (trendMax - trendMin || 1)) * 95;
+                    return (
+                      <g>
+                        <circle cx={cx} cy={cy} r="6" fill="#EF4444" fillOpacity="0.2" />
+                        <circle cx={cx} cy={cy} r="4" fill="#EF4444" stroke="#FFF" strokeWidth="1.5" />
+                      </g>
+                    );
+                  })()}
+
+                  {/* Forecast Dashed Line */}
+                  {trendValues.slice(splitIdx - 1).map((val: number, i: number, arr: number[]) => {
+                    if (i === arr.length - 1) return null;
+                    const idx1 = splitIdx - 1 + i;
+                    const idx2 = splitIdx - 1 + i + 1;
+                    const x1 = (idx1 / 11) * 660 + 20;
+                    const y1 = 125 - ((val - trendMin) / (trendMax - trendMin || 1)) * 95;
+                    const x2 = (idx2 / 11) * 660 + 20;
+                    const y2 = 125 - ((arr[i + 1] - trendMin) / (trendMax - trendMin || 1)) * 95;
+                    return (
+                      <line
+                        key={`fc-${i}`}
+                        x1={x1}
+                        y1={y1}
+                        x2={x2}
+                        y2={y2}
+                        stroke="#F59E0B"
+                        strokeWidth="2.5"
+                        strokeDasharray="4,4"
+                        strokeLinecap="round"
+                      />
+                    );
+                  })}
+                </svg>
+
+                {/* X-Axis Month Labels */}
+                <div className="flex justify-between text-[11px] text-slate-400 font-medium px-4 mt-2">
+                  {months.map((m: string, idx: number) => (
+                    <span
+                      key={idx}
+                      className={
+                        idx === splitIdx - 1
+                          ? 'font-bold text-slate-800'
+                          : idx >= splitIdx
+                          ? 'font-bold text-amber-600'
+                          : ''
+                      }
+                    >
+                      {m}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Current Disease Burden (Section 5: Horizontal bar chart) & 5. Geographic Distribution (Section 6) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Current Disease Burden (Horizontal Bar Chart) */}
+              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-4">
+                <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Current Disease Burden
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Major diseases ranked by active/current caseload
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-400">
+                    {sortedBurdenDiseases.length} Diseases
+                  </span>
+                </div>
+
+                <div className="space-y-3 pt-1">
+                  {sortedBurdenDiseases.map((d: any) => {
+                    const pct = Math.max(8, Math.round((d.current_cases / maxBurdenCases) * 100));
+                    const isSelected = selectedTrendDiseaseId === d.id;
+                    const isHigh = d.risk === 'HIGH';
+
+                    return (
+                      <div
+                        key={d.id}
+                        onClick={() => {
+                          setSelectedTrendDiseaseId(d.id);
+                          setSelectedGeoDiseaseId(d.id);
+                        }}
+                        className={`p-2.5 rounded-xl border transition cursor-pointer space-y-1.5 ${
+                          isSelected
+                            ? 'bg-blue-50/50 border-blue-200'
+                            : 'bg-slate-50/60 border-slate-200/70 hover:bg-slate-100/70'
                         }`}
                       >
-                        {disease.risk}
-                      </span>
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900">{d.name}</span>
+                            <span className="text-[10px] text-slate-500 font-medium">({d.category})</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-slate-900">{d.current_cases?.toLocaleString()}</span>
+                            <span
+                              className={`text-[10px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                                isHigh ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {d.risk}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div className="w-full bg-slate-200/70 rounded-full h-2 overflow-hidden">
+                          <div
+                            style={{ width: `${pct}%` }}
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              isHigh ? 'bg-rose-500' : 'bg-blue-600'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Geographic Distribution (Section 6: District / Zone Chart with disease selector) */}
+              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-4">
+                <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Disease Distribution by {geoScopeType}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Geographic burden and regional hotspots
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="geo-disease-select" className="text-xs text-slate-500 font-medium">
+                      Disease:
+                    </label>
+                    <select
+                      id="geo-disease-select"
+                      aria-label="Geographic Disease Selector"
+                      value={selectedGeoDiseaseId}
+                      onChange={(e) => setSelectedGeoDiseaseId(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      {rawDiseases.map((d: any) => (
+                        <option key={d.id} value={d.id}>
+                          {d.short_name || d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Vertical Bar Distribution Chart */}
+                <div className="w-full overflow-x-auto">
+                  <div className="min-w-[480px] h-56 relative flex items-end justify-between px-3 pt-6 pb-6 border-b border-slate-200">
+                    {geoList.map((geo: any, idx: number) => {
+                      const h = Math.max(12, Math.round((geo.cases / geoMax) * 140));
+                      const isHovered = hoveredGeoBar === geo.name;
+                      const isTopHotspot = idx === 0;
+
+                      return (
+                        <div
+                          key={idx}
+                          className="flex-1 flex flex-col items-center justify-end h-full px-1.5 group cursor-pointer"
+                          onMouseEnter={() => setHoveredGeoBar(geo.name)}
+                          onMouseLeave={() => setHoveredGeoBar(null)}
+                        >
+                          {/* Tooltip */}
+                          {isHovered && (
+                            <div className="absolute top-1 bg-slate-900 text-white rounded-md px-2.5 py-1 text-xs shadow-md z-10 pointer-events-none">
+                              <span className="font-semibold block">{geo.name}</span>
+                              <span>{activeGeoDisease.short_name || activeGeoDisease.name}: {geo.cases?.toLocaleString()} cases</span>
+                            </div>
+                          )}
+
+                          {/* Bar */}
+                          <div
+                            style={{ height: `${h}px` }}
+                            className={`w-5 sm:w-7 rounded-t transition-all ${
+                              isTopHotspot ? 'bg-rose-500 group-hover:bg-rose-600' : 'bg-blue-600 group-hover:bg-blue-700'
+                            }`}
+                          />
+
+                          {/* Region Label */}
+                          <span className="text-[10px] font-medium text-slate-600 mt-2 truncate max-w-[70px] text-center">
+                            {geo.name}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Hotspot Summary callout */}
+                <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 flex items-center justify-between">
+                  <span>Highest Burden Region: <strong className="text-slate-900">{geoList[0]?.name || 'N/A'}</strong></span>
+                  <span className="font-bold text-rose-600">{geoList[0]?.cases?.toLocaleString()} cases</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 6. Disease Summary Table (Section 7: Compact table with click-to-view detail) */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Disease Summary Table
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Click any disease to open detailed analysis and clinical recommendations
+                  </p>
+                </div>
+                <span className="text-xs text-slate-400 font-medium">
+                  Showing {filteredDiseases.length} diseases
+                </span>
+              </div>
+
+              {/* Compact Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3">Disease</th>
+                      <th className="py-2.5 px-3">Category</th>
+                      <th className="py-2.5 px-3 text-right">Current</th>
+                      <th className="py-2.5 px-3 text-right">Active</th>
+                      <th className="py-2.5 px-3 text-right">Recovered</th>
+                      <th className="py-2.5 px-3 text-right">7-Day Forecast</th>
+                      <th className="py-2.5 px-3 text-center">Risk</th>
+                      <th className="py-2.5 px-3 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
+                    {filteredDiseases.map((d: any) => {
+                      const isHigh = d.risk === 'HIGH';
+                      const isMod = d.risk === 'MODERATE';
+
+                      return (
+                        <tr
+                          key={d.id}
+                          onClick={() => setSelectedDetailDisease(d)}
+                          className="hover:bg-slate-50/80 transition cursor-pointer group"
+                        >
+                          <td className="py-3 px-3 font-bold text-slate-900 group-hover:text-blue-600">
+                            {d.name}
+                          </td>
+                          <td className="py-3 px-3 text-slate-500 font-normal">
+                            {d.category}
+                          </td>
+                          <td className="py-3 px-3 text-right font-semibold">
+                            {d.current_cases?.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 text-right text-amber-600 font-bold">
+                            {d.active_cases?.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 text-right text-emerald-600">
+                            {d.recovered?.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 text-right font-bold">
+                            <span className={d.forecast_7d?.includes('+') ? 'text-rose-600' : 'text-emerald-600'}>
+                              {d.forecast_7d}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                isHigh
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : isMod
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-emerald-100 text-emerald-700'
+                              }`}
+                            >
+                              {d.risk}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDetailDisease(d);
+                              }}
+                              className="text-blue-600 hover:text-blue-800 text-xs font-semibold px-2 py-1 rounded hover:bg-blue-50 transition"
+                            >
+                              Details →
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* 7. Disease Detail Modal / Drawer (Section 8 & 9: Detail Drilldown with Recommendations) */}
+            {selectedDetailDisease && (
+              <div
+                className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4"
+                onClick={() => setSelectedDetailDisease(null)}
+              >
+                <div
+                  className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-black text-slate-900">
+                          {selectedDetailDisease.name}
+                        </h3>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
+                          {selectedDetailDisease.category}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Clinical telemetry and targeted surveillance directives
+                      </p>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 bg-slate-50 rounded-xl p-2.5 text-center">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block uppercase">Current</span>
-                        <strong className="text-slate-800 font-bold">{disease.current_cases.toLocaleString()}</strong>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block uppercase">Active</span>
-                        <strong className="text-amber-600 font-bold">{disease.active_cases.toLocaleString()}</strong>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block uppercase">Recovered</span>
-                        <strong className="text-emerald-600 font-bold">{disease.recovered.toLocaleString()}</strong>
-                      </div>
+                    <button
+                      onClick={() => setSelectedDetailDisease(null)}
+                      className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition text-sm font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* 3 Metric Cards */}
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Current Cases</span>
+                      <strong className="text-base font-black text-slate-900">
+                        {selectedDetailDisease.current_cases?.toLocaleString()}
+                      </strong>
                     </div>
 
-                    <div className="space-y-1 text-[11px] text-slate-600">
-                      <div className="flex justify-between">
-                        <span>7-Day Forecast:</span>
-                        <strong className={disease.forecast_7d.includes('+') ? 'text-rose-600' : 'text-emerald-600'}>
-                          {disease.forecast_7d}
+                    <div className="bg-amber-50/60 p-2.5 rounded-xl border border-amber-100">
+                      <span className="text-[10px] text-amber-600 uppercase font-bold block">Active Cases</span>
+                      <strong className="text-base font-black text-amber-700">
+                        {selectedDetailDisease.active_cases?.toLocaleString()}
+                      </strong>
+                    </div>
+
+                    <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100">
+                      <span className="text-[10px] text-emerald-600 uppercase font-bold block">Recovered</span>
+                      <strong className="text-base font-black text-emerald-700">
+                        {selectedDetailDisease.recovered?.toLocaleString()}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Prediction Summary (Section 9: Current, Trend, Forecast, Risk) */}
+                  <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-2 text-xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wide">
+                      Predictive Trajectory
+                    </span>
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Current</span>
+                        <strong className="text-slate-900 font-bold">{selectedDetailDisease.current_cases?.toLocaleString()}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Trend</span>
+                        <strong className={selectedDetailDisease.trend === 'Increasing' ? 'text-amber-600 font-bold' : 'text-emerald-600 font-bold'}>
+                          {selectedDetailDisease.trend}
                         </strong>
                       </div>
                       <div>
-                        <strong>Area:</strong> {disease.affected_area}
+                        <span className="text-[10px] text-slate-500 block">7-Day Forecast</span>
+                        <strong className="text-rose-600 font-bold">{selectedDetailDisease.forecast_7d}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Risk</span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase inline-block ${
+                            selectedDetailDisease.risk === 'HIGH'
+                              ? 'bg-rose-100 text-rose-700'
+                              : selectedDetailDisease.risk === 'MODERATE'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-emerald-100 text-emerald-700'
+                          }`}
+                        >
+                          {selectedDetailDisease.risk}
+                        </span>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="bg-slate-50 rounded-lg p-2 text-[11px] text-slate-700 font-medium">
-                      <strong>Recommendation:</strong> {disease.recommended_action}
+                  {/* Highest Affected Areas */}
+                  <div className="space-y-1.5 text-xs">
+                    <span className="font-bold text-slate-700 block">
+                      Highest Affected Areas:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(selectedDetailDisease.affected_areas || ['Dakshina Kannada', 'Udupi', 'Mysuru']).map((area: string, aIdx: number) => (
+                        <span
+                          key={aIdx}
+                          className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md text-xs font-semibold"
+                        >
+                          📍 {area}
+                        </span>
+                      ))}
                     </div>
                   </div>
-                );
-              })}
+
+                  {/* Recommendation (Section 8: Appears ONLY in disease detail view) */}
+                  <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 text-xs text-slate-800 space-y-1">
+                    <strong className="text-emerald-800 font-bold block flex items-center gap-1.5">
+                      <span>✓ Clinical & Surveillance Recommendation</span>
+                    </strong>
+                    <p className="text-slate-700">
+                      {selectedDetailDisease.recommended_action || 'Increase surveillance and vector-control activities.'}
+                    </p>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="pt-2 border-t border-slate-100 flex justify-end">
+                    <button
+                      onClick={() => setSelectedDetailDisease(null)}
+                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition"
+                    >
+                      Close Detail View
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* =========================================================================== */}
       {/* SECTION 4: HEALTHCARE OPERATIONS                                           */}

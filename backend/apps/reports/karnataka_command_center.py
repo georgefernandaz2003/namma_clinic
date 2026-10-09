@@ -476,145 +476,210 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
             ]
         }
 
-    # 7. Disease Intelligence
+    # 7. Disease Intelligence (Analytical Dashboard Data Model)
+    scope_ratio = tot_patients / 353352.0 if tot_patients else 1.0
+    if scope_level == "STATE":
+        scope_ratio = 1.0
+
     disease_list = [
         {
             "id": "dengue",
             "name": "Dengue Fever",
-            "category": "Vector-Borne (Aedes)",
-            "current_cases": int(tot_patients * 0.038),
-            "new_cases": int(tot_patients * 0.007),
-            "active_cases": int(tot_patients * 0.015),
-            "recovered": int(tot_patients * 0.022),
-            "mortality": max(1, int(tot_patients * 0.00015)),
+            "short_name": "Dengue",
+            "category": "Vector-Borne",
+            "current_cases": int(13427 * scope_ratio),
+            "active_cases": int(5300 * scope_ratio),
+            "recovered": int(7773 * scope_ratio),
+            "new_cases": int(1240 * scope_ratio),
+            "mortality": max(1, int(18 * scope_ratio)),
             "trend": "Increasing",
             "forecast_7d": "+18%",
             "forecast_14d": "+24%",
-            "forecast_30d": "-12% (Post-fogging)",
+            "forecast_30d": "-12%",
             "risk": "HIGH",
-            "affected_area": "Dakshina Kannada & Coastal Belt",
-            "recommended_action": "Deploy ASHA fever-screening squad; conduct intensive anti-larval chemical fogging."
+            "affected_areas": ["Dakshina Kannada", "Udupi", "Mysuru"],
+            "recommended_action": "Increase surveillance and vector-control activities."
         },
         {
             "id": "malaria",
-            "name": "Malaria (P. vivax & falciparum)",
-            "category": "Vector-Borne (Anopheles)",
-            "current_cases": int(tot_patients * 0.012),
-            "new_cases": int(tot_patients * 0.002),
-            "active_cases": int(tot_patients * 0.004),
-            "recovered": int(tot_patients * 0.008),
+            "name": "Malaria",
+            "short_name": "Malaria",
+            "category": "Vector-Borne",
+            "current_cases": int(4240 * scope_ratio),
+            "active_cases": int(1413 * scope_ratio),
+            "recovered": int(2826 * scope_ratio),
+            "new_cases": int(180 * scope_ratio),
             "mortality": 0,
-            "trend": "Stable",
+            "trend": "Increasing",
             "forecast_7d": "+2%",
             "forecast_14d": "+3%",
             "forecast_30d": "-4%",
             "risk": "MODERATE",
-            "affected_area": "Mangalore Port & Construction Corridors",
+            "affected_areas": ["Mangalore Port", "Dakshina Kannada", "Udupi"],
             "recommended_action": "Routine surveillance; stock Artemisinin combination therapy and rapid diagnostic kits."
         },
         {
             "id": "tuberculosis",
-            "name": "Tuberculosis (NTEP)",
-            "category": "Airborne Chronic",
-            "current_cases": int(tot_patients * 0.025),
-            "new_cases": int(tot_patients * 0.003),
-            "active_cases": int(tot_patients * 0.019),
-            "recovered": int(tot_patients * 0.006),
-            "mortality": max(1, int(tot_patients * 0.0002)),
-            "trend": "Stable",
+            "name": "Tuberculosis (TB)",
+            "short_name": "Tuberculosis",
+            "category": "Airborne",
+            "current_cases": int(8833 * scope_ratio),
+            "active_cases": int(6713 * scope_ratio),
+            "recovered": int(2120 * scope_ratio),
+            "new_cases": int(480 * scope_ratio),
+            "mortality": max(1, int(42 * scope_ratio)),
+            "trend": "Increasing",
             "forecast_7d": "+0.5%",
             "forecast_14d": "+1.1%",
             "forecast_30d": "+2.0%",
-            "risk": "MODERATE",
-            "affected_area": "Kalaburagi & Belagavi Industrial Clusters",
+            "risk": "HIGH",
+            "affected_areas": ["Kalaburagi", "Belagavi", "Bengaluru Urban"],
             "recommended_action": "Directly Observed Therapy (DOTS) compliance tracking; ensure 6-month fixed-dose refill continuity."
         },
         {
             "id": "respiratory_infections",
-            "name": "Acute Respiratory Infections (ARI/ILI)",
-            "category": "Airborne Droplet",
-            "current_cases": int(tot_patients * 0.082),
-            "new_cases": int(tot_patients * 0.018),
-            "active_cases": int(tot_patients * 0.035),
-            "recovered": int(tot_patients * 0.046),
-            "mortality": max(1, int(tot_patients * 0.0001)),
+            "name": "Respiratory Infection",
+            "short_name": "Respiratory Infection",
+            "category": "Airborne",
+            "current_cases": int(28974 * scope_ratio),
+            "active_cases": int(12367 * scope_ratio),
+            "recovered": int(16254 * scope_ratio),
+            "new_cases": int(1420 * scope_ratio),
+            "mortality": max(1, int(24 * scope_ratio)),
             "trend": "Increasing",
             "forecast_7d": "+15%",
             "forecast_14d": "+22%",
             "forecast_30d": "+10%",
             "risk": "HIGH",
-            "affected_area": "Bengaluru Urban, Mysuru & Tumakuru",
+            "affected_areas": ["Bengaluru Urban", "Mysuru", "Tumakuru"],
             "recommended_action": "Increase nebulizer stations at OPD triage; buffer Azithromycin and Amoxicillin stocks."
         },
         {
             "id": "hypertension",
-            "name": "Essential Hypertension (NCD)",
-            "category": "Non-Communicable Chronic",
-            "current_cases": int(tot_patients * 0.145),
-            "new_cases": int(tot_patients * 0.012),
-            "active_cases": int(tot_patients * 0.138),
-            "recovered": int(tot_patients * 0.007),
+            "name": "Hypertension",
+            "short_name": "Hypertension",
+            "category": "Non-Communicable",
+            "current_cases": int(51240 * scope_ratio),
+            "active_cases": int(21450 * scope_ratio),
+            "recovered": int(29790 * scope_ratio),
+            "new_cases": int(420 * scope_ratio),
             "mortality": 0,
-            "trend": "Stable / Controlled",
+            "trend": "Increasing",
             "forecast_7d": "+1%",
             "forecast_14d": "+2%",
             "forecast_30d": "+4%",
-            "risk": "LOW (91.5% Controlled)",
-            "affected_area": "Karnataka-wide Cohort",
+            "risk": "LOW",
+            "affected_areas": ["Bengaluru Urban", "Mysuru", "Belagavi"],
             "recommended_action": "Automate 30-day generic Amlodipine refills; monitor mean cohort BP in primary care."
         },
         {
             "id": "diabetes",
-            "name": "Type-2 Diabetes Mellitus (NCD)",
-            "category": "Non-Communicable Chronic",
-            "current_cases": int(tot_patients * 0.128),
-            "new_cases": int(tot_patients * 0.011),
-            "active_cases": int(tot_patients * 0.121),
-            "recovered": int(tot_patients * 0.007),
+            "name": "Diabetes",
+            "short_name": "Diabetes",
+            "category": "Non-Communicable",
+            "current_cases": int(45230 * scope_ratio),
+            "active_cases": int(18210 * scope_ratio),
+            "recovered": int(27020 * scope_ratio),
+            "new_cases": int(310 * scope_ratio),
             "mortality": 0,
-            "trend": "Stable / Controlled",
+            "trend": "Increasing",
             "forecast_7d": "+1.2%",
             "forecast_14d": "+2.5%",
             "forecast_30d": "+5%",
-            "risk": "LOW (89.2% Controlled)",
-            "affected_area": "Karnataka-wide Cohort",
+            "risk": "LOW",
+            "affected_areas": ["Belagavi", "Tumakuru", "Kalaburagi"],
             "recommended_action": "Ensure Metformin buffer stock; quarterly HbA1c screening campaigns."
         },
         {
             "id": "cardiovascular",
-            "name": "Cardiovascular Disease (CVD/IHD)",
-            "category": "Non-Communicable Chronic",
-            "current_cases": int(tot_patients * 0.034),
-            "new_cases": int(tot_patients * 0.004),
-            "active_cases": int(tot_patients * 0.031),
-            "recovered": int(tot_patients * 0.003),
-            "mortality": max(1, int(tot_patients * 0.0004)),
+            "name": "Cardiovascular Disease",
+            "short_name": "Cardiovascular",
+            "category": "Non-Communicable",
+            "current_cases": int(12040 * scope_ratio),
+            "active_cases": int(4200 * scope_ratio),
+            "recovered": int(7840 * scope_ratio),
+            "new_cases": int(150 * scope_ratio),
+            "mortality": max(1, int(35 * scope_ratio)),
             "trend": "Stable",
             "forecast_7d": "+0.8%",
             "forecast_14d": "+1.4%",
             "forecast_30d": "+3.0%",
             "risk": "MODERATE",
-            "affected_area": "Mysuru, Belagavi & Ballari Centers",
+            "affected_areas": ["Mysuru", "Belagavi", "Ballari"],
             "recommended_action": "Tertiary cardiologist tele-consultation linkage and emergency Sorbitrate supply."
         },
         {
             "id": "chronic_kidney",
             "name": "Chronic Kidney Disease (CKD)",
-            "category": "Non-Communicable Chronic",
-            "current_cases": int(tot_patients * 0.015),
-            "new_cases": int(tot_patients * 0.001),
-            "active_cases": int(tot_patients * 0.014),
-            "recovered": 0,
-            "mortality": max(1, int(tot_patients * 0.0003)),
+            "short_name": "CKD",
+            "category": "Non-Communicable",
+            "current_cases": int(5310 * scope_ratio),
+            "active_cases": int(2797 * scope_ratio),
+            "recovered": int(2513 * scope_ratio),
+            "new_cases": int(80 * scope_ratio),
+            "mortality": max(1, int(15 * scope_ratio)),
             "trend": "Stable",
             "forecast_7d": "+0.4%",
             "forecast_14d": "+0.9%",
             "forecast_30d": "+1.8%",
             "risk": "MODERATE",
-            "affected_area": "Udupi, Dakshina Kannada & Shivamogga",
+            "affected_areas": ["Udupi", "Dakshina Kannada", "Shivamogga"],
             "recommended_action": "District hospital hemodialysis slot optimization and creatinine laboratory monitoring."
         }
     ]
+
+    # Calculate Top KPIs (Section 3: Exactly 4 compact KPIs)
+    total_active_cases = sum(d["active_cases"] for d in disease_list)
+    total_new_cases = sum(d["new_cases"] for d in disease_list)
+    high_risk_diseases_count = len([d for d in disease_list if d["risk"] == "HIGH"])
+    increasing_diseases_count = len([d for d in disease_list if d["trend"] == "Increasing"])
+
+    # Monthly Trends (Jan - Dec: Historical Jan-Oct, Forecast Nov-Dec)
+    disease_monthly_trends = {
+        "dengue": [int(v * scope_ratio) for v in [3800, 3200, 4100, 4800, 6200, 8900, 11400, 12800, 13100, 13427, 15840, 14200]],
+        "malaria": [int(v * scope_ratio) for v in [4100, 3900, 4050, 4120, 4200, 4350, 4400, 4300, 4280, 4240, 4325, 4150]],
+        "tuberculosis": [int(v * scope_ratio) for v in [8600, 8550, 8620, 8680, 8710, 8740, 8760, 8790, 8810, 8833, 8877, 8920]],
+        "respiratory_infections": [int(v * scope_ratio) for v in [24000, 23500, 22800, 21900, 22400, 23800, 25200, 26900, 27800, 28974, 33320, 36500]],
+        "hypertension": [int(v * scope_ratio) for v in [49800, 50000, 50200, 50400, 50600, 50800, 50950, 51050, 51150, 51240, 51750, 52200]],
+        "diabetes": [int(v * scope_ratio) for v in [43800, 44000, 44200, 44400, 44600, 44800, 44900, 45050, 45150, 45230, 45770, 46200]],
+        "cardiovascular": [int(v * scope_ratio) for v in [11600, 11680, 11740, 11800, 11860, 11920, 11960, 11990, 12010, 12040, 12130, 12250]],
+        "chronic_kidney": [int(v * scope_ratio) for v in [5150, 5180, 5200, 5220, 5240, 5260, 5280, 5295, 5300, 5310, 5330, 5360]]
+    }
+
+    # Geographic Distribution per disease
+    disease_geo_distribution = {}
+    if scope_level == "STATE":
+        geo_regions = [d["name"] for d in KARNATAKA_DISTRICTS]
+        weights = {
+            "dengue": [0.255, 0.182, 0.162, 0.145, 0.034, 0.021, 0.012, 0.101, 0.088],
+            "malaria": [0.280, 0.120, 0.110, 0.150, 0.040, 0.030, 0.020, 0.100, 0.150],
+            "tuberculosis": [0.080, 0.150, 0.190, 0.220, 0.180, 0.050, 0.060, 0.040, 0.030],
+            "respiratory_infections": [0.090, 0.180, 0.140, 0.280, 0.080, 0.060, 0.050, 0.080, 0.040],
+            "hypertension": [0.080, 0.160, 0.150, 0.270, 0.110, 0.070, 0.060, 0.060, 0.040],
+            "diabetes": [0.070, 0.150, 0.160, 0.260, 0.120, 0.080, 0.060, 0.060, 0.040],
+            "cardiovascular": [0.060, 0.210, 0.180, 0.240, 0.090, 0.060, 0.080, 0.050, 0.030],
+            "chronic_kidney": [0.190, 0.120, 0.110, 0.180, 0.060, 0.140, 0.040, 0.040, 0.120]
+        }
+        for d in disease_list:
+            w_list = weights.get(d["id"], [1.0 / len(geo_regions)] * len(geo_regions))
+            disease_geo_distribution[d["id"]] = [
+                {"name": geo_regions[i], "cases": max(1, int(d["current_cases"] * w_list[i]))}
+                for i in range(len(geo_regions))
+            ]
+    elif scope_level == "DISTRICT":
+        geo_regions = [z["name"] for z in selected_district["zones"]]
+        for d in disease_list:
+            disease_geo_distribution[d["id"]] = [
+                {"name": z_name, "cases": max(1, int(d["current_cases"] / len(geo_regions)))}
+                for z_name in geo_regions
+            ]
+    else:
+        geo_regions = [h["name"][:20] for h in active_hospitals]
+        for d in disease_list:
+            disease_geo_distribution[d["id"]] = [
+                {"name": h_name, "cases": max(1, int(d["current_cases"] / max(len(geo_regions), 1)))}
+                for h_name in geo_regions
+            ]
 
     # 8. Healthcare Operations Metrics
     healthcare_ops = {
@@ -916,7 +981,18 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
             "series": trend_series
         },
         "disease_intelligence": {
+            "summary_kpis": {
+                "total_active_cases": total_active_cases,
+                "new_cases": total_new_cases,
+                "high_risk_diseases": high_risk_diseases_count,
+                "diseases_increasing": increasing_diseases_count,
+            },
             "diseases": disease_list,
+            "monthly_trends": disease_monthly_trends,
+            "geographic_distribution": disease_geo_distribution,
+            "geo_scope_type": "District" if scope_level == "STATE" else ("Zone" if scope_level == "DISTRICT" else "Hospital"),
+            "months": months,
+            "split_index": 10,
             "top_vector_threat": disease_list[0],
             "top_airborne_threat": disease_list[3],
             "chronic_stabilization": disease_list[4]
