@@ -681,7 +681,129 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
                 for h_name in geo_regions
             ]
 
-    # 8. Healthcare Operations Metrics
+    # 8. Healthcare Operations Metrics & Analytical Projections
+    opd_factors = [0.84, 0.86, 0.89, 0.92, 0.95, 0.98, 1.02, 1.05, 1.07, 1.10, 1.13, 1.12]
+    ipd_factors = [0.86, 0.87, 0.90, 0.93, 0.94, 0.97, 1.00, 1.03, 1.06, 1.08, 1.11, 1.10]
+    emer_factors = [0.82, 0.84, 0.87, 0.90, 0.93, 0.96, 1.01, 1.05, 1.09, 1.12, 1.15, 1.14]
+
+    workload_trend = {
+        "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+        "opd": [max(10, int(tot_opd * f / 1.10)) for f in opd_factors],
+        "ipd": [max(5, int(tot_ipd * f / 1.08)) for f in ipd_factors],
+        "emergency": [max(2, int(tot_emer * f / 1.12)) for f in emer_factors],
+    }
+
+    # Bed Occupancy Trend (Historical -> Forecast)
+    occ_history = [
+        round(max(60.0, bed_occ_rate - 8.4), 1),
+        round(max(60.0, bed_occ_rate - 7.6), 1),
+        round(max(60.0, bed_occ_rate - 6.2), 1),
+        round(max(60.0, bed_occ_rate - 5.1), 1),
+        round(max(60.0, bed_occ_rate - 3.8), 1),
+        round(max(60.0, bed_occ_rate - 2.5), 1),
+        round(max(60.0, bed_occ_rate - 1.2), 1),
+        round(max(60.0, bed_occ_rate - 0.5), 1),
+        round(max(60.0, bed_occ_rate - 0.2), 1),
+        bed_occ_rate,  # Oct (Current)
+        round(min(96.8, bed_occ_rate + 4.5), 1),  # Nov (F)
+        round(min(98.4, bed_occ_rate + 9.2), 1),  # Dec (F)
+    ]
+    bed_occupancy_trend = {
+        "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov (F)", "Dec (F)"],
+        "split_index": 10,
+        "rates": occ_history,
+        "warning_threshold": 90.0,
+        "current_rate": bed_occ_rate,
+        "forecast_rate": round(min(98.4, bed_occ_rate + 9.2), 1),
+    }
+
+    # Hospital Performance Ranking
+    if scope_level != "HOSPITAL":
+        sorted_hospitals = sorted(active_hospitals, key=lambda h: h["beds"], reverse=True)[:8]
+        max_hosp_patients = max(
+            [(h["base_opd"] * 30 * t_mult * 0.72) + (h["base_ipd"] * 30 * t_mult) for h in sorted_hospitals] or [1]
+        )
+        hospital_performance = [
+            {
+                "id": h["id"],
+                "name": h["name"],
+                "short_name": h["name"].split("(")[0].strip() if "(" in h["name"] else h["name"][:26],
+                "type": h["type"],
+                "beds": h["beds"],
+                "occupied_beds": int(h["beds"] * (bed_occ_rate / 100)),
+                "occupancy_pct": round(min(97.5, max(70.0, bed_occ_rate + ((hash(h["id"]) % 9) - 4))), 1),
+                "patients": int((h["base_opd"] * 30 * t_mult * 0.72) + (h["base_ipd"] * 30 * t_mult)),
+                "score": min(100, int((((h["base_opd"] * 30 * t_mult * 0.72) + (h["base_ipd"] * 30 * t_mult)) / max(max_hosp_patients, 1)) * 100))
+            }
+            for h in sorted_hospitals
+        ]
+    else:
+        depts = [
+            {"name": "General Medicine", "share": 0.32, "occ": min(98.0, bed_occ_rate + 6)},
+            {"name": "Emergency & Trauma", "share": 0.22, "occ": min(99.0, bed_occ_rate + 8)},
+            {"name": "General Surgery", "share": 0.16, "occ": min(94.0, bed_occ_rate + 1)},
+            {"name": "Pediatrics & NICU", "share": 0.12, "occ": min(91.0, bed_occ_rate - 2)},
+            {"name": "Obstetrics & Gynaecology", "share": 0.10, "occ": min(92.0, bed_occ_rate - 1)},
+            {"name": "Orthopedics", "share": 0.08, "occ": min(88.0, bed_occ_rate - 5)},
+        ]
+        hospital_performance = [
+            {
+                "id": f"dept_{idx}",
+                "name": d["name"],
+                "short_name": d["name"],
+                "type": "Clinical Department",
+                "beds": max(5, int(total_beds * d["share"])),
+                "occupied_beds": max(4, int(total_beds * d["share"] * (d["occ"] / 100))),
+                "occupancy_pct": round(d["occ"], 1),
+                "patients": max(20, int(tot_patients * d["share"])),
+                "score": int(d["occ"])
+            }
+            for idx, d in enumerate(depts)
+        ]
+
+    referrals_in_count = int(tot_ipd * 0.14)
+    transfers_out_count = int(tot_emer * 0.22)
+    readmissions_count = int(tot_ipd * 0.038)
+
+    referrals_and_admissions = {
+        "referrals_received": referrals_in_count,
+        "admissions": tot_ipd,
+        "transfers": transfers_out_count,
+        "readmissions": readmissions_count,
+        "referral_acceptance_rate": 94.2,
+        "readmission_rate": 3.8
+    }
+
+    capacity_alerts = [
+        {
+            "id": "alert_icu_cap",
+            "severity": "CRITICAL",
+            "color": "red",
+            "dot": "🔴",
+            "title": "ICU occupancy expected to exceed 95%",
+            "detail": "Tertiary ICU beds reaching critical saturation across regional referral centers.",
+            "recommendation": "Review step-down transfers to secondary HDUs & activate surge critical care beds."
+        },
+        {
+            "id": "alert_emer_cap",
+            "severity": "HIGH",
+            "color": "orange",
+            "dot": "🟠",
+            "title": "Emergency demand increasing",
+            "detail": "Casualty intake escalated 18% over the trailing 7-day period due to acute seasonal admissions.",
+            "recommendation": "Deploy auxiliary triage nursing staff and fast-track acute admission clearances."
+        },
+        {
+            "id": "alert_ref_cap",
+            "severity": "WARNING",
+            "color": "yellow",
+            "dot": "🟡",
+            "title": "Referral volume increasing",
+            "detail": "Secondary referral inflow escalated from peripheral taluk PHCs and community health centers.",
+            "recommendation": "Coordinate inter-facility transit and activate digital tele-referral triage."
+        }
+    ]
+
     healthcare_ops = {
         "opd_visits": tot_opd,
         "ipd_admissions": tot_ipd,
@@ -694,11 +816,16 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
         "icu_occupancy_pct": icu_occ_rate,
         "avg_waiting_time_mins": 34 if scope_level != "HOSPITAL" else 28,
         "avg_length_of_stay_days": 4.5,
-        "referrals_in": int(tot_ipd * 0.14),
-        "referrals_out": int(tot_emer * 0.22),
+        "referrals_in": referrals_in_count,
+        "referrals_out": transfers_out_count,
         "discharges": int(tot_ipd * 0.88),
-        "readmissions_30d": int(tot_ipd * 0.038),
-        "facility_workload_status": "High Operational Velocity" if bed_occ_rate > 80 else "Normal Operational Velocity"
+        "readmissions_30d": readmissions_count,
+        "facility_workload_status": "High Operational Velocity" if bed_occ_rate > 80 else "Normal Operational Velocity",
+        "workload_trend": workload_trend,
+        "bed_occupancy_trend": bed_occupancy_trend,
+        "hospital_performance": hospital_performance,
+        "referrals_and_admissions": referrals_and_admissions,
+        "capacity_alerts": capacity_alerts
     }
 
     # 9. Pharmacy & Supply Chain + Medicine Predictions

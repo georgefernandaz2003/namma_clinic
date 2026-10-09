@@ -1583,91 +1583,644 @@ export const PublicHealthIntelligencePage: React.FC = () => {
       {/* =========================================================================== */}
       {/* SECTION 4: HEALTHCARE OPERATIONS                                           */}
       {/* =========================================================================== */}
-      {activeSection === 'healthcare_operations' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5">
-            <h2 className="text-base font-bold text-slate-900">
-              Healthcare Operations Overview
-            </h2>
-            <p className="text-xs text-slate-500">
-              Bed capacity, emergency intake, average waiting times, and referrals
-            </p>
-          </div>
+      {/* =========================================================================== */}
+      {/* SECTION 4: HEALTHCARE OPERATIONS                                           */}
+      {/* =========================================================================== */}
+      {activeSection === 'healthcare_operations' && (() => {
+        const ops = data?.healthcare_operations;
+        const workload = ops?.workload_trend || {
+          months: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+          opd: [12000, 13000, 14500, 15200, 16000, 17500, 18900, 20100, 21400, 22500, 23800, 23100],
+          ipd: [1800, 1950, 2100, 2250, 2380, 2500, 2700, 2850, 3050, 3200, 3400, 3350],
+          emergency: [950, 1020, 1140, 1220, 1340, 1450, 1620, 1780, 1920, 2050, 2200, 2150]
+        };
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {[
-              { label: 'Total Inpatient Beds', value: data?.healthcare_operations?.bed_capacity?.toLocaleString(), sub: `${data?.healthcare_operations?.occupied_beds?.toLocaleString()} Occupied` },
-              { label: 'Bed Occupancy', value: `${data?.healthcare_operations?.bed_occupancy_pct}%`, sub: 'Ward Utilization' },
-              { label: 'ICU Beds', value: `${data?.healthcare_operations?.occupied_icu}/${data?.healthcare_operations?.icu_capacity}`, sub: `${data?.healthcare_operations?.icu_occupancy_pct}% Saturation` },
-              { label: 'Avg Waiting Time', value: `${data?.healthcare_operations?.avg_waiting_time_mins} mins`, sub: 'Token to Doctor' },
-              { label: 'Avg Length of Stay', value: `${data?.healthcare_operations?.avg_length_of_stay_days} days`, sub: 'Inpatient Stay' },
-              { label: 'Transfers Out', value: data?.healthcare_operations?.referrals_out?.toLocaleString(), sub: 'Secondary Referrals' }
-            ].map((stat, idx) => (
-              <div key={idx} className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-sm space-y-1">
-                <span className="text-[11px] font-semibold text-slate-400 block">{stat.label}</span>
-                <div className="text-xl font-black text-slate-900">{stat.value}</div>
-                <span className="text-[11px] text-slate-500 block">{stat.sub}</span>
+        const bedTrend = ops?.bed_occupancy_trend || {
+          months: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov (F)', 'Dec (F)'],
+          split_index: 10,
+          rates: [76.2, 77.0, 78.4, 79.5, 80.8, 82.1, 83.4, 84.1, 84.4, 84.6, 89.1, 93.8],
+          warning_threshold: 90.0,
+          current_rate: 84.6,
+          forecast_rate: 93.8
+        };
+
+        const hospitalPerf = ops?.hospital_performance || [];
+
+        const referralsAdm = ops?.referrals_and_admissions || {
+          referrals_received: ops?.referrals_in || 1428,
+          admissions: ops?.ipd_admissions || 10200,
+          transfers: ops?.referrals_out || 682,
+          readmissions: ops?.readmissions_30d || 388,
+          referral_acceptance_rate: 94.2,
+          readmission_rate: 3.8
+        };
+
+        const capacityAlerts = ops?.capacity_alerts || [
+          {
+            id: 'alert_icu_cap',
+            severity: 'CRITICAL',
+            color: 'red',
+            dot: '🔴',
+            title: 'ICU occupancy expected to exceed 95%',
+            detail: 'Tertiary ICU beds reaching critical saturation across regional referral centers.',
+            recommendation: 'Review step-down transfers to secondary HDUs & activate surge critical care beds.'
+          },
+          {
+            id: 'alert_emer_cap',
+            severity: 'HIGH',
+            color: 'orange',
+            dot: '🟠',
+            title: 'Emergency demand increasing',
+            detail: 'Casualty intake escalated 18% over the trailing 7-day period due to acute seasonal admissions.',
+            recommendation: 'Deploy auxiliary triage nursing staff and fast-track acute admission clearances.'
+          },
+          {
+            id: 'alert_ref_cap',
+            severity: 'WARNING',
+            color: 'yellow',
+            dot: '🟡',
+            title: 'Referral volume increasing',
+            detail: 'Secondary referral inflow escalated from peripheral taluk PHCs and community health centers.',
+            recommendation: 'Coordinate inter-facility transit and activate digital tele-referral triage.'
+          }
+        ];
+
+        // Normalization for Patient & Hospital Workload Line Chart (Separated vertical bands)
+        const minOpd = Math.min(...(workload.opd || [1]));
+        const maxOpd = Math.max(...(workload.opd || [1]), 1);
+        const minIpd = Math.min(...(workload.ipd || [1]));
+        const maxIpd = Math.max(...(workload.ipd || [1]), 1);
+        const minEmer = Math.min(...(workload.emergency || [1]));
+        const maxEmer = Math.max(...(workload.emergency || [1]), 1);
+
+        // Normalization for Bed Occupancy Trend
+        const occRates = bedTrend.rates || [];
+        const minOcc = Math.max(50, Math.min(...occRates) - 5);
+        const maxOcc = Math.min(100, Math.max(...occRates) + 5);
+
+        return (
+          <div className="space-y-6">
+            {/* 1. Header */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                  Healthcare Operations
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Bed capacity, patient workload, emergency demand and referrals
+                </p>
               </div>
-            ))}
-          </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Active Roster • {ops?.facility_workload_status || 'Normal Operational Velocity'}
+                </span>
+              </div>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-3 text-xs">
-              <h4 className="font-bold text-slate-800 text-sm">Bed Occupancy Status</h4>
+            {/* 2. Top KPI Row (6 compact cards) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-sm space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Beds</span>
+                <div className="text-xl font-black text-slate-900">{ops?.bed_capacity?.toLocaleString() || '10,160'}</div>
+                <span className="text-[11px] text-slate-500 block truncate">{ops?.occupied_beds?.toLocaleString() || '8,595'} Occupied</span>
+              </div>
+
+              <div className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-sm space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Occupancy</span>
+                <div className="text-xl font-black text-blue-600">{ops?.bed_occupancy_pct || 84.6}%</div>
+                <span className="text-[11px] text-slate-500 block truncate">Ward Utilization</span>
+              </div>
+
+              <div className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-sm space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ICU Occupancy</span>
+                <div className="text-xl font-black text-rose-600">{ops?.icu_occupancy_pct || 96.2}%</div>
+                <span className="text-[11px] text-slate-500 block truncate">{ops?.occupied_icu || 760}/{ops?.icu_capacity || 790} ICU Beds</span>
+              </div>
+
+              <div className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-sm space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Waiting Time</span>
+                <div className="text-xl font-black text-amber-600">{ops?.avg_waiting_time_mins || 34} mins</div>
+                <span className="text-[11px] text-slate-500 block truncate">Registration to Doctor</span>
+              </div>
+
+              <div className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-sm space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Avg Stay</span>
+                <div className="text-xl font-black text-indigo-600">{ops?.avg_length_of_stay_days || 4.5} days</div>
+                <span className="text-[11px] text-slate-500 block truncate">Inpatient Duration</span>
+              </div>
+
+              <div className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-sm space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Referrals</span>
+                <div className="text-xl font-black text-emerald-600">{ops?.referrals_in?.toLocaleString() || '1,428'}</div>
+                <span className="text-[11px] text-slate-500 block truncate">Transfers Inflow</span>
+              </div>
+            </div>
+
+            {/* 3. Charts Row: PATIENT & HOSPITAL WORKLOAD + BED OCCUPANCY TREND */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Chart A: Patient & Hospital Workload */}
+              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Patient & Hospital Workload
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Monthly patient volume across OPD, IPD, and Emergency
+                    </p>
+                  </div>
+                  {/* Legend pills */}
+                  <div className="flex items-center gap-3 text-xs font-semibold">
+                    <span className="flex items-center gap-1.5 text-blue-600">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span> OPD
+                    </span>
+                    <span className="flex items-center gap-1.5 text-purple-600">
+                      <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span> IPD
+                    </span>
+                    <span className="flex items-center gap-1.5 text-rose-600">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span> Emergency
+                    </span>
+                  </div>
+                </div>
+
+                {/* SVG Multi-Line Chart */}
+                <div className="w-full pt-2">
+                  <svg viewBox="0 0 700 165" className="w-full h-44 overflow-visible">
+                    {/* Background Grid Lines */}
+                    {[25, 65, 105, 145].map((y, idx) => (
+                      <line
+                        key={idx}
+                        x1="20"
+                        y1={y}
+                        x2="680"
+                        y2={y}
+                        stroke="#F1F5F9"
+                        strokeWidth="1"
+                        strokeDasharray="4,4"
+                      />
+                    ))}
+
+                    {/* Band Guide Labels */}
+                    <text x="24" y="22" fill="#94A3B8" fontSize="9" fontWeight="bold">OPD TRACK</text>
+                    <text x="24" y="68" fill="#94A3B8" fontSize="9" fontWeight="bold">IPD TRACK</text>
+                    <text x="24" y="112" fill="#94A3B8" fontSize="9" fontWeight="bold">EMERGENCY TRACK</text>
+
+                    {/* Line 1: OPD (Blue - Upper Zone y: 24 to 56) */}
+                    {workload.opd?.map((val: number, i: number, arr: number[]) => {
+                      if (i === arr.length - 1) return null;
+                      const x1 = (i / 11) * 660 + 20;
+                      const y1 = 56 - ((val - minOpd) / (maxOpd - minOpd || 1)) * 32;
+                      const x2 = ((i + 1) / 11) * 660 + 20;
+                      const y2 = 56 - ((arr[i + 1] - minOpd) / (maxOpd - minOpd || 1)) * 32;
+                      return (
+                        <line
+                          key={`opd-line-${i}`}
+                          x1={x1}
+                          y1={y1}
+                          x2={x2}
+                          y2={y2}
+                          stroke="#2563EB"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+                      );
+                    })}
+                    {workload.opd?.map((val: number, i: number) => {
+                      const cx = (i / 11) * 660 + 20;
+                      const cy = 56 - ((val - minOpd) / (maxOpd - minOpd || 1)) * 32;
+                      return (
+                        <circle key={`opd-dot-${i}`} cx={cx} cy={cy} r="3" fill="#2563EB" stroke="#FFFFFF" strokeWidth="1.5" />
+                      );
+                    })}
+
+                    {/* Line 2: IPD (Purple - Middle Zone y: 70 to 102) */}
+                    {workload.ipd?.map((val: number, i: number, arr: number[]) => {
+                      if (i === arr.length - 1) return null;
+                      const x1 = (i / 11) * 660 + 20;
+                      const y1 = 102 - ((val - minIpd) / (maxIpd - minIpd || 1)) * 32;
+                      const x2 = ((i + 1) / 11) * 660 + 20;
+                      const y2 = 102 - ((arr[i + 1] - minIpd) / (maxIpd - minIpd || 1)) * 32;
+                      return (
+                        <line
+                          key={`ipd-line-${i}`}
+                          x1={x1}
+                          y1={y1}
+                          x2={x2}
+                          y2={y2}
+                          stroke="#8B5CF6"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+                      );
+                    })}
+                    {workload.ipd?.map((val: number, i: number) => {
+                      const cx = (i / 11) * 660 + 20;
+                      const cy = 102 - ((val - minIpd) / (maxIpd - minIpd || 1)) * 32;
+                      return (
+                        <circle key={`ipd-dot-${i}`} cx={cx} cy={cy} r="3" fill="#8B5CF6" stroke="#FFFFFF" strokeWidth="1.5" />
+                      );
+                    })}
+
+                    {/* Line 3: Emergency (Rose - Lower Zone y: 114 to 146) */}
+                    {workload.emergency?.map((val: number, i: number, arr: number[]) => {
+                      if (i === arr.length - 1) return null;
+                      const x1 = (i / 11) * 660 + 20;
+                      const y1 = 146 - ((val - minEmer) / (maxEmer - minEmer || 1)) * 32;
+                      const x2 = ((i + 1) / 11) * 660 + 20;
+                      const y2 = 146 - ((arr[i + 1] - minEmer) / (maxEmer - minEmer || 1)) * 32;
+                      return (
+                        <line
+                          key={`emer-line-${i}`}
+                          x1={x1}
+                          y1={y1}
+                          x2={x2}
+                          y2={y2}
+                          stroke="#F43F5E"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+                      );
+                    })}
+                    {workload.emergency?.map((val: number, i: number) => {
+                      const cx = (i / 11) * 660 + 20;
+                      const cy = 146 - ((val - minEmer) / (maxEmer - minEmer || 1)) * 32;
+                      return (
+                        <circle key={`emer-dot-${i}`} cx={cx} cy={cy} r="3" fill="#F43F5E" stroke="#FFFFFF" strokeWidth="1.5" />
+                      );
+                    })}
+                  </svg>
+
+                  {/* X-Axis Month Labels */}
+                  <div className="flex justify-between text-[11px] text-slate-400 font-medium px-4 mt-2">
+                    {workload.months?.map((m: string, idx: number) => (
+                      <span key={idx} className={idx === 9 ? 'font-bold text-slate-800' : ''}>
+                        {m}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Sub-summary */}
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-xs">
+                  <div className="bg-blue-50/60 p-2.5 rounded-xl border border-blue-100/60">
+                    <span className="text-[10px] text-blue-600 font-semibold block uppercase">Latest OPD</span>
+                    <span className="text-sm font-extrabold text-blue-900">{workload.opd?.[9]?.toLocaleString()}</span>
+                  </div>
+                  <div className="bg-purple-50/60 p-2.5 rounded-xl border border-purple-100/60">
+                    <span className="text-[10px] text-purple-600 font-semibold block uppercase">Latest IPD</span>
+                    <span className="text-sm font-extrabold text-purple-900">{workload.ipd?.[9]?.toLocaleString()}</span>
+                  </div>
+                  <div className="bg-rose-50/60 p-2.5 rounded-xl border border-rose-100/60">
+                    <span className="text-[10px] text-rose-600 font-semibold block uppercase">Latest Emergency</span>
+                    <span className="text-sm font-extrabold text-rose-900">{workload.emergency?.[9]?.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Chart B: Bed Occupancy Trend */}
+              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Bed Occupancy Trend
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Historical surveillance and capacity forecast
+                    </p>
+                  </div>
+                  {/* Legend */}
+                  <div className="flex items-center gap-3 text-xs font-semibold">
+                    <span className="flex items-center gap-1.5 text-blue-600">
+                      <span className="w-3 h-0.5 bg-blue-600"></span> Historical
+                    </span>
+                    <span className="flex items-center gap-1.5 text-rose-600">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span> Current
+                    </span>
+                    <span className="flex items-center gap-1.5 text-amber-600">
+                      <span className="w-3 h-0.5 border-t-2 border-dashed border-amber-500"></span> Forecast
+                    </span>
+                  </div>
+                </div>
+
+                {/* SVG Line Chart (Historical -> Current -> Forecast) */}
+                <div className="w-full pt-2">
+                  <svg viewBox="0 0 700 160" className="w-full h-44 overflow-visible">
+                    {/* Background Grid Lines */}
+                    {[25, 60, 95, 130].map((y, idx) => (
+                      <line
+                        key={idx}
+                        x1="20"
+                        y1={y}
+                        x2="680"
+                        y2={y}
+                        stroke="#F1F5F9"
+                        strokeWidth="1"
+                        strokeDasharray="4,4"
+                      />
+                    ))}
+
+                    {/* 90% Warning Threshold Line */}
+                    {(() => {
+                      const warnY = 135 - ((90.0 - minOcc) / (maxOcc - minOcc || 1)) * 110;
+                      return (
+                        <g>
+                          <line
+                            x1="20"
+                            y1={warnY}
+                            x2="680"
+                            y2={warnY}
+                            stroke="#EF4444"
+                            strokeWidth="1.2"
+                            strokeDasharray="3,3"
+                          />
+                          <text x="675" y={warnY - 5} textAnchor="end" fill="#EF4444" fontSize="10" fontWeight="bold">
+                            90% Capacity Warning
+                          </text>
+                        </g>
+                      );
+                    })()}
+
+                    {/* Historical Solid Line (0 to splitIdx - 1) */}
+                    {occRates.slice(0, bedTrend.split_index).map((val: number, i: number, arr: number[]) => {
+                      if (i === arr.length - 1) return null;
+                      const x1 = (i / 11) * 660 + 20;
+                      const y1 = 135 - ((val - minOcc) / (maxOcc - minOcc || 1)) * 110;
+                      const x2 = ((i + 1) / 11) * 660 + 20;
+                      const y2 = 135 - ((arr[i + 1] - minOcc) / (maxOcc - minOcc || 1)) * 110;
+                      return (
+                        <line
+                          key={`occ-hist-${i}`}
+                          x1={x1}
+                          y1={y1}
+                          x2={x2}
+                          y2={y2}
+                          stroke="#2563EB"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+                      );
+                    })}
+
+                    {/* Current Data Point Marker */}
+                    {occRates[bedTrend.split_index - 1] !== undefined && (() => {
+                      const cx = ((bedTrend.split_index - 1) / 11) * 660 + 20;
+                      const cy = 135 - ((occRates[bedTrend.split_index - 1] - minOcc) / (maxOcc - minOcc || 1)) * 110;
+                      return (
+                        <g>
+                          <circle cx={cx} cy={cy} r="6" fill="#EF4444" fillOpacity="0.25" />
+                          <circle cx={cx} cy={cy} r="4" fill="#EF4444" stroke="#FFF" strokeWidth="1.5" />
+                        </g>
+                      );
+                    })()}
+
+                    {/* Forecast Dashed Line (splitIdx - 1 to end) */}
+                    {occRates.slice(bedTrend.split_index - 1).map((val: number, i: number, arr: number[]) => {
+                      if (i === arr.length - 1) return null;
+                      const idx1 = bedTrend.split_index - 1 + i;
+                      const idx2 = bedTrend.split_index - 1 + i + 1;
+                      const x1 = (idx1 / 11) * 660 + 20;
+                      const y1 = 135 - ((val - minOcc) / (maxOcc - minOcc || 1)) * 110;
+                      const x2 = (idx2 / 11) * 660 + 20;
+                      const y2 = 135 - ((arr[i + 1] - minOcc) / (maxOcc - minOcc || 1)) * 110;
+                      return (
+                        <line
+                          key={`occ-fc-${i}`}
+                          x1={x1}
+                          y1={y1}
+                          x2={x2}
+                          y2={y2}
+                          stroke="#F59E0B"
+                          strokeWidth="2.5"
+                          strokeDasharray="4,4"
+                          strokeLinecap="round"
+                        />
+                      );
+                    })}
+                  </svg>
+
+                  {/* X-Axis Month Labels */}
+                  <div className="flex justify-between text-[11px] text-slate-400 font-medium px-4 mt-2">
+                    {bedTrend.months?.map((m: string, idx: number) => (
+                      <span
+                        key={idx}
+                        className={
+                          idx === bedTrend.split_index - 1
+                            ? 'font-bold text-slate-800'
+                            : idx >= bedTrend.split_index
+                            ? 'font-bold text-amber-600'
+                            : ''
+                        }
+                      >
+                        {m}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Sub-summary */}
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-xs">
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    <span className="text-[10px] text-slate-500 font-semibold block uppercase">Current Occupancy</span>
+                    <span className="text-sm font-extrabold text-slate-900">{bedTrend.current_rate}%</span>
+                  </div>
+                  <div className="bg-amber-50/70 p-2.5 rounded-xl border border-amber-100">
+                    <span className="text-[10px] text-amber-700 font-semibold block uppercase">Dec Forecast</span>
+                    <span className="text-sm font-extrabold text-amber-900">{bedTrend.forecast_rate}%</span>
+                  </div>
+                  <div className="bg-rose-50/70 p-2.5 rounded-xl border border-rose-100">
+                    <span className="text-[10px] text-rose-700 font-semibold block uppercase">Capacity Risk</span>
+                    <span className="text-sm font-extrabold text-rose-900">Critical (&gt;90%)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. HOSPITAL PERFORMANCE (Bar Chart) */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Hospital Performance
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Workload ranking by active patient admissions and bed utilization
+                  </p>
+                </div>
+                <span className="text-xs text-slate-400 font-medium">
+                  {hospitalPerf.length} Facilities Ranked
+                </span>
+              </div>
+
+              {/* Horizontal Bar Chart */}
               <div className="space-y-3">
-                <div>
-                  <div className="flex justify-between font-semibold mb-1">
-                    <span>General Ward Occupancy</span>
-                    <span>{data?.healthcare_operations?.bed_occupancy_pct}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-emerald-600 h-2 rounded-full"
-                      style={{ width: `${Math.min(100, data?.healthcare_operations?.bed_occupancy_pct || 80)}%` }}
-                    />
-                  </div>
+                {hospitalPerf.map((h: any) => {
+                  const isCritical = h.occupancy_pct >= 90;
+                  return (
+                    <div key={h.id} className="space-y-1.5 p-2 rounded-xl hover:bg-slate-50/70 transition">
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900">{h.short_name || h.name}</span>
+                          <span className="text-[10px] text-slate-500 font-normal">({h.type})</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-600 font-medium">
+                            <strong className="text-slate-900">{h.beds?.toLocaleString()}</strong> Beds
+                          </span>
+                          <span className="text-slate-600 font-medium">
+                            <strong className="text-slate-900">{h.patients?.toLocaleString()}</strong> Patients
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              isCritical ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'
+                            }`}
+                          >
+                            {h.occupancy_pct}% Occupancy
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Bar Visual */}
+                      <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                        <div
+                          style={{ width: `${Math.min(100, Math.max(12, h.score))}%` }}
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            isCritical ? 'bg-rose-500' : 'bg-blue-600'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 5. Bottom Row: REFERRALS & ADMISSIONS + CAPACITY ALERTS */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Referrals & Admissions */}
+              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-4">
+                <div className="border-b border-slate-100 pb-3">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Referrals & Admissions
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Inpatient admission intake, inter-facility transfers, and 30-day readmissions
+                  </p>
                 </div>
 
-                <div>
-                  <div className="flex justify-between font-semibold mb-1">
-                    <span>ICU Bed Saturation</span>
-                    <span className="text-rose-600">{data?.healthcare_operations?.icu_occupancy_pct}%</span>
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div className="bg-emerald-50/50 rounded-xl p-4 border border-emerald-100/70 space-y-1">
+                    <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
+                      Referrals Received
+                    </span>
+                    <div className="text-2xl font-black text-emerald-950">
+                      {referralsAdm.referrals_received?.toLocaleString()}
+                    </div>
+                    <span className="text-[11px] text-emerald-700 block">
+                      {referralsAdm.referral_acceptance_rate}% Acceptance • Primary Centers
+                    </span>
                   </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-rose-600 h-2 rounded-full"
-                      style={{ width: `${Math.min(100, data?.healthcare_operations?.icu_occupancy_pct || 90)}%` }}
-                    />
+
+                  <div className="bg-blue-50/50 rounded-xl p-4 border border-blue-100/70 space-y-1">
+                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">
+                      Admissions
+                    </span>
+                    <div className="text-2xl font-black text-blue-950">
+                      {referralsAdm.admissions?.toLocaleString()}
+                    </div>
+                    <span className="text-[11px] text-blue-700 block">
+                      Direct Ward & Emergency Intake
+                    </span>
+                  </div>
+
+                  <div className="bg-purple-50/50 rounded-xl p-4 border border-purple-100/70 space-y-1">
+                    <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block">
+                      Transfers
+                    </span>
+                    <div className="text-2xl font-black text-purple-950">
+                      {referralsAdm.transfers?.toLocaleString()}
+                    </div>
+                    <span className="text-[11px] text-purple-700 block">
+                      Transfers to Tertiary Centers
+                    </span>
+                  </div>
+
+                  <div className="bg-amber-50/50 rounded-xl p-4 border border-amber-100/70 space-y-1">
+                    <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">
+                      Readmissions
+                    </span>
+                    <div className="text-2xl font-black text-amber-950">
+                      {referralsAdm.readmissions?.toLocaleString()}
+                    </div>
+                    <span className="text-[11px] text-amber-700 block">
+                      {referralsAdm.readmission_rate}% 30-Day Rate • Normal Threshold
+                    </span>
                   </div>
                 </div>
               </div>
-              <p className="text-slate-500 pt-2 text-[11px]">
-                Recommendation: Review step-down transfers when ICU occupancy exceeds 90%.
-              </p>
-            </div>
 
-            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-3 text-xs">
-              <h4 className="font-bold text-slate-800 text-sm">Referral & Admission Flow</h4>
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl">
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Referrals Received</span>
-                  <span className="text-base font-bold text-slate-800">
-                    {data?.healthcare_operations?.referrals_in?.toLocaleString()}
-                  </span>
-                  <span className="text-[10px] text-slate-500 block">From Primary Centers</span>
+              {/* Capacity Alerts */}
+              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-4">
+                <div className="border-b border-slate-100 pb-3">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Capacity Alerts
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Operational bottlenecks and real-time early warnings
+                  </p>
                 </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">30-Day Readmissions</span>
-                  <span className="text-base font-bold text-slate-800">
-                    {data?.healthcare_operations?.readmissions_30d?.toLocaleString()}
-                  </span>
-                  <span className="text-[10px] text-slate-500 block">Stable Discharge Rate</span>
+
+                <div className="space-y-3">
+                  {capacityAlerts.map((alt: any) => {
+                    const isRed = alt.color === 'red';
+                    const isOrange = alt.color === 'orange';
+
+                    return (
+                      <div
+                        key={alt.id}
+                        className={`p-3.5 rounded-xl border flex items-start gap-3 transition ${
+                          isRed
+                            ? 'bg-rose-50/50 border-rose-200'
+                            : isOrange
+                            ? 'bg-amber-50/50 border-amber-200'
+                            : 'bg-yellow-50/50 border-yellow-200'
+                        }`}
+                      >
+                        <span className="text-lg leading-none mt-0.5 select-none">{alt.dot}</span>
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold text-slate-900">
+                              {alt.title}
+                            </h4>
+                            <span
+                              className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                isRed
+                                  ? 'bg-rose-200/80 text-rose-800'
+                                  : isOrange
+                                  ? 'bg-amber-200/80 text-amber-800'
+                                  : 'bg-yellow-200/80 text-yellow-800'
+                              }`}
+                            >
+                              {alt.severity}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-snug">
+                            {alt.detail}
+                          </p>
+                          <div className="pt-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-800">
+                            <span className="text-emerald-700">Directive:</span>
+                            <span>{alt.recommendation}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* =========================================================================== */}
       {/* SECTION 5: PHARMACY & SUPPLY CHAIN                                         */}
