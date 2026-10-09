@@ -839,7 +839,7 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
             "predicted_consumption": int(tot_opd * 0.65 / 15 * 1.25),
             "predicted_stockout_date": (datetime.date.today() + datetime.timedelta(days=12)).strftime("%d %b %Y"),
             "days_runway": 12.0,
-            "risk": "CRITICAL" if 12.0 < 15 else "HIGH",
+            "risk": "CRITICAL",
             "recommended_reorder": int(tot_opd * 0.65 * 1.8),
             "po_status": "KSMSCL Indent PO-2026-KA-49 Active",
             "monthly_inflow": int(tot_opd * 0.5),
@@ -914,7 +914,156 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
             "po_status": "Stock Buffered",
             "monthly_inflow": int(tot_opd * 0.38),
             "monthly_outflow": int(tot_opd * 0.33)
+        },
+        {
+            "name": "Azithromycin 500mg Tab",
+            "generic": "Macrolide Antibiotic",
+            "current_stock": int(tot_opd * 0.28),
+            "daily_consumption": int(tot_opd * 0.28 / 20),
+            "predicted_consumption": int(tot_opd * 0.28 / 20 * 1.18),
+            "predicted_stockout_date": (datetime.date.today() + datetime.timedelta(days=19)).strftime("%d %b %Y"),
+            "days_runway": 19.0,
+            "risk": "MODERATE",
+            "recommended_reorder": int(tot_opd * 0.28 * 1.25),
+            "po_status": "Indented via KAPL",
+            "monthly_inflow": int(tot_opd * 0.25),
+            "monthly_outflow": int(tot_opd * 0.27)
+        },
+        {
+            "name": "Pantoprazole 40mg Tab",
+            "generic": "Proton Pump Inhibitor (Gastroprotective)",
+            "current_stock": int(tot_opd * 0.42),
+            "daily_consumption": int(tot_opd * 0.42 / 26),
+            "predicted_consumption": int(tot_opd * 0.42 / 26 * 1.05),
+            "predicted_stockout_date": (datetime.date.today() + datetime.timedelta(days=26)).strftime("%d %b %Y"),
+            "days_runway": 26.0,
+            "risk": "NORMAL",
+            "recommended_reorder": int(tot_opd * 0.42 * 1.0),
+            "po_status": "Adequate Reserve Stock",
+            "monthly_inflow": int(tot_opd * 0.40),
+            "monthly_outflow": int(tot_opd * 0.39)
         }
+    ]
+
+    # Consumption Trend: Current Year vs Previous Year (12 months)
+    cy_factors = [0.82, 0.85, 0.89, 0.91, 0.95, 0.98, 1.02, 1.05, 1.08, 1.10, 1.14, 1.12]
+    py_factors = [0.74, 0.76, 0.79, 0.82, 0.85, 0.88, 0.91, 0.93, 0.96, 0.98, 1.01, 1.00]
+    total_monthly_burn = int(sum(m["daily_consumption"] * 30 for m in medicines))
+
+    consumption_trend = {
+        "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+        "current_year": [max(500, int(total_monthly_burn * f / 1.10)) for f in cy_factors],
+        "previous_year": [max(450, int(total_monthly_burn * f / 1.10)) for f in py_factors],
+    }
+
+    # Top Medicines by Consumption (Ranked for Horizontal Bar Chart)
+    top_consumed = [
+        {
+            "name": m["name"],
+            "generic": m["generic"],
+            "monthly_units": int(m["daily_consumption"] * 30),
+            "current_stock": m["current_stock"],
+            "days_runway": m["days_runway"],
+            "risk": m["risk"],
+            "share_pct": round((m["daily_consumption"] * 30 / max(total_monthly_burn, 1)) * 100, 1)
+        }
+        for m in sorted(medicines, key=lambda x: x["daily_consumption"], reverse=True)
+    ]
+
+    # Orders & Supply (Procurement Indents & Consignments)
+    orders_and_supply = [
+        {
+            "order_id": "PO-2026-KA-49",
+            "order_date": "04 Oct 2026",
+            "supplier": "Karnataka State Medical Supplies Corp (KSMSCL)",
+            "item": "Paracetamol 500mg & ORS Sachet",
+            "quantity": int(tot_opd * 0.85),
+            "delivery_date": "14 Oct 2026",
+            "status": "In Transit",
+            "status_color": "blue"
+        },
+        {
+            "order_id": "PO-2026-KA-42",
+            "order_date": "28 Sep 2026",
+            "supplier": "Karnataka Antibiotics & Pharmaceuticals (KAPL)",
+            "item": "Amoxicillin 500mg & Azithromycin",
+            "quantity": int(tot_opd * 0.45),
+            "delivery_date": "08 Oct 2026",
+            "status": "Delivered",
+            "status_color": "emerald"
+        },
+        {
+            "order_id": "PO-2026-KA-38",
+            "order_date": "22 Sep 2026",
+            "supplier": "HLL Lifecare Ltd Central Depot",
+            "item": "Metformin 500mg & Amlodipine 5mg",
+            "quantity": int(tot_opd * 0.60),
+            "delivery_date": "02 Oct 2026",
+            "status": "Delivered",
+            "status_color": "emerald"
+        },
+        {
+            "order_id": "PO-2026-KA-53",
+            "order_date": "07 Oct 2026",
+            "supplier": "KSMSCL Regional Warehouse Depot",
+            "item": "Emergency ORS Salts & IV Fluids",
+            "quantity": int(tot_opd * 0.35),
+            "delivery_date": "16 Oct 2026",
+            "status": "Dispatch Cleared",
+            "status_color": "amber"
+        }
+    ]
+
+    # Expiry Buckets (7 Days, 30 Days, 60 Days, 90 Days)
+    expiry_buckets = {
+        "days_7": {
+            "label": "7 Days",
+            "batches": 0,
+            "units": 0,
+            "value_inr": "₹0",
+            "status": "Clean",
+            "color": "emerald"
+        },
+        "days_30": {
+            "label": "30 Days",
+            "batches": 14 if scope_level == "STATE" else 3,
+            "units": int(tot_opd * 0.08),
+            "value_inr": f"₹{(tot_opd * 1.2):,.0f}",
+            "status": "Expediting FEFO",
+            "color": "rose"
+        },
+        "days_60": {
+            "label": "60 Days",
+            "batches": 28 if scope_level == "STATE" else 7,
+            "units": int(tot_opd * 0.16),
+            "value_inr": f"₹{(tot_opd * 2.4):,.0f}",
+            "status": "Scheduled Dispensation",
+            "color": "amber"
+        },
+        "days_90": {
+            "label": "90 Days",
+            "batches": 45 if scope_level == "STATE" else 11,
+            "units": int(tot_opd * 0.29),
+            "value_inr": f"₹{(tot_opd * 4.2):,.0f}",
+            "status": "Normal Lifecycle",
+            "color": "blue"
+        }
+    }
+
+    # Stock-out Predictions (Medicine -> Expected stock-out -> Recommended reorder)
+    predictions_list = [
+        {
+            "medicine": m["name"],
+            "generic": m["generic"],
+            "current_stock": m["current_stock"],
+            "daily_consumption": m["daily_consumption"],
+            "days_runway": m["days_runway"],
+            "expected_stockout": f"Run out in {int(m['days_runway'])} days ({m['predicted_stockout_date']})",
+            "recommended_reorder": f"+{m['recommended_reorder']:,} units",
+            "risk": m["risk"],
+            "po_status": m["po_status"]
+        }
+        for m in medicines if m["risk"] in ["CRITICAL", "MODERATE"]
     ]
 
     pharmacy_summary = {
@@ -924,9 +1073,21 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
         "monthly_consumption_units": int(sum(m["daily_consumption"] * 30 for m in medicines)),
         "low_stock_medicines_count": 8 if scope_level == "STATE" else 2,
         "critical_stock_medicines_count": 3 if scope_level == "STATE" else 1,
-        "near_expiry_count": 5 if scope_level == "STATE" else 1,
+        "near_expiry_count": 14 if scope_level == "STATE" else 3,
         "expired_count": 0,
-        "fefo_compliance_pct": 100.0
+        "fefo_compliance_pct": 100.0,
+        "summary_kpis": {
+            "total_medicines": 240,
+            "low_stock": 8 if scope_level == "STATE" else 2,
+            "critical_stock": 3 if scope_level == "STATE" else 1,
+            "expiring_30d": 14 if scope_level == "STATE" else 3,
+            "stock_value": f"₹{(tot_opd * 18.5):,.0f}"
+        },
+        "consumption_trend": consumption_trend,
+        "top_consumed_medicines": top_consumed,
+        "orders_and_supply": orders_and_supply,
+        "expiry_buckets": expiry_buckets,
+        "predictions": predictions_list
     }
 
     # 10. Workforce Intelligence
@@ -1127,7 +1288,13 @@ def get_karnataka_command_center_data(district_id: str = "all", zone_id: str = "
         "healthcare_operations": healthcare_ops,
         "pharmacy_supply": {
             "summary": pharmacy_summary,
-            "medicines": medicines
+            "medicines": medicines,
+            "summary_kpis": pharmacy_summary["summary_kpis"],
+            "consumption_trend": pharmacy_summary["consumption_trend"],
+            "top_consumed_medicines": pharmacy_summary["top_consumed_medicines"],
+            "orders_and_supply": pharmacy_summary["orders_and_supply"],
+            "expiry_buckets": pharmacy_summary["expiry_buckets"],
+            "predictions": pharmacy_summary["predictions"]
         },
         "workforce_intelligence": workforce,
         "predictive_intelligence": {
