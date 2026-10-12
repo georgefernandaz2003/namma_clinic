@@ -1,5 +1,6 @@
 import React from 'react';
 import { Activity } from 'lucide-react';
+import { ICD10DiagnosisSelect } from './ICD10DiagnosisSelect.tsx';
 
 interface ConsultationFormCardProps {
   chiefComplaint: string;
@@ -96,14 +97,15 @@ export const ConsultationFormCard: React.FC<ConsultationFormCardProps> = ({
             <label htmlFor="diagnosis-code" className="block text-[11px] font-bold text-slate-700 mb-1">
               Diagnosis Code (ICD-10) <span className="text-rose-500">*</span>
             </label>
-            <input
+            <ICD10DiagnosisSelect
               id="diagnosis-code"
-              type="text"
               value={diagnosisCode}
-              onChange={(e) => setDiagnosisCode(e.target.value)}
-              placeholder="e.g. R50.9, I10, A90"
+              onChangeCode={setDiagnosisCode}
+              onSelectDiagnosis={(code, name) => {
+                setDiagnosisCode(code);
+                setDiagnosisName(name);
+              }}
               required
-              className="w-full text-xs p-2 bg-white border border-slate-300 rounded-lg font-mono focus:outline-none focus:border-emerald-600"
             />
           </div>
           <div className="sm:col-span-2">
