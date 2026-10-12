@@ -594,3 +594,213 @@ test('API error parsing for Triage operations', async (t) => {
     assert.equal(parsed, 'You do not have permission to perform this action.');
   });
 });
+
+// =========================================================================
+// 11. NURSE TRIAGE PREVIOUS / NEXT PATIENT NAVIGATION & UNSAVED CHANGES GUARD
+// =========================================================================
+
+test('Nurse triage previous/next patient navigation and unsaved changes guard', async (t) => {
+  const mockQueue: Visit[] = [
+    {
+      id: 10,
+      visit_id: 'VIS-20261012-0001',
+      patient: 201,
+      facility: 1,
+      visit_date: '2026-10-12',
+      opd_date: '2026-10-12',
+      visit_type: 'OPD_GENERAL',
+      status: 'WAITING_FOR_TRIAGE',
+      current_queue: 'TRIAGE',
+      chief_complaint: 'Fever and chills',
+      token_number: 1,
+      priority: 'NORMAL',
+    },
+    {
+      id: 20,
+      visit_id: 'VIS-20261012-0002',
+      patient: 202,
+      facility: 1,
+      visit_date: '2026-10-12',
+      opd_date: '2026-10-12',
+      visit_type: 'OPD_GENERAL',
+      status: 'REGISTERED',
+      current_queue: 'TRIAGE',
+      chief_complaint: 'Headache',
+      token_number: 2,
+      priority: 'HIGH',
+    },
+    {
+      id: 30,
+      visit_id: 'VIS-20261012-0003',
+      patient: 203,
+      facility: 1,
+      visit_date: '2026-10-12',
+      opd_date: '2026-10-12',
+      visit_type: 'OPD_GENERAL',
+      status: 'WAITING_FOR_TRIAGE',
+      current_queue: 'TRIAGE',
+      chief_complaint: 'Cough',
+      token_number: 3,
+      priority: 'NORMAL',
+    },
+    {
+      id: 40,
+      visit_id: 'VIS-20261012-0004',
+      patient: 204,
+      facility: 2, // Other facility
+      visit_date: '2026-10-12',
+      opd_date: '2026-10-12',
+      visit_type: 'OPD_GENERAL',
+      status: 'WAITING_FOR_TRIAGE',
+      current_queue: 'TRIAGE',
+      chief_complaint: 'Bodyache',
+      token_number: 4,
+      priority: 'NORMAL',
+    },
+    {
+      id: 50,
+      visit_id: 'VIS-20261012-0005',
+      patient: 205,
+      facility: 1,
+      visit_date: '2026-10-12',
+      opd_date: '2026-10-12',
+      visit_type: 'OPD_GENERAL',
+      status: 'TRIAGED',
+      current_queue: 'DOCTOR',
+      chief_complaint: 'Known diabetic review',
+      token_number: 5,
+      priority: 'NORMAL',
+    },
+  ];
+
+  // Helper calculating navigation state for a queue
+  const getNavState = (queue: Visit[], currentVisitId: number) => {
+    const currentIndex = queue.findIndex((v) => v.id === currentVisitId);
+    const hasPrevious = currentIndex > 0;
+    const hasNext = currentIndex !== -1 && currentIndex < queue.length - 1;
+    const prevPatient = hasPrevious ? queue[currentIndex - 1] : null;
+    const nextPatient = hasNext ? queue[currentIndex + 1] : null;
+    return { currentIndex, hasPrevious, hasNext, prevPatient, nextPatient };
+  };
+
+  await t.test('Queue filter strictly isolates facility scope and separates pending vs triaged', () => {
+    const activeFacilityId = 1;
+    const facilityVisits = mockQueue.filter((v) => v.facility === activeFacilityId);
+    assert.equal(facilityVisits.length, 4, 'Facility 2 visit must be filtered out');
+
+    const pending = facilityVisits.filter(
+      (v) =>
+        v.current_queue === 'TRIAGE' ||
+        ['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
+    );
+    assert.equal(pending.length, 3, 'Expected 3 pending visits at facility 1');
+    assert.deepEqual(pending.map((v) => v.id), [10, 20, 30]);
+
+    const triaged = facilityVisits.filter(
+      (v) =>
+        v.current_queue !== 'TRIAGE' &&
+        !['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
+    );
+    assert.equal(triaged.length, 1);
+    assert.equal(triaged[0].id, 50);
+  });
+
+  await t.test('First patient in queue: Previous is disabled, Next is enabled', () => {
+    const pendingQueue = mockQueue.filter((v) => v.facility === 1 && v.current_queue === 'TRIAGE');
+    const state = getNavState(pendingQueue, 10);
+
+    assert.equal(state.currentIndex, 0);
+    assert.equal(state.hasPrevious, false, 'Previous patient must be disabled at start of queue');
+    assert.equal(state.hasNext, true, 'Next patient must be enabled when more visits exist');
+    assert.equal(state.nextPatient?.id, 20);
+    assert.equal(state.prevPatient, null);
+  });
+
+  await t.test('Middle patient in queue: Both Previous and Next are enabled', () => {
+    const pendingQueue = mockQueue.filter((v) => v.facility === 1 && v.current_queue === 'TRIAGE');
+    const state = getNavState(pendingQueue, 20);
+
+    assert.equal(state.currentIndex, 1);
+    assert.equal(state.hasPrevious, true, 'Previous patient must be enabled in middle of queue');
+    assert.equal(state.hasNext, true, 'Next patient must be enabled in middle of queue');
+    assert.equal(state.prevPatient?.id, 10);
+    assert.equal(state.nextPatient?.id, 30);
+  });
+
+  await t.test('Last patient in queue: Previous is enabled, Next is disabled', () => {
+    const pendingQueue = mockQueue.filter((v) => v.facility === 1 && v.current_queue === 'TRIAGE');
+    const state = getNavState(pendingQueue, 30);
+
+    assert.equal(state.currentIndex, 2);
+    assert.equal(state.hasPrevious, true, 'Previous patient must be enabled at end of queue');
+    assert.equal(state.hasNext, false, 'Next patient must be disabled at end of queue');
+    assert.equal(state.prevPatient?.id, 20);
+    assert.equal(state.nextPatient, null);
+  });
+
+  await t.test('Single patient queue: Both Previous and Next are disabled', () => {
+    const singleQueue = [mockQueue[0]];
+    const state = getNavState(singleQueue, 10);
+
+    assert.equal(state.currentIndex, 0);
+    assert.equal(state.hasPrevious, false);
+    assert.equal(state.hasNext, false);
+  });
+
+  await t.test('Detects unsaved changes (dirty state) across all vital fields and observations', () => {
+    const initialValues = {
+      systolic: '120',
+      diastolic: '80',
+      pulse: '76',
+      temperature: '98.6',
+      spo2: '99',
+      respiratoryRate: '18',
+      height: '165',
+      weight: '65',
+      glucose: '110',
+      emergencyFlag: false,
+      ncdFlag: false,
+      notes: '',
+    };
+
+    const isDirty = (current: typeof initialValues) => {
+      return (
+        current.systolic !== initialValues.systolic ||
+        current.diastolic !== initialValues.diastolic ||
+        current.pulse !== initialValues.pulse ||
+        current.temperature !== initialValues.temperature ||
+        current.spo2 !== initialValues.spo2 ||
+        current.respiratoryRate !== initialValues.respiratoryRate ||
+        current.height !== initialValues.height ||
+        current.weight !== initialValues.weight ||
+        current.glucose !== initialValues.glucose ||
+        current.emergencyFlag !== initialValues.emergencyFlag ||
+        current.ncdFlag !== initialValues.ncdFlag ||
+        current.notes !== initialValues.notes
+      );
+    };
+
+    assert.equal(isDirty({ ...initialValues }), false, 'Pristine form must not be dirty');
+    assert.equal(isDirty({ ...initialValues, systolic: '140' }), true, 'Modified BP triggers dirty');
+    assert.equal(isDirty({ ...initialValues, notes: 'Patient has high chills' }), true, 'Modified notes trigger dirty');
+    assert.equal(isDirty({ ...initialValues, emergencyFlag: true }), true, 'Emergency flag triggers dirty');
+    assert.equal(isDirty({ ...initialValues, glucose: '180' }), true, 'Modified glucose triggers dirty');
+  });
+
+  await t.test('Safe queue progression after save triage: removes saved patient without skipping next', () => {
+    let pendingQueue = mockQueue.filter((v) => v.facility === 1 && v.current_queue === 'TRIAGE');
+    assert.deepEqual(pendingQueue.map((v) => v.id), [10, 20, 30]);
+
+    // Nurse is at patient 20 (index 1) and saves triage
+    const savedVisitId = 20;
+    const lastKnownIndex = 1;
+
+    // Simulate backend update & reload
+    pendingQueue = pendingQueue.filter((v) => v.id !== savedVisitId);
+    assert.deepEqual(pendingQueue.map((v) => v.id), [10, 30]);
+
+    // Next patient to navigate without skipping is pendingQueue[lastKnownIndex] (index 1 -> id 30)
+    const nextPatientAfterSave = pendingQueue[Math.min(pendingQueue.length - 1, lastKnownIndex)];
+    assert.equal(nextPatientAfterSave.id, 30, 'Must safely target next pending patient (id 30) without skipping');
+  });
+});

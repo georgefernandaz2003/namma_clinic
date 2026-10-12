@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -19,7 +19,7 @@ import ForbiddenCard from '../components/common/ForbiddenCard';
 import TriagePatientBanner from '../components/triage/TriagePatientBanner';
 import TriageRecordedCard from '../components/triage/TriageRecordedCard';
 import TriageVitalsForm from '../components/triage/TriageVitalsForm';
-import { Stethoscope, ArrowLeft, CheckCircle2, ChevronRight, Users } from 'lucide-react';
+import { Stethoscope, ArrowLeft, CheckCircle2, ChevronRight, Users, Filter } from 'lucide-react';
 
 export const Triage: React.FC = () => {
   const { user, activeFacility } = useAuth();
@@ -36,6 +36,17 @@ export const Triage: React.FC = () => {
   const [existingTriage, setExistingTriage] = useState<TriageVitals | null>(null);
   const [triageQueue, setTriageQueue] = useState<Visit[]>([]);
 
+  // Queue filter state: 'PENDING' | 'ALL' | 'TRIAGED'
+  const filterParam = searchParams.get('filter');
+  const [queueFilter, setQueueFilter] = useState<'PENDING' | 'ALL' | 'TRIAGED'>(() => {
+    if (filterParam === 'ALL' || filterParam === 'TRIAGED' || filterParam === 'PENDING') return filterParam;
+    return 'PENDING';
+  });
+
+  // Track if current vitals form has unsaved edits
+  const [formIsDirty, setFormIsDirty] = useState<boolean>(false);
+  const [lastKnownIndex, setLastKnownIndex] = useState<number>(0);
+
   // Page lifecycle
   const [loading, setLoading] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -44,17 +55,21 @@ export const Triage: React.FC = () => {
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [handoffFailed, setHandoffFailed] = useState<boolean>(false);
 
-  // Load all visits for the nurse queue dropdown/roster
+  // Load all visits for the nurse queue dropdown/roster with facility scoping
   const loadTriageQueue = useCallback(async () => {
     try {
-      const visits = await getVisits();
+      const params: Record<string, string | number> = {};
+      if (activeFacility?.id) {
+        params.facility = activeFacility.id;
+      }
+      const visits = await getVisits(params);
       setTriageQueue(visits);
       return visits;
     } catch (err) {
       console.error('Failed to load queue in Triage:', err);
       return [];
     }
-  }, []);
+  }, [activeFacility?.id]);
 
   // Load specific encounter
   const loadEncounter = useCallback(async (vId: number) => {
@@ -63,6 +78,7 @@ export const Triage: React.FC = () => {
     setSuccessMessage(null);
     setIsEditing(false);
     setHandoffFailed(false);
+    setFormIsDirty(false);
 
     try {
       const v = await getVisit(vId);
@@ -83,7 +99,148 @@ export const Triage: React.FC = () => {
     }
   }, []);
 
-  // Initialize
+  // Authoritative facility isolation
+  const facilityScopedVisits = useMemo(() => {
+    return triageQueue.filter((v) => {
+      if (activeFacility?.id && v.facility && v.facility !== activeFacility.id) {
+        return false;
+      }
+      return true;
+    });
+  }, [triageQueue, activeFacility?.id]);
+
+  // Categorizations for nurse queue navigation
+  const pendingVisits = useMemo(
+    () =>
+      facilityScopedVisits.filter(
+        (v) =>
+          v.current_queue === 'TRIAGE' ||
+          ['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
+      ),
+    [facilityScopedVisits]
+  );
+
+  const triagedVisits = useMemo(
+    () =>
+      facilityScopedVisits.filter(
+        (v) =>
+          v.current_queue !== 'TRIAGE' &&
+          !['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
+      ),
+    [facilityScopedVisits]
+  );
+
+  // Active filtered queue for navigation
+  const filteredQueue = useMemo(() => {
+    if (queueFilter === 'PENDING') return pendingVisits;
+    if (queueFilter === 'TRIAGED') return triagedVisits;
+    return facilityScopedVisits;
+  }, [queueFilter, pendingVisits, triagedVisits, facilityScopedVisits]);
+
+  // Options for active encounter selector (ensuring activeVisit is visible even if just completed)
+  const selectQueueOptions = useMemo(() => {
+    if (activeVisit && !filteredQueue.some((v) => v.id === activeVisit.id)) {
+      return [activeVisit, ...filteredQueue];
+    }
+    return filteredQueue;
+  }, [activeVisit, filteredQueue]);
+
+  // Queue navigation index resolution
+  const currentIndex = activeVisit
+    ? filteredQueue.findIndex((v) => v.id === activeVisit.id)
+    : -1;
+
+  useEffect(() => {
+    if (currentIndex !== -1) {
+      setLastKnownIndex(currentIndex);
+    }
+  }, [currentIndex]);
+
+  const effectiveIndex = currentIndex !== -1 ? currentIndex : lastKnownIndex;
+
+  const hasPrevious = currentIndex !== -1 ? currentIndex > 0 : effectiveIndex > 0;
+  const hasNext =
+    currentIndex !== -1
+      ? currentIndex < filteredQueue.length - 1
+      : effectiveIndex < filteredQueue.length;
+
+  const navigateToVisit = useCallback(
+    (vId: number) => {
+      setFormIsDirty(false);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('visit', String(vId));
+          if (queueFilter !== 'PENDING') {
+            next.set('filter', queueFilter);
+          } else {
+            next.delete('filter');
+          }
+          return next;
+        },
+        { replace: false }
+      );
+    },
+    [setSearchParams, queueFilter]
+  );
+
+  const handlePreviousPatient = () => {
+    if (!hasPrevious) return;
+    const target =
+      currentIndex !== -1
+        ? filteredQueue[currentIndex - 1]
+        : filteredQueue[Math.max(0, effectiveIndex - 1)];
+    if (target) {
+      navigateToVisit(target.id);
+    }
+  };
+
+  const handleNextPatient = () => {
+    if (!hasNext) return;
+    const target =
+      currentIndex !== -1
+        ? filteredQueue[currentIndex + 1]
+        : filteredQueue[Math.min(filteredQueue.length - 1, effectiveIndex)];
+    if (target) {
+      navigateToVisit(target.id);
+    }
+  };
+
+  // Handle Encounter Change via Selector with unsaved changes guard
+  const handleSelectVisit = (vId: number) => {
+    if (vId === activeVisit?.id) return;
+    if (formIsDirty) {
+      const proceed = window.confirm(
+        'You have unsaved triage vitals and clinical notes for this patient. Are you sure you want to discard your changes and navigate away?'
+      );
+      if (!proceed) return;
+    }
+    navigateToVisit(vId);
+  };
+
+  // Handle Queue Filter Change with unsaved changes guard
+  const handleFilterChange = (newFilter: 'PENDING' | 'ALL' | 'TRIAGED') => {
+    if (newFilter === queueFilter) return;
+    if (formIsDirty) {
+      const proceed = window.confirm(
+        'You have unsaved triage vitals and clinical notes for this patient. Are you sure you want to discard your changes and change the queue filter?'
+      );
+      if (!proceed) return;
+    }
+    setFormIsDirty(false);
+    setQueueFilter(newFilter);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (newFilter !== 'PENDING') {
+        next.set('filter', newFilter);
+      } else {
+        next.delete('filter');
+      }
+      return next;
+    });
+  };
+
+  // Initialize Queue & Encounter on mount or facility change
   useEffect(() => {
     let isMounted = true;
 
@@ -92,6 +249,13 @@ export const Triage: React.FC = () => {
       const queue = await loadTriageQueue();
 
       if (!isMounted) return;
+
+      const facilityVisits = queue.filter((v) => {
+        if (activeFacility?.id && v.facility && v.facility !== activeFacility.id) {
+          return false;
+        }
+        return true;
+      });
 
       if (visitIdParam) {
         const parsed = parseInt(visitIdParam, 10);
@@ -102,16 +266,16 @@ export const Triage: React.FC = () => {
       }
 
       // Default to first pending visit in queue, or first visit
-      const pending = queue.find(
+      const pending = facilityVisits.find(
         (v) => v.current_queue === 'TRIAGE' || ['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
       );
 
       if (pending) {
         setSearchParams({ visit: String(pending.id) }, { replace: true });
         await loadEncounter(pending.id);
-      } else if (queue.length > 0) {
-        setSearchParams({ visit: String(queue[0].id) }, { replace: true });
-        await loadEncounter(queue[0].id);
+      } else if (facilityVisits.length > 0) {
+        setSearchParams({ visit: String(facilityVisits[0].id) }, { replace: true });
+        await loadEncounter(facilityVisits[0].id);
       } else {
         setLoading(false);
       }
@@ -122,12 +286,16 @@ export const Triage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [visitIdParam, loadTriageQueue, loadEncounter, setSearchParams]);
+  }, [activeFacility?.id, loadTriageQueue, loadEncounter, setSearchParams]);
 
-  // Handle Encounter Change via Selector
-  const handleSelectVisit = (vId: number) => {
-    setSearchParams({ visit: String(vId) });
-  };
+  // Load encounter when visitIdParam changes
+  useEffect(() => {
+    if (!visitIdParam) return;
+    const parsed = parseInt(visitIdParam, 10);
+    if (!isNaN(parsed) && parsed !== activeVisit?.id) {
+      loadEncounter(parsed);
+    }
+  }, [visitIdParam, activeVisit?.id, loadEncounter]);
 
   // Submit Triage
   const handleSaveTriage = async (payload: CreateTriagePayload) => {
@@ -249,25 +417,50 @@ export const Triage: React.FC = () => {
           </p>
         </div>
 
-        {/* Encounter Selector Dropdown */}
-        {triageQueue.length > 0 && (
-          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-2xs">
-            <Users className="w-4 h-4 text-slate-400" aria-hidden="true" />
-            <label htmlFor="triage-encounter-select" className="text-xs font-bold text-slate-700 whitespace-nowrap">
-              Active Encounter:
-            </label>
-            <select
-              id="triage-encounter-select"
-              value={activeVisit?.id || ''}
-              onChange={(e) => handleSelectVisit(Number(e.target.value))}
-              className="text-xs font-semibold text-slate-800 bg-transparent border-0 focus:ring-0 cursor-pointer"
-            >
-              {triageQueue.map((v) => (
-                <option key={v.id} value={v.id}>
-                  Token #{v.token_number ?? v.id} - Patient #{v.patient} ({v.status})
-                </option>
-              ))}
-            </select>
+        {/* Encounter Selector Dropdown & Filter */}
+        {facilityScopedVisits.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Queue Filter */}
+            <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-2xs">
+              <Filter className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+              <label htmlFor="triage-queue-filter" className="text-xs font-bold text-slate-700 whitespace-nowrap">
+                Queue Filter:
+              </label>
+              <select
+                id="triage-queue-filter"
+                data-testid="triage-queue-filter"
+                value={queueFilter}
+                onChange={(e) => handleFilterChange(e.target.value as 'PENDING' | 'ALL' | 'TRIAGED')}
+                className="text-xs font-semibold text-slate-800 bg-transparent border-0 focus:ring-0 cursor-pointer"
+              >
+                <option value="PENDING">Pending Triage ({pendingVisits.length})</option>
+                <option value="ALL">All Visits ({facilityScopedVisits.length})</option>
+                <option value="TRIAGED">Triaged ({triagedVisits.length})</option>
+              </select>
+            </div>
+
+            {/* Active Encounter Selector */}
+            {selectQueueOptions.length > 0 && (
+              <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-2xs">
+                <Users className="w-4 h-4 text-slate-400" aria-hidden="true" />
+                <label htmlFor="triage-encounter-select" className="text-xs font-bold text-slate-700 whitespace-nowrap">
+                  Active Encounter:
+                </label>
+                <select
+                  id="triage-encounter-select"
+                  data-testid="triage-encounter-select"
+                  value={activeVisit?.id || ''}
+                  onChange={(e) => handleSelectVisit(Number(e.target.value))}
+                  className="text-xs font-semibold text-slate-800 bg-transparent border-0 focus:ring-0 cursor-pointer"
+                >
+                  {selectQueueOptions.map((v, idx) => (
+                    <option key={v.id} value={v.id}>
+                      #{idx + 1}: Token #{v.token_number ?? v.id} - Patient #{v.patient} ({v.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -333,14 +526,24 @@ export const Triage: React.FC = () => {
               onBackToQueue={() => navigate('/dashboard/nurse')}
               isForwardedToDoctor={!handoffFailed && (activeVisit?.status === 'TRIAGED' || activeVisit?.current_queue === 'DOCTOR')}
               onRetryHandoff={handoffFailed ? handleRetryHandoff : undefined}
+              hasPrevious={hasPrevious}
+              hasNext={hasNext}
+              onPreviousPatient={handlePreviousPatient}
+              onNextPatient={handleNextPatient}
             />
           ) : (
             <TriageVitalsForm
+              key={activeVisit.id}
               initialVitals={existingTriage}
               onSubmit={handleSaveTriage}
               loading={submitting}
               nurseName={user?.username}
               onCancel={existingTriage ? () => setIsEditing(false) : undefined}
+              hasPrevious={hasPrevious}
+              hasNext={hasNext}
+              onPreviousPatient={handlePreviousPatient}
+              onNextPatient={handleNextPatient}
+              onDirtyChange={setFormIsDirty}
             />
           )}
         </>

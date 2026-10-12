@@ -12,7 +12,9 @@ import {
   FileText,
   Clock,
   UserCheck,
-  Edit3
+  Edit3,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import type { TriageVitals } from '../../types';
 
@@ -22,6 +24,10 @@ interface TriageRecordedCardProps {
   onBackToQueue: () => void;
   isForwardedToDoctor?: boolean;
   onRetryHandoff?: () => void;
+  hasPrevious?: boolean;
+  hasNext?: boolean;
+  onPreviousPatient?: () => void;
+  onNextPatient?: () => void;
 }
 
 export const TriageRecordedCard: React.FC<TriageRecordedCardProps> = ({
@@ -29,7 +35,11 @@ export const TriageRecordedCard: React.FC<TriageRecordedCardProps> = ({
   onEditTriage,
   onBackToQueue,
   isForwardedToDoctor = true,
-  onRetryHandoff
+  onRetryHandoff,
+  hasPrevious = false,
+  hasNext = false,
+  onPreviousPatient,
+  onNextPatient
 }) => {
   const hasWarningFlags =
     triage.high_bp_flag ||
@@ -55,12 +65,42 @@ export const TriageRecordedCard: React.FC<TriageRecordedCardProps> = ({
             </>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onPreviousPatient && (
+            <button
+              type="button"
+              id="recorded-prev-patient-btn"
+              data-testid="recorded-prev-patient-btn"
+              onClick={onPreviousPatient}
+              disabled={!hasPrevious}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors shadow-2xs cursor-pointer"
+              title={hasPrevious ? "Navigate to previous patient in triage queue" : "No previous patient in queue"}
+            >
+              <ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>← Previous Patient</span>
+            </button>
+          )}
+
+          {onNextPatient && (
+            <button
+              type="button"
+              id="recorded-next-patient-btn"
+              data-testid="recorded-next-patient-btn"
+              onClick={onNextPatient}
+              disabled={!hasNext}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors shadow-2xs cursor-pointer"
+              title={hasNext ? "Navigate to next patient in triage queue" : "No next patient in queue"}
+            >
+              <span>Next Patient →</span>
+              <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          )}
+
           {!isForwardedToDoctor && onRetryHandoff && (
             <button
               type="button"
               onClick={onRetryHandoff}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors shadow-2xs cursor-pointer"
             >
               Retry Doctor Handoff
             </button>
@@ -69,7 +109,7 @@ export const TriageRecordedCard: React.FC<TriageRecordedCardProps> = ({
             <button
               type="button"
               onClick={onEditTriage}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-white border border-emerald-300 rounded-lg hover:bg-emerald-100/50 transition-colors shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-white border border-emerald-300 rounded-lg hover:bg-emerald-100/50 transition-colors shadow-2xs cursor-pointer"
             >
               <Edit3 className="w-3.5 h-3.5" aria-hidden="true" />
               Update / Correct Vitals
@@ -78,7 +118,7 @@ export const TriageRecordedCard: React.FC<TriageRecordedCardProps> = ({
           <button
             type="button"
             onClick={onBackToQueue}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-teal-700 hover:bg-teal-800 rounded-lg transition-colors shadow-2xs"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-teal-700 hover:bg-teal-800 rounded-lg transition-colors shadow-2xs cursor-pointer"
           >
             Return to Nurse Queue
           </button>

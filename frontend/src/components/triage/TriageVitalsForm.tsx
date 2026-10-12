@@ -1,4 +1,4 @@
-import React, { useState, useId } from 'react';
+import React, { useState, useId, useMemo, useEffect } from 'react';
 import {
   Heart,
   Activity,
@@ -10,7 +10,9 @@ import {
   FileText,
   ShieldAlert,
   Save,
-  CheckCircle2
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import type { CreateTriagePayload, TriageVitals } from '../../types';
 import ErrorAlert from '../common/ErrorAlert';
@@ -21,6 +23,12 @@ interface TriageVitalsFormProps {
   loading: boolean;
   nurseName?: string;
   onCancel?: () => void;
+  // Patient queue navigation props
+  hasPrevious?: boolean;
+  hasNext?: boolean;
+  onPreviousPatient?: () => void;
+  onNextPatient?: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
@@ -28,7 +36,12 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
   onSubmit,
   loading,
   nurseName,
-  onCancel
+  onCancel,
+  hasPrevious = false,
+  hasNext = false,
+  onPreviousPatient,
+  onNextPatient,
+  onDirtyChange
 }) => {
   const formId = useId();
 
@@ -68,6 +81,81 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
   );
   const [notes, setNotes] = useState<string>(initialVitals?.nurse_notes ?? '');
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Initial values reference to accurately track unsaved nurse inputs
+  const initialValues = useMemo(() => ({
+    systolic: initialVitals?.blood_pressure_systolic ? String(initialVitals.blood_pressure_systolic) : '120',
+    diastolic: initialVitals?.blood_pressure_diastolic ? String(initialVitals.blood_pressure_diastolic) : '80',
+    pulse: initialVitals?.pulse_bpm ? String(initialVitals.pulse_bpm) : '76',
+    temperature: initialVitals?.temperature_f ? String(initialVitals.temperature_f) : '98.6',
+    spo2: initialVitals?.spo2_percent ? String(initialVitals.spo2_percent) : '99',
+    respiratoryRate: initialVitals?.respiratory_rate ? String(initialVitals.respiratory_rate) : '18',
+    height: initialVitals?.height_cm ? String(initialVitals.height_cm) : '165',
+    weight: initialVitals?.weight_kg ? String(initialVitals.weight_kg) : '65',
+    glucose: initialVitals?.blood_glucose_mgdl ? String(initialVitals.blood_glucose_mgdl) : '110',
+    emergencyFlag: initialVitals?.emergency_flag ?? false,
+    ncdFlag: initialVitals?.ncd_risk_flag ?? false,
+    notes: initialVitals?.nurse_notes ?? ''
+  }), [initialVitals]);
+
+  // Derive whether user has unsaved edits
+  const isDirty = useMemo(() => {
+    return (
+      systolic !== initialValues.systolic ||
+      diastolic !== initialValues.diastolic ||
+      pulse !== initialValues.pulse ||
+      temperature !== initialValues.temperature ||
+      spo2 !== initialValues.spo2 ||
+      respiratoryRate !== initialValues.respiratoryRate ||
+      height !== initialValues.height ||
+      weight !== initialValues.weight ||
+      glucose !== initialValues.glucose ||
+      emergencyFlag !== initialValues.emergencyFlag ||
+      ncdFlag !== initialValues.ncdFlag ||
+      notes !== initialValues.notes
+    );
+  }, [
+    systolic, diastolic, pulse, temperature, spo2, respiratoryRate,
+    height, weight, glucose, emergencyFlag, ncdFlag, notes, initialValues
+  ]);
+
+  // Synchronize dirty state with parent encounter view
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  // Warn on page refresh / tab close if unsaved edits exist
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
+  // Guard navigation with confirmation if unsaved changes exist
+  const handlePrevious = () => {
+    if (isDirty) {
+      const proceed = window.confirm(
+        'You have unsaved triage vitals and clinical notes for this patient. Are you sure you want to discard your changes and navigate away?'
+      );
+      if (!proceed) return;
+    }
+    onPreviousPatient?.();
+  };
+
+  const handleNext = () => {
+    if (isDirty) {
+      const proceed = window.confirm(
+        'You have unsaved triage vitals and clinical notes for this patient. Are you sure you want to discard your changes and navigate away?'
+      );
+      if (!proceed) return;
+    }
+    onNextPatient?.();
+  };
 
   // Parse numbers for validation & derived calculations
   const sNum = parseInt(systolic, 10) || 0;
@@ -465,13 +553,39 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              id="prev-patient-btn"
+              data-testid="prev-patient-btn"
+              onClick={handlePrevious}
+              disabled={loading || !hasPrevious}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors shadow-2xs cursor-pointer"
+              title={hasPrevious ? "Navigate to previous patient in triage queue" : "No previous patient in queue"}
+            >
+              <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+              <span>← Previous Patient</span>
+            </button>
+
+            <button
+              type="button"
+              id="next-patient-btn"
+              data-testid="next-patient-btn"
+              onClick={handleNext}
+              disabled={loading || !hasNext}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors shadow-2xs cursor-pointer"
+              title={hasNext ? "Navigate to next patient in triage queue" : "No next patient in queue"}
+            >
+              <span>Next Patient →</span>
+              <ChevronRight className="w-4 h-4" aria-hidden="true" />
+            </button>
+
             {onCancel && (
               <button
                 type="button"
                 onClick={onCancel}
                 disabled={loading}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-2xs"
+                className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
               >
                 Cancel
               </button>
@@ -479,9 +593,10 @@ export const TriageVitalsForm: React.FC<TriageVitalsFormProps> = ({
 
             <button
               type="submit"
+              id="save-triage-btn"
               disabled={loading}
               data-testid="save-triage-btn"
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-50 rounded-lg transition-colors shadow-2xs"
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-50 rounded-lg transition-colors shadow-2xs cursor-pointer"
             >
               <Save className="w-4 h-4" aria-hidden="true" />
               {loading ? 'Saving Vitals...' : 'Save Triage & Send to Doctor'}
