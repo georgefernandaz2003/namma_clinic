@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   getVisits,
@@ -24,13 +24,15 @@ import { Stethoscope, ArrowLeft, CheckCircle2, ChevronRight, Users, Filter } fro
 export const Triage: React.FC = () => {
   const { user, activeFacility } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
 
   // Role security check
   const isNurse = user?.role === 'NURSE';
 
-  // Core encounter state
-  const visitIdParam = searchParams.get('visit');
+  // Core encounter state: support both query parameter and navigation state
+  const stateVisitId = (location.state as any)?.visitId;
+  const visitIdParam = searchParams.get('visit') || (stateVisitId ? String(stateVisitId) : null);
   const [activeVisit, setActiveVisit] = useState<Visit | null>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [existingTriage, setExistingTriage] = useState<TriageVitals | null>(null);
@@ -115,7 +117,7 @@ export const Triage: React.FC = () => {
       facilityScopedVisits.filter(
         (v) =>
           v.current_queue === 'TRIAGE' ||
-          ['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
+          ['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE', 'WAITING'].includes(v.status)
       ),
     [facilityScopedVisits]
   );
@@ -125,7 +127,7 @@ export const Triage: React.FC = () => {
       facilityScopedVisits.filter(
         (v) =>
           v.current_queue !== 'TRIAGE' &&
-          !['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
+          !['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE', 'WAITING'].includes(v.status)
       ),
     [facilityScopedVisits]
   );
@@ -260,6 +262,13 @@ export const Triage: React.FC = () => {
       if (visitIdParam) {
         const parsed = parseInt(visitIdParam, 10);
         if (!isNaN(parsed)) {
+          if (!searchParams.get('visit')) {
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.set('visit', String(parsed));
+              return next;
+            }, { replace: true });
+          }
           await loadEncounter(parsed);
           return;
         }
@@ -267,7 +276,7 @@ export const Triage: React.FC = () => {
 
       // Default to first pending visit in queue, or first visit
       const pending = facilityVisits.find(
-        (v) => v.current_queue === 'TRIAGE' || ['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE'].includes(v.status)
+        (v) => v.current_queue === 'TRIAGE' || ['WAITING_FOR_TRIAGE', 'REGISTERED', 'IN_TRIAGE', 'WAITING'].includes(v.status)
       );
 
       if (pending) {
@@ -289,7 +298,12 @@ export const Triage: React.FC = () => {
   }, [activeFacility?.id, loadTriageQueue, loadEncounter, setSearchParams]);
 
   // Load encounter when visitIdParam changes
+  const isInitialMount = useRef(true);
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     if (!visitIdParam) return;
     const parsed = parseInt(visitIdParam, 10);
     if (!isNaN(parsed) && parsed !== activeVisit?.id) {

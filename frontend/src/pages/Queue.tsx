@@ -538,8 +538,10 @@ export const Queue: React.FC = () => {
                             {(v.status === 'WAITING_FOR_TRIAGE' || v.status === 'WAITING') && (
                               isPathAllowedForRole(user?.role, '/triage') ? (
                                 <button
-                                  onClick={() => navigate('/triage', { state: { visitId: v.id } })}
-                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs"
+                                  id={`queue-triage-btn-${v.id}`}
+                                  data-testid={`queue-triage-btn-${v.id}`}
+                                  onClick={() => navigate(`/triage?visit=${v.id}`, { state: { visitId: v.id } })}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs cursor-pointer"
                                 >
                                   <span>Triage</span> <ArrowRight className="w-3 h-3" />
                                 </button>
