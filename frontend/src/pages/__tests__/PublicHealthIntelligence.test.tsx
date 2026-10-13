@@ -1776,5 +1776,15 @@ describe('PublicHealthIntelligence Component', () => {
         expect(screen.getByText(/No cases found for the selected filters/i)).toBeDefined();
       });
     });
+
+    it('verifies non-authorized roles (Doctor, Nurse, etc.) are denied access with HTTP 403 message', async () => {
+      setupAuth('DOCTOR');
+      render(<PublicHealthIntelligence />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Access Denied \(HTTP 403\)/i)).toBeDefined();
+        expect(screen.getByText(/Public Health Intelligence & Forecasting is restricted to District Officers and Hospital Administrators/i)).toBeDefined();
+      });
+    });
   });
 });

@@ -79,7 +79,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(accessToken);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (refreshToken) {
+      try {
+        await api.post('auth/logout/', { refresh: refreshToken });
+      } catch {
+        // Fallback: ensure client authentication state is cleared regardless of network error
+      }
+    }
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('active_facility_id');

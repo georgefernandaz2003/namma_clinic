@@ -1,8 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenBlacklistView
 
-from apps.accounts.views import UserViewSet, CurrentUserProfileView, DoctorListView
+from apps.accounts.views import UserViewSet, CurrentUserProfileView, DoctorListView, LogoutView
 from apps.geography.views import StateViewSet, DistrictViewSet, ZoneViewSet, WardViewSet
 from apps.facilities.views import (
     FacilityViewSet, FacilityRelationshipViewSet, FacilityHierarchyView, NetworkGraphView,
@@ -101,6 +101,8 @@ urlpatterns = [
     # Auth
     path('auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('auth/token/blacklist/', TokenBlacklistView.as_view(), name='token_blacklist'),
+    path('auth/logout/', LogoutView.as_view(), name='token_logout'),
     path('auth/me/', CurrentUserProfileView.as_view(), name='user_profile'),
     path('accounts/doctors/', DoctorListView.as_view(), name='facility_doctors'),
 

@@ -51,16 +51,17 @@ import { LocalityFacilityVisual } from '../components/intelligence/LocalityFacil
 export const PublicHealthIntelligence: React.FC = () => {
   const { user, allFacilities } = useAuth();
 
-  // Role detection
+  // Role detection - Public Health Intelligence is restricted to District Officers & Hospital Admins
   const isDistrictOfficer = user?.role === 'DISTRICT_OFFICER';
   const isHospitalAdmin = user?.role === 'HOSPITAL_ADMIN';
-  const isDoctorOrNurse = user?.role === 'DOCTOR' || user?.role === 'NURSE';
+  const isAuthorizedRole = isDistrictOfficer || isHospitalAdmin;
 
   // Verify dashboard.view permission
   const canViewDashboard = Boolean(
     (user?.permissions && user.permissions.includes('dashboard.view')) ||
     hasPermission(user?.role, 'dashboard.view')
   );
+  const hasAccess = canViewDashboard && isAuthorizedRole;
 
   // Authoritative scope determination
   const userAssignedDistrictId = user?.assigned_district || null;
@@ -71,13 +72,11 @@ export const PublicHealthIntelligence: React.FC = () => {
     if (isDistrictOfficer && userAssignedDistrictId) {
       return allFacilities.filter(f => f.district === userAssignedDistrictId);
     }
-    if (isHospitalAdmin || isDoctorOrNurse) {
-      if (userAssignedFacilityId) {
-        return allFacilities.filter(f => f.id === userAssignedFacilityId);
-      }
+    if (isHospitalAdmin && userAssignedFacilityId) {
+      return allFacilities.filter(f => f.id === userAssignedFacilityId);
     }
     return allFacilities;
-  }, [allFacilities, isDistrictOfficer, isHospitalAdmin, isDoctorOrNurse, userAssignedDistrictId, userAssignedFacilityId]);
+  }, [allFacilities, isDistrictOfficer, isHospitalAdmin, userAssignedDistrictId, userAssignedFacilityId]);
 
   // Filters State
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -147,8 +146,12 @@ export const PublicHealthIntelligence: React.FC = () => {
 
   // Centralized Alerts Fetcher
   const loadAlerts = useCallback(async () => {
+    if (!hasAccess) {
+      setAlertsLoading(false);
+      return;
+    }
     setAlertsLoading(true);
-    const effectiveFacility = (isHospitalAdmin || isDoctorOrNurse)
+    const effectiveFacility = isHospitalAdmin
       ? userAssignedFacilityId || undefined
       : filters.facility ? Number(filters.facility) : undefined;
 
@@ -169,8 +172,8 @@ export const PublicHealthIntelligence: React.FC = () => {
       setAlertsLoading(false);
     }
   }, [
+    hasAccess,
     isHospitalAdmin,
-    isDoctorOrNurse,
     isDistrictOfficer,
     userAssignedFacilityId,
     userAssignedDistrictId,
@@ -181,12 +184,16 @@ export const PublicHealthIntelligence: React.FC = () => {
 
   // Centralized Data Fetcher
   const fetchIntelligenceData = useCallback(async () => {
+    if (!hasAccess) {
+      setLoading(false);
+      return;
+    }
     const currentReqId = ++activeRequestIdRef.current;
     setLoading(true);
     setErrorMessage(null);
     setIsUnauthorized(false);
 
-    const effectiveFacility = (isHospitalAdmin || isDoctorOrNurse)
+    const effectiveFacility = isHospitalAdmin
       ? userAssignedFacilityId || undefined
       : filters.facility ? Number(filters.facility) : undefined;
 
@@ -255,8 +262,8 @@ export const PublicHealthIntelligence: React.FC = () => {
       }
     }
   }, [
+    hasAccess,
     isHospitalAdmin,
-    isDoctorOrNurse,
     isDistrictOfficer,
     userAssignedFacilityId,
     userAssignedDistrictId,
@@ -269,14 +276,14 @@ export const PublicHealthIntelligence: React.FC = () => {
   }, [fetchIntelligenceData, loadAlerts]);
 
   // Handlers for Alert Management (Step 4)
-  const canEvaluateSignals = isDistrictOfficer || isHospitalAdmin || isDoctorOrNurse;
+  const canEvaluateSignals = isDistrictOfficer || isHospitalAdmin;
 
   const handleEvaluateSignals = async () => {
     if (!canEvaluateSignals) return;
     setEvaluatingAlerts(true);
     setEvaluationFeedback(null);
     try {
-      const effectiveFacility = (isHospitalAdmin || isDoctorOrNurse)
+      const effectiveFacility = isHospitalAdmin
         ? userAssignedFacilityId || undefined
         : filters.facility ? Number(filters.facility) : undefined;
 
@@ -534,7 +541,7 @@ export const PublicHealthIntelligence: React.FC = () => {
   }, [seasonalityData, forecastData]);
 
   // Unauthorized page guard
-  if (!canViewDashboard) {
+  if (!hasAccess) {
     return (
       <div className="bg-rose-50 border border-rose-200 rounded-2xl p-8 max-w-xl mx-auto my-12 text-center shadow-lg">
         <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4 border border-rose-300">
@@ -542,7 +549,7 @@ export const PublicHealthIntelligence: React.FC = () => {
         </div>
         <h2 className="text-xl font-black text-rose-950 mb-2">Access Denied (HTTP 403)</h2>
         <p className="text-sm font-semibold text-rose-700">
-          You do not have permission to view this information.
+          You do not have permission to view this information. Public Health Intelligence & Forecasting is restricted to District Officers and Hospital Administrators.
         </p>
       </div>
     );
@@ -593,7 +600,7 @@ export const PublicHealthIntelligence: React.FC = () => {
               {filters.facility && ` (${availableFacilities.find(f => f.id === Number(filters.facility))?.facility_name || `Facility #${filters.facility}`})`}
             </span>
           )}
-          {(isHospitalAdmin || isDoctorOrNurse) && (
+          {isHospitalAdmin && (
             <span className="px-2.5 py-1 bg-blue-950/80 text-blue-300 rounded-lg border border-blue-800/50 flex items-center gap-1.5 font-bold">
               <Building2 className="w-3.5 h-3.5 text-blue-400" />
               Assigned Facility: {user?.facility_name || `Hospital #${userAssignedFacilityId}`}

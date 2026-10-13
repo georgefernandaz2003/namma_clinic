@@ -305,8 +305,8 @@ def resolve_facility_scope(user=None, requested_facility_id=None, requested_dist
         # Default to all facilities in assigned district
         return ScopeResult(True, district_fac_ids, user_dist_id, None)
 
-    # Operational Roles: HOSPITAL_ADMIN, DOCTOR, NURSE
-    if role in ['HOSPITAL_ADMIN', 'DOCTOR', 'NURSE']:
+    # Operational Role: HOSPITAL_ADMIN only (Public Health Intelligence is restricted to District Officers & Hospital Admins)
+    if role == 'HOSPITAL_ADMIN':
         assigned_fac = getattr(user, 'assigned_facility', None)
         assigned_fac_id = getattr(user, 'assigned_facility_id', None)
         if assigned_fac:
@@ -316,7 +316,7 @@ def resolve_facility_scope(user=None, requested_facility_id=None, requested_dist
             fac = Facility.objects.filter(id=assigned_fac_id).first()
             fac_dist_id = fac.district_id if fac else None
         else:
-            return ScopeResult(False, [], None, "Permission denied: User has no assigned hospital facility.")
+            return ScopeResult(False, [], None, "Permission denied: Hospital Admin has no assigned hospital facility.")
 
         # Check requested facility
         if req_fac_id is not None and req_fac_id != assigned_fac_id:
@@ -329,7 +329,7 @@ def resolve_facility_scope(user=None, requested_facility_id=None, requested_dist
         # Strictly locked to assigned facility
         return ScopeResult(True, [assigned_fac_id], fac_dist_id, None)
 
-    return ScopeResult(False, [], None, "Permission denied: User role is not authorized for health intelligence.")
+    return ScopeResult(False, [], None, "Permission denied: User role is not authorized for health intelligence. Access is restricted to District Officers and Hospital Administrators.")
 
 
 # ---------------------------------------------------------------------------

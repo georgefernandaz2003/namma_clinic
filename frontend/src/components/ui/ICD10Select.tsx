@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, ChevronDown, Check, X, Tag, PlusCircle } from 'lucide-react';
+import { Search, ChevronDown, Check, X, Tag, PlusCircle, CheckCircle2 } from 'lucide-react';
 import { COMMON_ICD10_DIAGNOSES, type ICD10Diagnosis } from '../../data/icd10Data';
 
-interface ICD10SelectProps {
+export interface SelectedDiagnosis {
+  code: string;
+  name: string;
+}
+
+export interface ICD10SelectProps {
   value: string;
   code?: string;
   onChange: (code: string, name: string) => void;
@@ -12,21 +17,121 @@ interface ICD10SelectProps {
   className?: string;
 }
 
+export function parseDiagnosesFromProps(codeProp: string, valueProp: string): SelectedDiagnosis[] {
+  const trimmedCode = (codeProp || '').trim();
+  const trimmedValue = (valueProp || '').trim();
+
+  if (!trimmedCode && !trimmedValue) return [];
+
+  // Exact single match check (e.g., 'E11.9 / I10' in master list)
+  const exactMatch = COMMON_ICD10_DIAGNOSES.find(
+    (d) => d.code.toLowerCase() === trimmedCode.toLowerCase()
+  );
+  if (exactMatch && (!trimmedValue || trimmedValue.toLowerCase() === exactMatch.name.toLowerCase())) {
+    return [{ code: exactMatch.code, name: exactMatch.name }];
+  }
+
+  // Split code by comma or slash
+  let codeParts: string[] = [];
+  if (trimmedCode) {
+    if (COMMON_ICD10_DIAGNOSES.some((d) => d.code.toLowerCase() === trimmedCode.toLowerCase())) {
+      codeParts = [trimmedCode];
+    } else if (trimmedCode.includes(',')) {
+      codeParts = trimmedCode.split(',').map((c) => c.trim()).filter(Boolean);
+    } else if (trimmedCode.includes(' / ')) {
+      codeParts = trimmedCode.split(' / ').map((c) => c.trim()).filter(Boolean);
+    } else if (trimmedCode.includes('/')) {
+      codeParts = trimmedCode.split('/').map((c) => c.trim()).filter(Boolean);
+    } else {
+      codeParts = [trimmedCode];
+    }
+  }
+
+  // Split value by comma or slash
+  let nameParts: string[] = [];
+  if (trimmedValue) {
+    if (trimmedValue.includes(', ')) {
+      nameParts = trimmedValue.split(', ').map((n) => n.trim()).filter(Boolean);
+    } else if (trimmedValue.includes(' / ')) {
+      nameParts = trimmedValue.split(' / ').map((n) => n.trim()).filter(Boolean);
+    } else if (trimmedValue.includes(',')) {
+      nameParts = trimmedValue.split(',').map((n) => n.trim()).filter(Boolean);
+    } else {
+      nameParts = [trimmedValue];
+    }
+  }
+
+  if (codeParts.length > 0) {
+    return codeParts.map((codeItem, idx) => {
+      const match = COMMON_ICD10_DIAGNOSES.find(
+        (d) => d.code.toLowerCase() === codeItem.toLowerCase()
+      );
+      if (match) {
+        const nameToUse = match.code === 'R69' && nameParts[idx] ? nameParts[idx] : match.name;
+        return { code: match.code, name: nameToUse };
+      }
+      const nameFallback = nameParts[idx] || (nameParts.length === 1 && codeParts.length === 1 ? nameParts[0] : codeItem);
+      return { code: codeItem, name: nameFallback };
+    });
+  }
+
+  // If code is empty but value/name is present
+  if (trimmedValue) {
+    const match = COMMON_ICD10_DIAGNOSES.find(
+      (d) => d.name.toLowerCase() === trimmedValue.toLowerCase()
+    );
+    if (match) {
+      return [{ code: match.code, name: match.name }];
+    }
+    return [{ code: 'R69', name: trimmedValue }];
+  }
+
+  return [];
+}
+
+export function serializeDiagnoses(items: SelectedDiagnosis[]): { code: string; name: string } {
+  if (items.length === 0) {
+    return { code: '', name: '' };
+  }
+  const codeStr = items.map((i) => i.code).join(', ');
+  const nameStr = items.map((i) => i.name).join(', ');
+
+  // Protect against database max_length (diagnosis_code max_length=50, diagnosis_name max_length=200)
+  const safeCode = codeStr.length > 50 ? codeStr.slice(0, 47) + '...' : codeStr;
+  const safeName = nameStr.length > 200 ? nameStr.slice(0, 196) + '...' : nameStr;
+
+  return { code: safeCode, name: safeName };
+}
+
 export const ICD10Select: React.FC<ICD10SelectProps> = ({
   value,
   code = '',
   onChange,
   required = false,
-  label = 'ICD-10 Diagnosis Code & Name *',
+  label = 'ICD-10 Diagnosis Code & Name (Select One or More) *',
   disabled = false,
   className = ''
 }) => {
+  const [selected, setSelected] = useState<SelectedDiagnosis[]>(() =>
+    parseDiagnosesFromProps(code, value)
+  );
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+
+  // Synchronize internal state when parent props change externally
+  useEffect(() => {
+    const { code: currentCode, name: currentName } = serializeDiagnoses(selected);
+    if (code === currentCode && value === currentName) {
+      return;
+    }
+    const parsed = parseDiagnosesFromProps(code, value);
+    setSelected(parsed);
+  }, [code, value]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -44,7 +149,7 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
   const filteredDiagnoses = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) {
-      // When empty query, show common diagnoses first, then the rest
+      // Sort common first, then alphabetical
       return [...COMMON_ICD10_DIAGNOSES].sort((a, b) => {
         if (a.common && !b.common) return -1;
         if (!a.common && b.common) return 1;
@@ -60,7 +165,7 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
     });
   }, [query]);
 
-  // Check if current input matches any predefined diagnosis exactly
+  // Exact match check for query
   const exactMatch = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return null;
@@ -69,28 +174,58 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
     );
   }, [query]);
 
-  const handleSelect = (diag: ICD10Diagnosis) => {
-    onChange(diag.code, diag.name);
+  const updateSelected = (newSelected: SelectedDiagnosis[]) => {
+    setSelected(newSelected);
+    const { code: newCode, name: newName } = serializeDiagnoses(newSelected);
+    onChange(newCode, newName);
+  };
+
+  const handleToggleDiagnosis = (diag: ICD10Diagnosis) => {
+    const existsIndex = selected.findIndex(
+      (s) => s.code.toLowerCase() === diag.code.toLowerCase()
+    );
+
+    let newSelected: SelectedDiagnosis[];
+    if (existsIndex >= 0) {
+      // Remove already selected
+      newSelected = selected.filter((_, i) => i !== existsIndex);
+    } else {
+      // Add to selected list
+      newSelected = [...selected, { code: diag.code, name: diag.name }];
+    }
+
+    updateSelected(newSelected);
+    setQuery('');
+    setHighlightedIndex(0);
+  };
+
+  const handleRemoveItem = (codeToRemove: string, nameToRemove: string) => {
+    if (disabled) return;
+    const newSelected = selected.filter(
+      (s) => !(s.code === codeToRemove && s.name === nameToRemove)
+    );
+    updateSelected(newSelected);
+  };
+
+  const handleCustomSelect = () => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    if (!selected.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())) {
+      const newSelected = [...selected, { code: 'R69', name: trimmed }];
+      updateSelected(newSelected);
+    }
     setQuery('');
     setIsOpen(false);
     setHighlightedIndex(-1);
   };
 
-  const handleCustomSelect = () => {
-    if (query.trim()) {
-      onChange('R69', query.trim()); // R69 = Illness, unspecified
-      setQuery('');
-      setIsOpen(false);
-      setHighlightedIndex(-1);
-    }
-  };
-
-  const handleClear = (e: React.MouseEvent) => {
+  const handleClearAll = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onChange('', '');
+    if (disabled) return;
+    updateSelected([]);
     setQuery('');
     inputRef.current?.focus();
-    setIsOpen(true);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -101,6 +236,13 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
         setIsOpen(true);
         return;
       }
+    }
+
+    // Backspace on empty query removes last selected chip
+    if (e.key === 'Backspace' && query === '' && selected.length > 0) {
+      const newSelected = selected.slice(0, selected.length - 1);
+      updateSelected(newSelected);
+      return;
     }
 
     const totalOptions = filteredDiagnoses.length + (query.trim() && !exactMatch ? 1 : 0);
@@ -114,12 +256,12 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (highlightedIndex >= 0 && highlightedIndex < filteredDiagnoses.length) {
-        handleSelect(filteredDiagnoses[highlightedIndex]);
+        handleToggleDiagnosis(filteredDiagnoses[highlightedIndex]);
       } else if (highlightedIndex === filteredDiagnoses.length && query.trim() && !exactMatch) {
         handleCustomSelect();
       } else if (query.trim()) {
         if (filteredDiagnoses.length > 0) {
-          handleSelect(filteredDiagnoses[0]);
+          handleToggleDiagnosis(filteredDiagnoses[0]);
         } else {
           handleCustomSelect();
         }
@@ -130,11 +272,11 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
     }
   };
 
-  // Scroll highlighted element into view
+  // Scroll highlighted item into view
   useEffect(() => {
     if (highlightedIndex >= 0 && listRef.current) {
       const items = listRef.current.querySelectorAll('li');
-      if (items[highlightedIndex]) {
+      if (items[highlightedIndex] && typeof items[highlightedIndex].scrollIntoView === 'function') {
         items[highlightedIndex].scrollIntoView({ block: 'nearest' });
       }
     }
@@ -142,21 +284,66 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
+      {/* Label and Selected Counter */}
       {label && (
         <div className="flex items-center justify-between mb-1">
           <label className="block text-slate-700 font-bold text-xs">
             {label}
           </label>
-          {code && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono text-[11px] font-bold">
-              <Tag className="w-3 h-3 text-blue-600" />
-              ICD: {code}
+          {selected.length > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-semibold">
+              <CheckCircle2 className="w-3 h-3 text-blue-600" />
+              {selected.length} {selected.length === 1 ? 'diagnosis' : 'diagnoses'} selected
             </span>
           )}
         </div>
       )}
 
-      {/* Input container */}
+      {/* Selected Diagnoses Chips */}
+      {selected.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          {selected.map((item, idx) => (
+            <span
+              key={`${item.code}-${idx}`}
+              className="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-xs font-medium shadow-2xs group transition hover:bg-blue-100"
+            >
+              <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-200/90 text-blue-900">
+                {item.code}
+              </span>
+              <span className="max-w-[200px] sm:max-w-[280px] truncate" title={item.name}>
+                {item.name}
+              </span>
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemoveItem(item.code, item.name);
+                  }}
+                  className="p-0.5 hover:bg-blue-200 text-blue-500 hover:text-rose-600 rounded transition cursor-pointer"
+                  title={`Remove ${item.name}`}
+                  aria-label={`Remove ${item.name}`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </span>
+          ))}
+
+          {selected.length > 1 && !disabled && (
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="text-[11px] text-slate-400 hover:text-rose-600 font-medium px-1.5 py-1 transition cursor-pointer"
+              title="Clear all selected diagnoses"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Search Input Box */}
       <div className="relative flex items-center">
         <div className="absolute left-3 pointer-events-none text-slate-400">
           <Search className="w-4 h-4" />
@@ -166,31 +353,49 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
           ref={inputRef}
           type="text"
           disabled={disabled}
-          value={isOpen ? query : (value || '')}
-          placeholder={isOpen ? 'Search by ICD code, disease name, or category...' : (value ? `${code ? `[${code}] ` : ''}${value}` : 'Select or type ICD-10 diagnosis...')}
+          value={query}
+          placeholder={
+            selected.length === 0
+              ? 'Search & select ICD-10 diagnosis (select one or more)...'
+              : 'Search & add another diagnosis (by code or name)...'
+          }
           onChange={(e) => {
             setQuery(e.target.value);
             if (!isOpen) setIsOpen(true);
             setHighlightedIndex(0);
-            // Also notify parent of text changes if needed
-            onChange(code || 'R69', e.target.value);
           }}
           onFocus={() => {
             setIsOpen(true);
-            setQuery(value || '');
           }}
           onKeyDown={handleKeyDown}
-          required={required}
           className="w-full pl-9 pr-16 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-xs font-medium placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-1 focus:ring-blue-500 transition-colors"
         />
 
+        {/* Hidden input for HTML5 form required validation */}
+        {required && (
+          <input
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden="true"
+            value={selected.length > 0 ? 'valid' : ''}
+            required={required && selected.length === 0}
+            onChange={() => {}}
+            className="sr-only opacity-0 h-0 w-0 absolute pointer-events-none"
+          />
+        )}
+
         <div className="absolute right-2 flex items-center gap-1">
-          {(value || query) && !disabled && (
+          {query && !disabled && (
             <button
               type="button"
-              onClick={handleClear}
+              onClick={(e) => {
+                e.stopPropagation();
+                setQuery('');
+                inputRef.current?.focus();
+              }}
               className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-full transition cursor-pointer"
-              title="Clear diagnosis"
+              title="Clear search"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -215,17 +420,17 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
         </div>
       </div>
 
-      {/* Floating Dropdown */}
+      {/* Floating Multi-Select Dropdown */}
       {isOpen && !disabled && (
         <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden transition-all duration-200 animate-in fade-in slide-in-from-top-1">
           {/* Header indicator */}
           <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-            <span className="font-semibold">
+            <span className="font-semibold text-slate-700">
               {query.trim()
                 ? `Matching diagnoses (${filteredDiagnoses.length})`
-                : `Common Primary Care / OPD Diagnoses (${filteredDiagnoses.length})`}
+                : `Common ICD-10 Diagnoses (${filteredDiagnoses.length})`}
             </span>
-            <span className="text-[10px] text-slate-400">Type code or name to filter</span>
+            <span className="text-[10px] text-slate-400">Click item to toggle selection</span>
           </div>
 
           <ul
@@ -248,18 +453,22 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
                 <div className="flex items-center gap-2">
                   <PlusCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                   <div>
-                    <span className="font-bold text-slate-800">Use custom: </span>
+                    <span className="font-bold text-slate-800">Add custom: </span>
                     <span className="text-slate-900 font-semibold italic">"{query.trim()}"</span>
                     <span className="text-[10px] text-slate-500 ml-2">(Unspecified ICD-10)</span>
                   </div>
                 </div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700">R69</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold">
+                  R69
+                </span>
               </li>
             )}
 
             {filteredDiagnoses.length > 0 ? (
               filteredDiagnoses.map((diag, idx) => {
-                const isSelected = value === diag.name || code === diag.code;
+                const isSelected = selected.some(
+                  (s) => s.code.toLowerCase() === diag.code.toLowerCase()
+                );
                 const isHighlighted = idx === highlightedIndex;
 
                 return (
@@ -267,22 +476,46 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
                     key={`${diag.code}-${idx}`}
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      handleSelect(diag);
+                      handleToggleDiagnosis(diag);
                     }}
                     onMouseEnter={() => setHighlightedIndex(idx)}
                     className={`px-3 py-2 cursor-pointer flex items-center justify-between transition group ${
                       isSelected
-                        ? 'bg-blue-50/80 font-bold text-blue-900'
+                        ? 'bg-blue-50/80 text-blue-900 font-medium'
                         : isHighlighted
                         ? 'bg-slate-100 text-slate-900 font-medium'
                         : 'hover:bg-slate-50 text-slate-700'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                      <span className="shrink-0 font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 group-hover:bg-blue-200 transition">
+                      {/* Checkbox indicator */}
+                      <div
+                        className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${
+                          isSelected
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'border-slate-300 bg-white group-hover:border-slate-400'
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                      </div>
+
+                      <span
+                        className={`shrink-0 font-mono text-[11px] font-bold px-2 py-0.5 rounded transition ${
+                          isSelected
+                            ? 'bg-blue-200/90 text-blue-900'
+                            : 'bg-blue-100 text-blue-800 group-hover:bg-blue-200'
+                        }`}
+                      >
                         {diag.code}
                       </span>
-                      <span className="truncate text-xs text-slate-900 group-hover:text-blue-900 font-medium">
+
+                      <span
+                        className={`truncate text-xs ${
+                          isSelected
+                            ? 'font-bold text-blue-950'
+                            : 'text-slate-900 group-hover:text-blue-900 font-medium'
+                        }`}
+                      >
                         {diag.name}
                       </span>
                     </div>
@@ -292,7 +525,9 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
                         {diag.category}
                       </span>
                       {isSelected && (
-                        <Check className="w-4 h-4 text-blue-600 shrink-0" />
+                        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
+                          Selected
+                        </span>
                       )}
                     </div>
                   </li>
@@ -305,13 +540,24 @@ export const ICD10Select: React.FC<ICD10SelectProps> = ({
                 </li>
               )
             )}
-
-            {filteredDiagnoses.length === 0 && !query.trim() && (
-              <li className="p-4 text-center text-xs text-slate-400">
-                No diagnoses available.
-              </li>
-            )}
           </ul>
+
+          {/* Footer with summary and Done button */}
+          <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span className="text-slate-500 text-[11px]">
+              {selected.length === 0 ? 'Click diagnoses to select' : `${selected.length} selected`}
+            </span>
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsOpen(false);
+              }}
+              className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[11px] transition cursor-pointer shadow-xs"
+            >
+              Done
+            </button>
+          </div>
         </div>
       )}
     </div>

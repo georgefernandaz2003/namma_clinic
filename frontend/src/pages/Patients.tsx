@@ -23,7 +23,6 @@ export const Patients: React.FC = () => {
   const [abhaId, setAbhaId] = useState('');
   const [vulnerability, setVulnerability] = useState('Slum Resident / Low Income Group');
   const [customVulnerability, setCustomVulnerability] = useState('');
-  const [registerForOpd, setRegisterForOpd] = useState(true);
 
   // Token Modal State
   const [showTokenModal, setShowTokenModal] = useState(false);
@@ -74,7 +73,7 @@ export const Patients: React.FC = () => {
         { label: 'Mobile Number', value: mobile || 'N/A' },
         { label: 'Facility', value: facName },
         { label: 'Vulnerability Group', value: finalVulnerability },
-        { label: 'Initial Queue', value: registerForOpd ? 'Auto-Checkin to Nurse Triage OPD' : 'Registration Only' }
+        { label: 'Initial Queue', value: 'Auto-Checkin to Nurse Triage OPD' }
       ],
       onConfirm: async () => {
         const res = await api.post('patients/', {
@@ -89,7 +88,7 @@ export const Patients: React.FC = () => {
         });
         const newPat = res.data;
 
-        if (registerForOpd && activeFacility) {
+        if (activeFacility) {
           try {
             await api.post('visits/', {
               patient: newPat.id,
@@ -389,18 +388,6 @@ export const Patients: React.FC = () => {
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 focus:outline-none font-medium"
                 />
               </div>
-
-              <label className="flex items-center gap-2 p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={registerForOpd}
-                  onChange={(e) => setRegisterForOpd(e.target.checked)}
-                  className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
-                />
-                <span className="text-xs font-bold text-emerald-900">
-                  Also register for Today's OPD (Issue Token & add to Queue)
-                </span>
-              </label>
 
               <div className="pt-2 flex justify-end gap-2">
                 <button

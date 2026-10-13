@@ -1,6 +1,8 @@
-from rest_framework import viewsets, permissions, serializers
+from rest_framework import viewsets, permissions, serializers, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from django.http import Http404
 from django.db.models import Q
 
@@ -156,4 +158,26 @@ class DoctorListView(APIView):
             })
 
         return Response(results)
+
+
+class LogoutView(APIView):
+    """
+    Revoke/blacklist the submitted refresh token on logout.
+    Prevents continued use of the refresh token to obtain new access tokens.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response(
+                {'detail': 'Refresh token is required for revocation.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({'detail': 'Token successfully revoked.'}, status=status.HTTP_200_OK)
+        except (TokenError, InvalidToken):
+            return Response({'detail': 'Token is invalid or already revoked.'}, status=status.HTTP_400_BAD_REQUEST)
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import type { Visit, TriageVitals, LabOrder } from '../types';
+import type { Visit, TriageVitals, LabOrder, MedicineMaster } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import {
@@ -10,6 +10,8 @@ import {
   ChevronDown, ChevronUp, FlaskConical
 } from 'lucide-react';
 import { ICD10Select } from '../components/ui/ICD10Select';
+import { MedicineSelect } from '../components/ui/MedicineSelect';
+import { LabTestSelect } from '../components/ui/LabTestSelect';
 
 export const Consultation: React.FC = () => {
   const { activeFacility, allFacilities, user } = useAuth();
@@ -40,7 +42,7 @@ export const Consultation: React.FC = () => {
   const [notes, setNotes] = useState('');
 
   // Prescription items
-  const [prescriptions, setPrescriptions] = useState<Array<{ medicine_name: string; dosage: string; quantity: number }>>([]);
+  const [prescriptions, setPrescriptions] = useState<Array<{ medicine_id?: number; medicine_name: string; dosage: string; quantity: number }>>([]);
 
   // Referral creation state
   const [createReferral, setCreateReferral] = useState(true);
@@ -51,6 +53,27 @@ export const Consultation: React.FC = () => {
   // Diagnostic Tests (14 Essential Tests) State
   const [availableTests, setAvailableTests] = useState<any[]>([]);
   const [selectedTestIds, setSelectedTestIds] = useState<number[]>([]);
+
+  // EDL Inventory Medicines State
+  const [availableMedicines, setAvailableMedicines] = useState<MedicineMaster[]>([]);
+  const [loadingMedicines, setLoadingMedicines] = useState(false);
+
+  useEffect(() => {
+    const fetchMedicines = async () => {
+      if (!activeFacility) return;
+      try {
+        setLoadingMedicines(true);
+        const res = await api.get(`pharmacy/medicines/?facility=${activeFacility.id}`);
+        const meds = res.data.results || res.data || [];
+        setAvailableMedicines(meds);
+      } catch (e) {
+        console.error('Failed to load inventory medicines', e);
+      } finally {
+        setLoadingMedicines(false);
+      }
+    };
+    fetchMedicines();
+  }, [activeFacility]);
 
   // Follow-up State
   const [followUpDate, setFollowUpDate] = useState<string>('');
@@ -267,7 +290,27 @@ export const Consultation: React.FC = () => {
   }, [referralDestinations, destFacilityId]);
 
   const handleAddMed = () => {
-    setPrescriptions([...prescriptions, { medicine_name: 'Paracetamol 650 mg Tablet', dosage: '1-0-1', quantity: 10 }]);
+    const defaultMed = availableMedicines.length > 0 ? availableMedicines[0] : null;
+    if (defaultMed) {
+      setPrescriptions([
+        ...prescriptions,
+        {
+          medicine_id: defaultMed.id,
+          medicine_name: `${defaultMed.generic_name} ${defaultMed.strength} ${defaultMed.dosage_form}`.trim(),
+          dosage: '1-0-1 After Food',
+          quantity: 14
+        }
+      ]);
+    } else {
+      setPrescriptions([
+        ...prescriptions,
+        {
+          medicine_name: '',
+          dosage: '1-0-1 After Food',
+          quantity: 14
+        }
+      ]);
+    }
   };
 
   const handleRemoveMed = (idx: number) => {
@@ -696,95 +739,141 @@ export const Consultation: React.FC = () => {
 
               {/* Prescription Section */}
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
-                    <Pill className="w-4 h-4 text-amber-600" />
-                    Prescribe Medication (EDL List - FEFO Dispensing Ready)
-                  </h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
+                  <div>
+                    <h3 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                      <Pill className="w-4 h-4 text-amber-600" />
+                      Prescribe Medication (EDL List - FEFO Dispensing Ready)
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
+                      <span>Connected to {activeFacility?.facility_name || 'Facility'} Pharmacy Inventory</span>
+                      {availableMedicines.length > 0 && (
+                        <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.2 rounded-full border border-emerald-200 text-[10px]">
+                          ✓ {availableMedicines.length} EDL Medicines Loaded
+                        </span>
+                      )}
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={handleAddMed}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-amber-800 rounded-lg text-[11px] font-bold"
+                    className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer self-start sm:self-auto"
                   >
                     <Plus className="w-3.5 h-3.5" /> Add Medicine
                   </button>
                 </div>
 
-                <div className="space-y-2">
-                  {prescriptions.map((p, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200">
-                      <input
-                        type="text"
-                        value={p.medicine_name}
-                        onChange={(e) => {
-                          const updated = [...prescriptions];
-                          updated[idx].medicine_name = e.target.value;
-                          setPrescriptions(updated);
-                        }}
-                        className="flex-1 px-2 py-1 bg-slate-50 border border-slate-300 rounded text-slate-900 text-xs font-semibold"
-                      />
-                      <input
-                        type="text"
-                        value={p.dosage}
-                        onChange={(e) => {
-                          const updated = [...prescriptions];
-                          updated[idx].dosage = e.target.value;
-                          setPrescriptions(updated);
-                        }}
-                        className="w-32 px-2 py-1 bg-slate-50 border border-slate-300 rounded text-slate-900 text-xs"
-                      />
-                      <input
-                        type="number"
-                        value={p.quantity}
-                        onChange={(e) => {
-                          const updated = [...prescriptions];
-                          updated[idx].quantity = parseInt(e.target.value) || 0;
-                          setPrescriptions(updated);
-                        }}
-                        className="w-16 px-2 py-1 bg-slate-50 border border-slate-300 rounded text-slate-900 text-xs font-mono font-bold"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveMed(idx)}
-                        className="p-1 text-slate-400 hover:text-rose-600"
+                {prescriptions.length === 0 ? (
+                  <div className="p-4 bg-white rounded-xl border border-dashed border-slate-300 text-center">
+                    <p className="text-xs text-slate-500 font-medium">No medications prescribed yet.</p>
+                    <button
+                      type="button"
+                      onClick={handleAddMed}
+                      className="mt-1 text-xs font-bold text-emerald-700 hover:text-emerald-800 underline cursor-pointer"
+                    >
+                      + Add medicine from EDL inventory
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {prescriptions.map((p, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2"
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase font-mono">
+                            Prescription #{idx + 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMed(idx)}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                            title="Remove medication"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-start">
+                          {/* Searchable Medicine Dropdown connected to inventory */}
+                          <div className="sm:col-span-6">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
+                              EDL Medicine (Search Generic / Brand / Stock) *
+                            </label>
+                            <MedicineSelect
+                              value={p.medicine_name}
+                              medicineId={p.medicine_id}
+                              medicines={availableMedicines}
+                              onChange={(med) => {
+                                const updated = [...prescriptions];
+                                updated[idx].medicine_id = med.medicine_id;
+                                updated[idx].medicine_name = med.medicine_name;
+                                setPrescriptions(updated);
+                              }}
+                            />
+                          </div>
+
+                          {/* Dosage Input with Presets */}
+                          <div className="sm:col-span-4">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
+                              Dosage & Regimen *
+                            </label>
+                            <input
+                              type="text"
+                              list={`dosage-presets-${idx}`}
+                              value={p.dosage}
+                              placeholder="e.g. 1-0-1 After Food"
+                              onChange={(e) => {
+                                const updated = [...prescriptions];
+                                updated[idx].dosage = e.target.value;
+                                setPrescriptions(updated);
+                              }}
+                              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-xs font-semibold focus:outline-none focus:border-blue-600 focus:bg-white"
+                            />
+                            <datalist id={`dosage-presets-${idx}`}>
+                              <option value="1-0-1 After Food" />
+                              <option value="1-0-0 Morning (Before Food)" />
+                              <option value="1-0-0 Morning (After Food)" />
+                              <option value="0-0-1 Night (After Food)" />
+                              <option value="1-1-1 After Food" />
+                              <option value="1-1-1 SOS (When Required)" />
+                              <option value="1-0-1 Before Food" />
+                              <option value="0-1-0 Afternoon" />
+                            </datalist>
+                          </div>
+
+                          {/* Quantity */}
+                          <div className="sm:col-span-2">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
+                              Quantity *
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={p.quantity}
+                              onChange={(e) => {
+                                const updated = [...prescriptions];
+                                updated[idx].quantity = parseInt(e.target.value) || 0;
+                                setPrescriptions(updated);
+                              }}
+                              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-xs font-mono font-bold text-center focus:outline-none focus:border-blue-600 focus:bg-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Order Diagnostic Investigations (14 Essential Tests) */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <h3 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
-                  <FileText className="w-4 h-4 text-teal-600" />
-                  Order 14 Essential Diagnostic Tests (Point-of-Care & Hub Lab)
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] max-h-48 overflow-y-auto pr-1">
-                  {availableTests.map((t) => {
-                    const isSelected = selectedTestIds.includes(t.id);
-                    return (
-                      <label
-                        key={t.id}
-                        onClick={() => toggleTestSelection(t.id)}
-                        className={`p-2 rounded-lg border flex items-center justify-between cursor-pointer transition select-none ${
-                          isSelected
-                            ? 'bg-teal-50 border-teal-500 text-teal-900 font-bold'
-                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span>{t.name}</span>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {}}
-                          className="w-3.5 h-3.5 text-teal-600 rounded border-slate-300"
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <LabTestSelect
+                  availableTests={availableTests}
+                  selectedIds={selectedTestIds}
+                  onChange={setSelectedTestIds}
+                />
               </div>
 
               {/* Cross-Facility Referral Creation */}
