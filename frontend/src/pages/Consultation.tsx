@@ -44,6 +44,7 @@ import ConsultationFormCard from '../components/clinical/ConsultationFormCard';
 import DiagnosticOrderCard from '../components/clinical/DiagnosticOrderCard';
 import PrescriptionCard, { type RxItemInput } from '../components/clinical/PrescriptionCard';
 import ReferralFollowUpCard from '../components/clinical/ReferralFollowUpCard';
+import VisitDetailsModal from '../components/clinical/VisitDetailsModal';
 import { Stethoscope, ArrowLeft, ArrowRight, CheckCircle2, Save, Clock, AlertCircle } from 'lucide-react';
 
 export const Consultation: React.FC = () => {
@@ -63,6 +64,8 @@ export const Consultation: React.FC = () => {
   const [existingOrders, setExistingOrders] = useState<DiagnosticOrder[]>([]);
   const [existingResults, setExistingResults] = useState<DiagnosticResult[]>([]);
   const [existingPrescriptions, setExistingPrescriptions] = useState<Prescription[]>([]);
+  const [historicalVisitId, setHistoricalVisitId] = useState<number | null>(null);
+  const [showVisitModal, setShowVisitModal] = useState<boolean>(false);
 
   const [testMasters, setTestMasters] = useState<DiagnosticTestMaster[]>([]);
   const [medicines, setMedicines] = useState<MedicineMaster[]>([]);
@@ -536,7 +539,13 @@ export const Consultation: React.FC = () => {
         <form onSubmit={handleSaveConsultation} className="space-y-6">
           <ConsultationBanner patient={patient} visit={visit} />
           <TriageReviewCard triage={triage} />
-          <ConsultationHistoryCard consultations={previousConsultations} />
+          <ConsultationHistoryCard
+            consultations={previousConsultations}
+            onSelectVisit={(histVisitId) => {
+              setHistoricalVisitId(histVisitId);
+              setShowVisitModal(true);
+            }}
+          />
           <ConsultationFormCard
             chiefComplaint={chiefComplaint}
             setChiefComplaint={setChiefComplaint}
@@ -670,6 +679,17 @@ export const Consultation: React.FC = () => {
           </div>
         </form>
       )}
+
+      {/* Historical Visit Details Modal */}
+      <VisitDetailsModal
+        isOpen={showVisitModal}
+        onClose={() => {
+          setShowVisitModal(false);
+          setHistoricalVisitId(null);
+        }}
+        visitId={historicalVisitId}
+        patient={patient}
+      />
     </div>
   );
 };

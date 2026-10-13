@@ -321,6 +321,9 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         facility_param = self.request.query_params.get('facility')
         if facility_param:
             queryset = queryset.filter(facility_id=facility_param)
+        visit_param = self.request.query_params.get('visit')
+        if visit_param:
+            queryset = queryset.filter(consultation__visit_id=visit_param)
         return queryset
 
     @action(detail=True, methods=['post'])
@@ -379,6 +382,39 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             action='PRESCRIPTION_HOLD',
             facility=prescription.facility,
             details=f"Placed prescription #{prescription.id} on clinical hold."
+        )
+
+        return Response(PrescriptionSerializer(prescription).data)
+
+    @action(detail=True, methods=['post'], url_path='release-hold')
+    def release_hold(self, request, pk=None):
+        """Release clinical hold on prescription."""
+        active_roles = get_user_active_role_codes(request.user)
+        if 'PHARMACIST' not in active_roles and not has_role_permission(request.user, 'prescription.hold'):
+            return Response({'error': 'Only pharmacists are authorized to release prescriptions from hold.'}, status=status.HTTP_403_FORBIDDEN)
+
+        prescription = self.get_object()
+        accessible_ids = get_accessible_facility_ids_for_user(request.user)
+        if accessible_ids is not None and prescription.facility_id not in accessible_ids:
+            return Response({'error': 'Cross-facility prescription action blocked.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if prescription.status != 'ON_HOLD':
+            return Response({'error': f"Prescription #{prescription.id} is not on hold."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if prescription.items.filter(dispensed_quantity__gt=0).exists():
+            prescription.status = 'PARTIALLY_DISPENSED'
+        else:
+            prescription.status = 'PENDING_VERIFICATION'
+
+        prescription.verification_notes = request.data.get('notes', 'Hold cleared by pharmacist')
+        prescription.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            username_snapshot=request.user.username,
+            action='PRESCRIPTION_HOLD_RELEASED',
+            facility=prescription.facility,
+            details=f"Released hold on prescription #{prescription.id}."
         )
 
         return Response(PrescriptionSerializer(prescription).data)
